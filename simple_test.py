@@ -19,6 +19,7 @@ def get_args():
     parser.add_argument('-b', '--batch-size', dest='batch_size', type=int, default=4)
     parser.add_argument('-l', '--seq-length', dest='seq_length', type=int, default=15)
     parser.add_argument('--in-emb-size', dest='input_embedding_size', type=int, default=10)
+    parser.add_argument('-T', '--task', dest='task', type=str, default='de_en_iwslt')
 
     return parser.parse_args()
 
@@ -34,7 +35,12 @@ def main():
     hparams = get_args()
 
     net_code = [
-        [NetCodeEnum.LSTM, 2, 0],
+        [
+            [NetCodeEnum.LSTM, 2, 1],
+        ],
+        [
+            [NetCodeEnum.LSTM, 1, 0],
+        ]
     ]
 
     net = ChildNet(net_code, hparams=hparams)

@@ -5,16 +5,21 @@
 
 Standard format:
 [   # Network
-    [   # Layer 0
-        LAYER_TYPE,
-        LAYER_HPARAMS1,
-        LAYER_HPARAMS2,
+    [   # Encoder
+        [   # Layer 0
+            LAYER_TYPE,
+            LAYER_HPARAMS1,
+            LAYER_HPARAMS2,
+            ...
+        ],
+        [   # Layer 1
+            ...
+        ],
         ...
     ],
-    [   # Layer 1
+    [   # Decoder, same as encoder
         ...
-    ],
-    ...
+    ]
 ]
 """
 
