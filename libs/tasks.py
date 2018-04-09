@@ -3,18 +3,9 @@
 
 """All text tasks."""
 
-import re
+from .utils.registry_utils import camel2snake
 
 __author__ = 'fyabc'
-
-_first_cap_re = re.compile('(.)([A-Z][a-z]+)')
-_all_cap_re = re.compile('([a-z0-9])([A-Z])')
-
-
-def _camel2snake(name):
-    s1 = _first_cap_re.sub(r'\1_\2', name)
-    return _all_cap_re.sub(r'\1_\2', s1).lower()
-
 
 _Tasks = {}
 
@@ -37,7 +28,7 @@ def register_task(cls_or_name):
     if isinstance(cls_or_name, str):
         return lambda cls: decorator(cls, registration_name=cls_or_name)
 
-    name = _camel2snake(cls_or_name.__name__)
+    name = camel2snake(cls_or_name.__name__)
     return decorator(cls_or_name, registration_name=name)
 
 

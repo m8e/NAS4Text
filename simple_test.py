@@ -3,36 +3,53 @@
 
 import argparse
 
+import numpy as np
 import torch as th
-import torch.nn as nn
 from torch.autograd import Variable
 
+from libs.hparams import get_hparams
 from libs.child_net import ChildNet
 from libs.layers.net_code import NetCodeEnum
 
 __author__ = 'fyabc'
 
 
-def get_args():
+def get_args(args=None):
     parser = argparse.ArgumentParser(description='Simple Test Script.')
 
-    parser.add_argument('-b', '--batch-size', dest='batch_size', type=int, default=4)
-    parser.add_argument('-l', '--seq-length', dest='seq_length', type=int, default=15)
-    parser.add_argument('--in-emb-size', dest='input_embedding_size', type=int, default=10)
-    parser.add_argument('-T', '--task', dest='task', type=str, default='de_en_iwslt')
+    parser.add_argument('-H', '--hparams-set', dest='hparams_set', type=str, default='base')
+    parser.add_argument('-b', '--batch-size', dest='batch_size', type=int, default=None)
+    parser.add_argument('--src-seq-length', dest='src_seq_length', type=int, default=None)
+    parser.add_argument('--trg-seq-length', dest='trg_seq_length', type=int, default=None)
+    parser.add_argument('--src-emb-size', dest='src_embedding_size', type=int, default=None)
+    parser.add_argument('--trg-emb-size', dest='trg_embedding_size', type=int, default=None)
+    parser.add_argument('-T', '--task', dest='task', type=str, default='test')
 
-    return parser.parse_args()
+    parsed_args = parser.parse_args(args)
+    base_hparams = get_hparams(parsed_args.hparams_set)
+
+    for name, value in base_hparams.__dict__.items():
+        if getattr(parsed_args, name, None) is None:
+            setattr(parsed_args, name, value)
+
+    return parsed_args
 
 
 def get_sample_dataset(hparams):
+    from libs.tasks import get_task
+    task = get_task(hparams.task)
+
     return [
-        Variable(th.randn(hparams.batch_size, hparams.seq_length, hparams.input_embedding_size))
-        for _ in range(10)
-    ]
+        [
+            Variable(th.from_numpy(np.random.randint(
+                0, task.SourceVocabSize, size=(hparams.batch_size, hparams.src_seq_length), dtype='int64'))),
+            Variable(th.from_numpy(np.random.randint(
+                0, task.TargetVocabSize, size=(hparams.batch_size, hparams.trg_seq_length), dtype='int64'))),
+        ] for _ in range(10)]
 
 
-def main():
-    hparams = get_args()
+def main(args=None):
+    hparams = get_args(args)
 
     net_code = [
         [
@@ -49,11 +66,11 @@ def main():
 
     for epoch in range(5):
         for batch in dataset:
-            print('Input a tensor of shape', batch.shape)
+            print('Input tensors:', [v.shape for v in batch])
 
             net.zero_grad()
 
-            output = net(batch)
+            output = net(*batch)
             print('Produce a tensor of shape', output.shape)
 
 
