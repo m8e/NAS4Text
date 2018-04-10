@@ -34,6 +34,12 @@ class LSTMSpaceLarge(LSTMSpaceBase):
     HiddenSizes = [64, 128, 256, 512]
 
 
+class LSTMNoOutputStates(nn.LSTM):
+    """The LSTM module without output states."""
+    def forward(self, *args, **kwargs):
+        return super().forward(*args, **kwargs)[0]
+
+
 def build_lstm(layer_code, input_shape, hparams):
     """
 
@@ -56,13 +62,13 @@ def build_lstm(layer_code, input_shape, hparams):
     bidirectional = space.UseBidirectional[layer_code[2]]
     num_directions = 2 if bidirectional else 1
 
-    layer = nn.LSTM(
+    layer = LSTMNoOutputStates(
         input_size=input_size,
         hidden_size=hidden_size,
-        num_layers=space.NumLayers,     # Always 1 layer in this experiment
+        num_layers=space.NumLayers,
         bias=True,
         batch_first=True,
-        dropout=0,  # The dropout is not applied on the last layer, so useless here
+        dropout=0,
         bidirectional=bidirectional,
     )
 
@@ -73,4 +79,4 @@ def build_lstm(layer_code, input_shape, hparams):
             Variable(th.zeros(space.NumLayers * num_directions, batch_size, hidden_size)),
         ))[0]
 
-    return _layer_with_init_states, th.Size([batch_size, seq_length, hidden_size * num_directions])
+    return layer, th.Size([batch_size, seq_length, hidden_size * num_directions])

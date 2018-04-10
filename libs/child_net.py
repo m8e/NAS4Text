@@ -8,7 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .tasks import get_task
-from .layers.common import Linear, Embedding
+from .utils.data_processing import LanguagePairDataset
+from .layers.common import Linear, Embedding, PositionalEmbedding
 from .layers.net_code import NetCodeEnum
 from .layers.lstm import build_lstm
 from .layers.cnn import build_cnn
@@ -39,18 +40,25 @@ class ChildEncoder(nn.Module):
         self.task = get_task(hparams.task)
 
         # Encoder input shape (after embedding).
-        self.input_shape = th.Size([hparams.batch_size, hparams.src_seq_length, hparams.src_embedding_size])
+        # [NOTE]: The shape[1] (seq_length) is variable and useless.
+        self.input_shape = th.Size([hparams.batch_size, 1, hparams.src_embedding_size])
 
         self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID)
-        self.embed_positions = None     # TODO
+        self.embed_positions = PositionalEmbedding(
+            hparams.src_seq_length,
+            hparams.src_embedding_size,
+            self.task.PAD_ID,
+            left_pad=LanguagePairDataset.LEFT_PAD_SOURCE,
+        )
 
         # The main encoder network.
         self._net = []
 
         input_shape = self.input_shape
-        for layer_code in code:
+        for i, layer_code in enumerate(code):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams)
             self._net.append(layer)
+            setattr(self, 'layer_{}'.format(i), layer)
             input_shape = output_shape
 
         # Encoder output shape
@@ -67,7 +75,7 @@ class ChildEncoder(nn.Module):
         """
         x = src_tokens
 
-        x = self.embed_tokens(x)
+        x = self.embed_tokens(x) + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
 
@@ -88,18 +96,25 @@ class ChildDecoder(nn.Module):
         # Encoder output shape
         self.encoder_output_shape = encoder_output_shape
         # Decoder input shape (after embedding)
-        self.input_shape = th.Size([hparams.batch_size, hparams.trg_seq_length, hparams.trg_embedding_size])
+        # [NOTE]: The shape[1] (seq_length) is variable and useless.
+        self.input_shape = th.Size([hparams.batch_size, 1, hparams.trg_embedding_size])
 
         self.embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID)
-        self.embed_positions = None  # TODO
+        self.embed_positions = PositionalEmbedding(
+            hparams.trg_seq_length,
+            hparams.trg_embedding_size,
+            self.task.PAD_ID,
+            left_pad=LanguagePairDataset.LEFT_PAD_TARGET,
+        )
 
         # The main decoder network.
         self._net = []
 
         input_shape = self.input_shape
-        for layer_code in code:
+        for i, layer_code in enumerate(code):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams)
             self._net.append(layer)
+            setattr(self, 'layer_{}'.format(i), layer)
             input_shape = output_shape
 
         # Decoder output shape (before softmax)
@@ -107,6 +122,8 @@ class ChildDecoder(nn.Module):
 
         self.fc_last = Linear(self.output_shape[2], self.task.TargetVocabSize)
         self.softmax_layer = nn.Softmax(dim=2)
+
+        self.__repr__()
 
     def forward(self, previous_output_tokens, encoder_out, incremental_state=None):
         """
@@ -121,7 +138,7 @@ class ChildDecoder(nn.Module):
         """
         x = previous_output_tokens
 
-        x = self._embed_tokens(x, incremental_state)
+        x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         target_embedding = x
 
@@ -136,7 +153,9 @@ class ChildDecoder(nn.Module):
         return x
 
     def _embed_tokens(self, tokens, incremental_state):
-        # TODO
+        if incremental_state is not None:
+            # Keep only the last token for incremental forward pass
+            tokens = tokens[:, -1:]
         return self.embed_tokens(tokens)
 
 

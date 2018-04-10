@@ -42,9 +42,9 @@ def get_sample_dataset(hparams):
     return [
         [
             Variable(th.from_numpy(np.random.randint(
-                0, task.SourceVocabSize, size=(hparams.batch_size, hparams.src_seq_length), dtype='int64'))),
+                1, task.SourceVocabSize, size=(hparams.batch_size, hparams.src_seq_length - 2), dtype='int64'))),
             Variable(th.from_numpy(np.random.randint(
-                0, task.TargetVocabSize, size=(hparams.batch_size, hparams.trg_seq_length), dtype='int64'))),
+                1, task.TargetVocabSize, size=(hparams.batch_size, hparams.trg_seq_length - 2), dtype='int64'))),
         ] for _ in range(10)]
 
 
@@ -62,9 +62,12 @@ def main(args=None):
 
     net = ChildNet(net_code, hparams=hparams)
 
+    print('Network:', net)
+    print()
+
     dataset = get_sample_dataset(hparams)
 
-    for epoch in range(5):
+    for epoch in range(2):
         for batch in dataset:
             print('Input tensors:', [v.shape for v in batch])
 
