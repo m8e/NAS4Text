@@ -34,6 +34,12 @@ class LSTMSpaceLarge(LSTMSpaceBase):
     HiddenSizes = [64, 128, 256, 512]
 
 
+_Spaces = {
+    'base': LSTMSpaceBase,
+    'large': LSTMSpaceLarge,
+}
+
+
 class LSTMNoOutputStates(nn.LSTM):
     """The LSTM module without output states."""
     def forward(self, *args, **kwargs):
@@ -54,8 +60,7 @@ def build_lstm(layer_code, input_shape, hparams):
             Shape of output tensor, (batch_size, seq_len, hidden_size * num_directions)
     """
 
-    # TODO: Specify the search space in the hparams.
-    space = LSTMSpaceBase
+    space = _Spaces[hparams.lstm_space]
 
     batch_size, seq_length, input_size = input_shape
     hidden_size = space.HiddenSizes[layer_code[1]]
@@ -68,15 +73,8 @@ def build_lstm(layer_code, input_shape, hparams):
         num_layers=space.NumLayers,
         bias=True,
         batch_first=True,
-        dropout=0,
+        dropout=hparams.dropout,
         bidirectional=bidirectional,
     )
-
-    def _layer_with_init_states(x):
-        """Apply the layer with zero-initialized initial states, and only return the outputs."""
-        return layer(x, (
-            Variable(th.zeros(space.NumLayers * num_directions, batch_size, hidden_size)),
-            Variable(th.zeros(space.NumLayers * num_directions, batch_size, hidden_size)),
-        ))[0]
 
     return layer, th.Size([batch_size, seq_length, hidden_size * num_directions])

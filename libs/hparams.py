@@ -54,4 +54,8 @@ def hparams_base():
         src_embedding_size=9,
         trg_embedding_size=10,
         dropout=0.1,
+
+        lstm_space='base',
+        conv_space='base',
+        attn_space='base',
     )

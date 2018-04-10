@@ -3,6 +3,8 @@
 
 """Try to build network from code (Neural Architecture Search results)."""
 
+import logging
+
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,6 +18,9 @@ from .layers.cnn import build_cnn
 from .layers.attention import build_attention
 
 __author__ = 'fyabc'
+
+# Transpose the dimension of B and T (used in conv_tbc)
+TransposeBT = False
 
 
 def _code2layer(layer_code, input_shape, hparams):
@@ -74,13 +79,16 @@ class ChildEncoder(nn.Module):
             (batch_size, src_seq_len, encoder_out_channels) of float32
         """
         x = src_tokens
+        logging.debug('Encoder input shape: {}'.format(list(x.shape)))
 
         x = self.embed_tokens(x) + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
 
-        for layer in self._net:
+        logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
+        for i, layer in enumerate(self._net):
             x = layer(x)
+            logging.debug('Encoder layer {} output shape: {}'.format(i, list(x.shape)))
 
         return x
 
@@ -137,19 +145,25 @@ class ChildDecoder(nn.Module):
 
         """
         x = previous_output_tokens
+        logging.debug('Decoder input shape: {}'.format(list(x.shape)))
 
         x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         target_embedding = x
 
-        for layer in self._net:
+        logging.debug('Decoder input shape: {}'.format(list(x.shape)))
+        for i, layer in enumerate(self._net):
             x = layer(x)
             # TODO: Add attention layer here
             #   x, attn_scores = attention(x, target_embedding, encoder_outs)
+            logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
 
+        # Project back to size of vocabulary
+        # TODO: fc2, dropout, fc3 in fairseq-py
         x = self.fc_last(x)
         x = self.softmax_layer(x)
 
+        logging.debug('Decoder output shape: {}'.format(list(x.shape)))
         return x
 
     def _embed_tokens(self, tokens, incremental_state):
