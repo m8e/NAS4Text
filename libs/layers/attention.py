@@ -4,10 +4,30 @@
 """Attention layer.
 
 Layer code:
-[Attention, GlobalAttention?, ...]
+[Attention, NumHeads, ...]
+
+# TODO: GlobalAttention?, WindowSize, ...
 """
 
+import torch as th
+
+from .multi_head_attention import SelfAttention
+
 __author__ = 'fyabc'
+
+
+class AttentionSpaceBase:
+    NumHeads = [2, 4, 8, 16]
+
+
+class AttentionSpaceLarge(AttentionSpaceBase):
+    pass
+
+
+_Spaces = {
+    'base': AttentionSpaceBase,
+    'large': AttentionSpaceLarge,
+}
 
 
 def build_attention(layer_code, input_shape, hparams):
@@ -15,10 +35,24 @@ def build_attention(layer_code, input_shape, hparams):
 
     Args:
         layer_code:
-        input_shape:
+        input_shape: torch.Size object
+            Shape of input tensor, expect (batch_size, seq_len, input_size)
         hparams:
 
     Returns: layer, output_shape
+        output_shape: torch.Size object
+            Shape of output tensor, (batch_size, seq_len, hidden_size * num_directions)
     """
 
-    raise NotImplementedError('Attention layer not implemented')
+    space = _Spaces[hparams.attn_space]
+
+    batch_size, seq_length, input_size = input_shape
+    num_heads = space.NumHeads[layer_code[1]]
+
+    layer = SelfAttention(
+        h=num_heads,
+        d_model=input_size,
+        dropout=hparams.dropout,
+    )
+
+    return layer, th.Size([batch_size, seq_length, input_size])

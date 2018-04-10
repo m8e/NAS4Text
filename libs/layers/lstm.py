@@ -14,7 +14,6 @@ Layer code:
 
 import torch as th
 import torch.nn as nn
-from torch.autograd import Variable
 
 __author__ = 'fyabc'
 

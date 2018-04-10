@@ -48,9 +48,13 @@ def get_sample_dataset(hparams):
     return [
         [
             Variable(th.from_numpy(np.random.randint(
-                1, task.SourceVocabSize, size=(hparams.batch_size, hparams.src_seq_length - 2), dtype='int64'))),
+                1, task.SourceVocabSize,
+                size=(hparams.batch_size, np.random.randint(1, hparams.src_seq_length)),
+                dtype='int64'))),
             Variable(th.from_numpy(np.random.randint(
-                1, task.TargetVocabSize, size=(hparams.batch_size, hparams.trg_seq_length - 2), dtype='int64'))),
+                1, task.TargetVocabSize,
+                size=(hparams.batch_size, np.random.randint(1, hparams.trg_seq_length)),
+                dtype='int64'))),
         ] for _ in range(10)]
 
 
@@ -67,6 +71,7 @@ def main(args=None):
         [
             [NetCodeEnum.LSTM, 2, 1],
             [NetCodeEnum.Convolutional, 0, 1, 2],
+            [NetCodeEnum.Attention, 0]
         ],
         [
             [NetCodeEnum.LSTM, 1, 0],

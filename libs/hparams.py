@@ -58,4 +58,6 @@ def hparams_base():
         lstm_space='base',
         conv_space='base',
         attn_space='base',
+
+        residual=True,
     )

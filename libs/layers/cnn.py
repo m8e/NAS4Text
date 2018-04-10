@@ -7,22 +7,10 @@ Layer code:
 [CNN, OutChannels, KernelSize, Stride, ...]
 """
 
-import math
-
 import torch as th
 import torch.nn as nn
 
 __author__ = 'fyabc'
-
-
-def ConvTBC(in_channels, out_channels, kernel_size, dropout=0, **kwargs):
-    """Weight-normalized Conv1d layer"""
-    from .conv_tbc import ConvTBC
-    m = ConvTBC(in_channels, out_channels, kernel_size, **kwargs)
-    std = math.sqrt((4 * (1.0 - dropout)) / (m.kernel_size[0] * in_channels))
-    m.weight.data.normal_(mean=0, std=std)
-    m.bias.data.zero_()
-    return nn.utils.weight_norm(m, dim=2)
 
 
 class ConvSpaceBase:

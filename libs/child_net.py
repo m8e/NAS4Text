@@ -3,6 +3,8 @@
 
 """Try to build network from code (Neural Architecture Search results)."""
 
+# TODO: Solve the mask problem.
+
 import logging
 
 import torch as th
@@ -18,9 +20,6 @@ from .layers.cnn import build_cnn
 from .layers.attention import build_attention
 
 __author__ = 'fyabc'
-
-# Transpose the dimension of B and T (used in conv_tbc)
-TransposeBT = False
 
 
 def _code2layer(layer_code, input_shape, hparams):
@@ -85,6 +84,7 @@ class ChildEncoder(nn.Module):
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
 
+        # TODO: Add residual connection.
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         for i, layer in enumerate(self._net):
             x = layer(x)

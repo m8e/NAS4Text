@@ -3,6 +3,7 @@
 
 """Common used layers."""
 
+import copy
 import math
 
 import torch.nn as nn
@@ -10,6 +11,11 @@ import torch.nn as nn
 from .learned_positional_embedding import LearnedPositionalEmbedding
 
 __author__ = 'fyabc'
+
+
+def clones(module, n):
+    """Produce n identical layers."""
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(n)])
 
 
 def Linear(in_features, out_features, dropout=0):
@@ -34,6 +40,7 @@ def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad):
 
 
 __all__ = [
+    'clones',
     'Embedding',
     'Linear',
     'PositionalEmbedding',
