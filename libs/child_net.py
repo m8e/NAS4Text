@@ -4,8 +4,10 @@
 """Try to build network from code (Neural Architecture Search results)."""
 
 # TODO: Solve the mask problem.
+# TODO: Merge similar code in encoder and decoder.
 
 import logging
+import math
 
 import torch as th
 import torch.nn as nn
@@ -57,12 +59,17 @@ class ChildEncoder(nn.Module):
 
         # The main encoder network.
         self._net = []
+        self._projections = []
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams)
             self._net.append(layer)
             setattr(self, 'layer_{}'.format(i), layer)
+
+            projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
+            self._projections.append(projection)
+            setattr(self, 'projection_{}'.format(i), projection)
             input_shape = output_shape
 
         # Encoder output shape
@@ -84,10 +91,19 @@ class ChildEncoder(nn.Module):
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
 
-        # TODO: Add residual connection.
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
-        for i, layer in enumerate(self._net):
+        for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
+            residual = x if projection is None else projection(x)
+
             x = layer(x)
+
+            # Residual connection.
+            # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
+            # We cannot determine sequence length when building the module, so test them here.
+            if x.shape[1] != residual.shape[1]:
+                residual = layer.residual_conv(residual.transpose(1, 2)).transpose(1, 2)
+            x = (x + residual) * math.sqrt(0.5)
+
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(x.shape)))
 
         return x
@@ -117,12 +133,17 @@ class ChildDecoder(nn.Module):
 
         # The main decoder network.
         self._net = []
+        self._projections = []
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams)
             self._net.append(layer)
             setattr(self, 'layer_{}'.format(i), layer)
+
+            projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
+            self._projections.append(projection)
+            setattr(self, 'projection_{}'.format(i), projection)
             input_shape = output_shape
 
         # Decoder output shape (before softmax)
@@ -149,10 +170,21 @@ class ChildDecoder(nn.Module):
         target_embedding = x
 
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))
-        for i, layer in enumerate(self._net):
+        for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
+            residual = x if projection is None else projection(x)
+
             x = layer(x)
+
             # TODO: Add attention layer here
             #   x, attn_scores = attention(x, target_embedding, encoder_outs)
+
+            # Residual connection.
+            # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
+            # We cannot determine sequence length when building the module, so test them here.
+            if x.shape[1] != residual.shape[1]:
+                residual = layer.residual_conv(residual.transpose(1, 2)).transpose(1, 2)
+            x = (x + residual) * math.sqrt(0.5)
+
             logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
 
         # Project back to size of vocabulary

@@ -81,6 +81,9 @@ def main(args=None):
 
             optimizer.step()
 
+            corrects = target == pred_trg_probs.max(dim=-1)[1]
+            print('Argmax error rate:', (1.0 - corrects.float().sum() / corrects.nelement()).data[0])
+
 
 if __name__ == '__main__':
     main()

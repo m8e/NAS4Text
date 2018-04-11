@@ -73,6 +73,7 @@ class ConvLayer(nn.Module):
             padding=0,
         )
 
+        # Residual convolutional layer for different input and output sequence length (stride > 1).
         if self.stride > 1:
             self.residual_conv = nn.Conv1d(
                 in_channels=out_channels,
@@ -87,8 +88,6 @@ class ConvLayer(nn.Module):
     def forward(self, input_):
         x = input_.transpose(1, 2)
 
-        residual = x if self.projection is None else self.projection(input_).transpose(1, 2)
-
         # Add padding.
         padding_l = (self.conv.kernel_size[0] - 1) // 2
         padding_r = self.conv.kernel_size[0] // 2
@@ -98,11 +97,6 @@ class ConvLayer(nn.Module):
 
         # GLU.
         x = F.glu(x, dim=1)
-
-        # Residual connection.
-        if self.stride > 1:
-            residual = self.residual_conv(residual)
-        x = (x + residual) * math.sqrt(0.5)
 
         return x.transpose(1, 2)
 
