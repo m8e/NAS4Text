@@ -7,8 +7,11 @@ Layer code:
 [CNN, OutChannels, KernelSize, Stride, ...]
 """
 
+import math
+
 import torch as th
 import torch.nn as nn
+import torch.nn.functional as F
 
 __author__ = 'fyabc'
 
@@ -31,12 +34,74 @@ _Spaces = {
 }
 
 
-class ConvBTC(nn.Conv1d):
-    """1D convolution layer with input shape (B, T, C)."""
+class ConvLayer(nn.Module):
+    """1D convolution layer.
+
+    This layer contains:
+        Input padding
+        Residual connections
+        Residual convolutional layer for different input and output shape
+        GLU gate
+
+    Input and output have shape (B, T, C).
+
+    Shape:
+        - Input: :math:`(N, L_{in}, C_{in})`
+        - Output: :math:`(N, L_{out}, C_{out})`
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride):
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+
+        self.conv = nn.Conv1d(
+            in_channels=in_channels,
+            out_channels=out_channels * 2,  # Multiply by 2 for GLU
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=0,
+        )
+
+        if not self.same_length:
+            self.residual_conv = nn.Conv1d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=stride,
+                padding=0,
+            )
+        else:
+            self.residual_conv = None
+
+    @property
+    def same_length(self):
+        return self.stride == 1 and self.in_channels == self.out_channels
 
     def forward(self, input_):
-        result = super().forward(input_.transpose(1, 2))
-        return result.transpose(1, 2)
+        x = input_.transpose(1, 2)
+
+        residual = x
+
+        # Add padding.
+        padding_l = (self.conv.kernel_size[0] - 1) // 2
+        padding_r = self.conv.kernel_size[0] // 2
+        x = F.pad(x, (padding_l, padding_r, 0, 0, 0, 0))
+
+        x = self.conv(x)
+
+        # GLU.
+        x = F.glu(x, dim=1)
+
+        # Residual connection.
+        if not self.same_length:
+            residual = self.residual_conv(residual)
+        x = (x + residual) * math.sqrt(0.5)
+
+        return x.transpose(1, 2)
 
 
 def build_cnn(layer_code, input_shape, hparams):
@@ -60,12 +125,11 @@ def build_cnn(layer_code, input_shape, hparams):
     kernel_size = space.KernelSizes[layer_code[2]]
     stride = space.Strides[layer_code[3]]
 
-    layer = ConvBTC(
+    layer = ConvLayer(
         in_channels=in_channels,
         out_channels=out_channels,
         kernel_size=kernel_size,
         stride=stride,
-        padding=0,
     )
 
     return layer, th.Size([batch_size, seq_length, out_channels])

@@ -87,7 +87,7 @@ class MultiHeadAttention(nn.Module):
     def forward(self, query, key, value, mask=None):
         if mask is not None:
             # Same mask applied to all h heads.
-            mask.unsqueeze_(1)
+            mask = mask.unsqueeze(1)
         num_batches = query.size(0)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
