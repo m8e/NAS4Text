@@ -129,9 +129,6 @@ class ChildDecoder(nn.Module):
         self.output_shape = input_shape
 
         self.fc_last = Linear(self.output_shape[2], self.task.TargetVocabSize)
-        self.softmax_layer = nn.Softmax(dim=2)
-
-        self.__repr__()
 
     def forward(self, previous_output_tokens, encoder_out, incremental_state=None):
         """
@@ -161,7 +158,6 @@ class ChildDecoder(nn.Module):
         # Project back to size of vocabulary
         # TODO: fc2, dropout, fc3 in fairseq-py
         x = self.fc_last(x)
-        x = self.softmax_layer(x)
 
         logging.debug('Decoder output shape: {}'.format(list(x.shape)))
         return x

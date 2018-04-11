@@ -6,6 +6,8 @@ import logging
 import numpy as np
 import torch as th
 from torch.autograd import Variable
+import torch.nn.functional as F
+import torch.optim as optim
 
 from libs.utils.args import get_args
 from libs.child_net import ChildNet
@@ -34,7 +36,7 @@ def get_sample_dataset(hparams):
 def main(args=None):
     logging.basicConfig(
         format='{levelname}:{message}',
-        level=logging.DEBUG,
+        level=logging.INFO,
         style='{',
     )
 
@@ -58,12 +60,26 @@ def main(args=None):
 
     dataset = get_sample_dataset(hparams)
 
-    for epoch in range(2):
-        for batch in dataset:
-            net.zero_grad()
+    optimizer = optim.SGD(net.parameters(), lr=0.1)
 
-            output = net(*batch)
+    for epoch in range(10):
+        for batch in dataset:
+            optimizer.zero_grad()
+
+            pred_trg_probs = net(*batch)
             logging.debug('')
+
+            target = batch[1]
+            loss = F.cross_entropy(
+                pred_trg_probs.view(-1, pred_trg_probs.size(-1)),
+                target.view(-1),
+                size_average=False,
+                ignore_index=0,
+            )
+            loss.backward()
+            print('Loss = {}'.format(loss.data[0]))
+
+            optimizer.step()
 
 
 if __name__ == '__main__':
