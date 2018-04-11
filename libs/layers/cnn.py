@@ -13,6 +13,8 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .common import Linear
+
 __author__ = 'fyabc'
 
 
@@ -58,6 +60,11 @@ class ConvLayer(nn.Module):
         self.kernel_size = kernel_size
         self.stride = stride
 
+        if self.in_channels == self.out_channels:
+            self.projection = None
+        else:
+            self.projection = Linear(in_channels, out_channels)
+
         self.conv = nn.Conv1d(
             in_channels=in_channels,
             out_channels=out_channels * 2,  # Multiply by 2 for GLU
@@ -66,9 +73,9 @@ class ConvLayer(nn.Module):
             padding=0,
         )
 
-        if not self.same_length:
+        if self.stride > 1:
             self.residual_conv = nn.Conv1d(
-                in_channels=in_channels,
+                in_channels=out_channels,
                 out_channels=out_channels,
                 kernel_size=1,
                 stride=stride,
@@ -77,14 +84,10 @@ class ConvLayer(nn.Module):
         else:
             self.residual_conv = None
 
-    @property
-    def same_length(self):
-        return self.stride == 1 and self.in_channels == self.out_channels
-
     def forward(self, input_):
         x = input_.transpose(1, 2)
 
-        residual = x
+        residual = x if self.projection is None else self.projection(input_).transpose(1, 2)
 
         # Add padding.
         padding_l = (self.conv.kernel_size[0] - 1) // 2
@@ -97,7 +100,7 @@ class ConvLayer(nn.Module):
         x = F.glu(x, dim=1)
 
         # Residual connection.
-        if not self.same_length:
+        if self.stride > 1:
             residual = self.residual_conv(residual)
         x = (x + residual) * math.sqrt(0.5)
 
