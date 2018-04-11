@@ -23,6 +23,7 @@ def register_task(cls_or_name):
         if registration_name in _Tasks:
             raise ValueError('Name {} already exists'.format(registration_name))
         _Tasks[registration_name] = cls
+        cls.TaskName = registration_name
         return cls
 
     if isinstance(cls_or_name, str):
@@ -57,11 +58,29 @@ class TextTask:
 
     Subclasses should override its members.
     """
+
+    # Automatically set by registration.
+    TaskName = ''
+
     SourceLang = None
     TargetLang = None
 
     SourceVocabSize = None
     TargetVocabSize = None
+
+    SourceFiles = {
+        'train': None,
+        'dev': None,
+        'test': None,
+        'dict': None,
+    }
+
+    TargetFiles = {
+        'train': None,
+        'dev': None,
+        'test': None,
+        'dict': None,
+    }
 
     PAD = '<PAD>'
     EOS = '<EOS>'
@@ -87,5 +106,19 @@ class DeEnIwslt(TextTask):
     SourceLang = Languages.DE
     TargetLang = Languages.EN
 
-    SourceVocabSize = 32768
-    TargetVocabSize = 32768
+    SourceVocabSize = 32010
+    TargetVocabSize = 22823
+
+    SourceFiles = {
+        'train': 'train.de-en.de',
+        'dev': 'dev.de-en.de',
+        'test': 'test.de-en.de',
+        'dict': 'dict.de-en.de',
+    }
+
+    TargetFiles = {
+        'train': 'train.de-en.en',
+        'dev': 'dev.de-en.en',
+        'test': 'test.de-en.en',
+        'dict': 'dict.de-en.en',
+    }
