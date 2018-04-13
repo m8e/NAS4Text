@@ -1,6 +1,8 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+"""Multi-head attention layer."""
+
 import math
 
 import torch as th
@@ -18,10 +20,10 @@ def attention(query, key, value, mask=None, dropout=None):
     :math:`Attention(Q, K, V) = softmax( Q * K^T / \sqrt{d_k} ) * V`
 
     Args:
-        query (batch_size, length_q, d_k):
-        key (batch_size, length_kv, d_k):
-        value (batch_size, length_kv, d_v):
-        mask (batch_size, length_q, length_kv): TODO: confirm this shape.
+        query (batch_size, num_heads, length_q, d_k):
+        key (batch_size, num_heads, length_kv, d_k):
+        value (batch_size, num_heads, length_kv, d_v):
+        mask (batch_size, 1, length_q):
         dropout:
 
     Returns:
@@ -34,7 +36,7 @@ def attention(query, key, value, mask=None, dropout=None):
     scores = th.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
 
     if mask is not None:
-        scores = scores.masked_fill_(mask == 0, -1e9)
+        scores = scores.masked_fill_(mask.unsqueeze(3) == 0, -1e9)
     p_attn = F.softmax(scores, dim=-1)
 
     if dropout is not None:
@@ -63,7 +65,7 @@ class MultiHeadAttention(nn.Module):
         - **query** (batch_size, length_q, d_model):
         - **key** (batch_size, length_kv, d_model):
         - **value** (batch_size, length_kv, d_model):
-        - **mask** (?) or None:
+        - **mask** (batch_size, length_q) or None:
 
     Output:
         - **output** (batch_size, length_q, d_model):
@@ -86,6 +88,7 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, query, key, value, mask=None):
         if mask is not None:
+            assert query.size()[1] == mask.size()[1], 'Sequence length of query and mask must be same'
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)
         num_batches = query.size(0)
@@ -105,7 +108,16 @@ class MultiHeadAttention(nn.Module):
 
 
 class SelfAttention(MultiHeadAttention):
-    """Wraps multi-head attention into self attention."""
+    """Wraps multi-head attention into self attention.
+
+    Inputs: x, mask
+        - **x** (batch_size, length, d_model):
+        - **mask** (batch_size, length) or None:
+
+    Output:
+        - **output** (batch_size, length, d_model):
+    """
+
     def forward(self, x, mask=None):
         return super().forward(x, x, x, mask=mask)
 

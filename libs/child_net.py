@@ -3,7 +3,7 @@
 
 """Try to build network from code (Neural Architecture Search results)."""
 
-# TODO: Solve the mask problem.
+# TODO: Solve the mask problem (nll_loss contains ignore_index, but softmax (in attention) does not).
 # TODO: Merge similar code in encoder and decoder.
 
 import logging
@@ -75,11 +75,12 @@ class ChildEncoder(nn.Module):
         # Encoder output shape
         self.output_shape = input_shape
 
-    def forward(self, src_tokens):
+    def forward(self, src_tokens, src_mask=None):
         """
 
         Args:
             src_tokens: (batch_size, src_seq_len) of int32
+            src_mask: (batch_size, src_seq_len) of byte
 
         Returns:
             (batch_size, src_seq_len, encoder_out_channels) of float32
@@ -95,7 +96,7 @@ class ChildEncoder(nn.Module):
         for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
             residual = x if projection is None else projection(x)
 
-            x = layer(x)
+            x = layer(x, src_mask)
 
             # Residual connection.
             # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
@@ -151,25 +152,27 @@ class ChildDecoder(nn.Module):
 
         self.fc_last = Linear(self.output_shape[2], self.task.TargetVocabSize)
 
-    def forward(self, previous_output_tokens, encoder_out, incremental_state=None):
+    def forward(self, encoder_out, src_mask, trg_tokens, trg_mask, incremental_state=None):
         """
 
         Args:
-            previous_output_tokens: (batch_size, trg_seq_len) of int32
             encoder_out: (batch_size, src_seq_len, encoder_out_channels) of float32
+            src_mask: (batch_size, src_seq_len) of byte
+            trg_tokens: (batch_size, trg_seq_len) of int32
+            trg_mask: (batch_size, trg_seq_len) of byte
             incremental_state: Incremental states for decoding. TODO
 
         Returns:
 
         """
-        x = previous_output_tokens
+        x = trg_tokens
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))
 
         x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         target_embedding = x
 
-        logging.debug('Decoder input shape: {}'.format(list(x.shape)))
+        logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
             residual = x if projection is None else projection(x)
 
@@ -200,6 +203,14 @@ class ChildDecoder(nn.Module):
             tokens = tokens[:, -1:]
         return self.embed_tokens(tokens)
 
+    @staticmethod
+    def get_normalized_probs(net_output, log_probs=False):
+        logits = net_output
+        if log_probs:
+            return F.log_softmax(logits, dim=-1)
+        else:
+            return F.softmax(logits, dim=-1)
+
 
 class ChildNet(nn.Module):
     def __init__(self, net_code, hparams):
@@ -212,17 +223,28 @@ class ChildNet(nn.Module):
         self.encoder = ChildEncoder(net_code[0], hparams)
         self.decoder = ChildDecoder(net_code[1], hparams, encoder_output_shape=self.encoder.output_shape)
 
-    def forward(self, src_tokens, previous_output_tokens):
+    def forward(self, src_tokens, src_mask, trg_tokens, trg_mask):
         """
 
         Args:
             src_tokens: (batch_size, src_seq_len) of int32
-            previous_output_tokens: (batch_size, trg_seq_len) of int32
+            src_mask: (batch_size, src_seq_len) of byte
+            trg_tokens: (batch_size, trg_seq_len) of int32
+            trg_mask: (batch_size, trg_seq_len) of byte
 
         Returns:
             (batch_size, seq_len, tgt_vocab_size) of float32
         """
-        encoder_out = self.encoder(src_tokens)
-        decoder_out = self.decoder(previous_output_tokens, encoder_out)
+        encoder_out = self.encoder(src_tokens, src_mask)
+        decoder_out = self.decoder(encoder_out, src_mask, trg_tokens, trg_mask)
 
         return decoder_out
+
+    def encode(self, src_tokens, src_mask):
+        return self.encoder(src_tokens, src_mask)
+
+    def decode(self, encoder_out, src_mask, trg_tokens, trg_mask):
+        return self.decoder(encoder_out, src_mask, trg_tokens, trg_mask)
+
+    def get_normalized_probs(self, net_output, log_probs=False):
+        return self.decoder.get_normalized_probs(net_output, log_probs)

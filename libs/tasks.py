@@ -82,11 +82,13 @@ class TextTask:
         'dict': None,
     }
 
-    PAD = '<PAD>'
-    EOS = '<EOS>'
+    PAD = '<pad>'
+    EOS = '<eos>'
+    UNK = '<unk>'
 
     PAD_ID = 0
     EOS_ID = 1
+    UNK_ID = 2
 
 
 # Some common used tasks.

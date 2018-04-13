@@ -17,6 +17,7 @@ __author__ = 'fyabc'
 
 
 class AttentionSpaceBase:
+    # TODO: How to ensure the assertion "input_hidden_size % num_heads == 0" to be always True?
     NumHeads = [2, 4, 8, 16]
 
 

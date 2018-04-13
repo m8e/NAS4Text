@@ -52,6 +52,8 @@ class ConvLayer(nn.Module):
         - Output: :math:`(N, L_{out}, C_{out})`
     """
 
+    # TODO: Since CNN may change the sequence length, how to modify the mask?
+
     def __init__(self, in_channels, out_channels, kernel_size, stride):
         super().__init__()
 
@@ -85,7 +87,7 @@ class ConvLayer(nn.Module):
         else:
             self.residual_conv = None
 
-    def forward(self, input_):
+    def forward(self, input_, mask=None):
         x = input_.transpose(1, 2)
 
         # Add padding.

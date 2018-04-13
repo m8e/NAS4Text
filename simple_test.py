@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from collections import namedtuple
 
 import numpy as np
 import torch as th
@@ -20,17 +21,23 @@ def get_sample_dataset(hparams):
     from libs.tasks import get_task
     task = get_task(hparams.task)
 
-    return [
-        [
-            Variable(th.from_numpy(np.random.randint(
-                1, task.SourceVocabSize,
-                size=(hparams.batch_size, np.random.randint(1, hparams.src_seq_length)),
-                dtype='int64'))),
-            Variable(th.from_numpy(np.random.randint(
-                1, task.TargetVocabSize,
-                size=(hparams.batch_size, np.random.randint(1, hparams.trg_seq_length)),
-                dtype='int64'))),
-        ] for _ in range(10)]
+    Batch = namedtuple('Batch', ['src_tokens', 'src_mask', 'trg_tokens', 'trg_mask'])
+
+    result = []
+    for _ in range(10):
+        src_tokens = Variable(th.from_numpy(np.random.randint(
+            1, task.SourceVocabSize,
+            size=(hparams.batch_size, np.random.randint(1, hparams.src_seq_length)),
+            dtype='int64')))
+        src_mask = th.ones_like(src_tokens).byte()
+        trg_tokens = Variable(th.from_numpy(np.random.randint(
+            1, task.TargetVocabSize,
+            size=(hparams.batch_size, np.random.randint(1, hparams.trg_seq_length)),
+            dtype='int64')))
+        trg_mask = th.ones_like(trg_tokens).byte()
+        result.append(Batch(src_tokens, src_mask, trg_tokens, trg_mask))
+
+    return result
 
 
 def main(args=None):
@@ -60,7 +67,7 @@ def main(args=None):
 
     dataset = get_sample_dataset(hparams)
 
-    optimizer = optim.SGD(net.parameters(), lr=0.1)
+    optimizer = optim.Adadelta(net.parameters())
 
     for epoch in range(10):
         for batch in dataset:
@@ -69,7 +76,7 @@ def main(args=None):
             pred_trg_probs = net(*batch)
             logging.debug('')
 
-            target = batch[1]
+            target = batch.trg_tokens
             loss = F.cross_entropy(
                 pred_trg_probs.view(-1, pred_trg_probs.size(-1)),
                 target.view(-1),

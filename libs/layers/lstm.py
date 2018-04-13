@@ -41,8 +41,8 @@ _Spaces = {
 
 class LSTMNoOutputStates(nn.LSTM):
     """The LSTM module without output states."""
-    def forward(self, *args, **kwargs):
-        return super().forward(*args, **kwargs)[0]
+    def forward(self, input_, mask=None):
+        return super().forward(input_)[0]
 
 
 def build_lstm(layer_code, input_shape, hparams):
