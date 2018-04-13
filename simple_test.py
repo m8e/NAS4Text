@@ -53,7 +53,7 @@ def main(args=None):
         [
             [NetCodeEnum.LSTM, 0, 1],
             [NetCodeEnum.Convolutional, 2, 1, 2],
-            [NetCodeEnum.Attention, 0]
+            # [NetCodeEnum.Attention, 0],     # Cause error now here
         ],
         [
             [NetCodeEnum.LSTM, 1, 0],

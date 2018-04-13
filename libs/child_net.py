@@ -1,7 +1,17 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-"""Try to build network from code (Neural Architecture Search results)."""
+"""Try to build network from code (Neural Architecture Search results).
+
+Network architecture:
+
+Layer format: callable (nn.Module instance recommended)
+Inputs:
+    x:
+    mask:
+Output:
+    out:
+"""
 
 # TODO: Solve the mask problem (nll_loss contains ignore_index, but softmax (in attention) does not).
 # TODO: Merge similar code in encoder and decoder.
@@ -176,7 +186,7 @@ class ChildDecoder(nn.Module):
         for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
             residual = x if projection is None else projection(x)
 
-            x = layer(x)
+            x = layer(x, trg_mask)
 
             # TODO: Add attention layer here
             #   x, attn_scores = attention(x, target_embedding, encoder_outs)
