@@ -29,55 +29,124 @@ Dict format: pickled dict
 import os
 import pickle
 
-from torch.utils.data import Dataset
+import numpy as np
+from torch.utils.data import Dataset, DataLoader
 
 from .paths import DataDir
+from .dictionary import Dictionary
 from ..tasks import get_task
+from .tokenizer import Tokenizer
 
 __author__ = 'fyabc'
 
 
 class LanguageDatasets:
     """Container of all dataset splits of the task."""
-    def __init__(self, task_name):
+    def __init__(self, task_name, split_names):
         self.task = get_task(task_name)
         self.splits = {}
 
-        dataset_dir = os.path.join(DataDir, self.task.TaskName)
+        self.dataset_dir = os.path.join(DataDir, self.task.TaskName)
 
         # Load dictionary.
-        with open(os.path.join(dataset_dir, self.task.SourceFiles['dict']), 'rb') as f:
-            self.source_dict = pickle.load(f, encoding='utf-8')
-        with open(os.path.join(dataset_dir, self.task.TargetFiles['dict']), 'rb') as f:
-            self.target_dict = pickle.load(f, encoding='utf-8')
+        with open(os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=True)), 'rb') as f:
+            self.source_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task)
+        with open(os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=False)), 'rb') as f:
+            self.target_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task)
 
-        self._check_dict()
+    def train_dataloader(self, split, max_tokens=None,
+                         max_sentences=None, max_positions=(1024, 1024),
+                         seed=None, epoch=1, sample_without_replacement=0,
+                         sort_by_source_size=False, shard_id=0, num_shards=1):
+        dataset = self._get_dataset(split)
 
-    def _check_dict(self):
-        assert len(self.source_dict) == self.task.SourceVocabSize, 'Incorrect source vocabulary size'
-        assert len(self.target_dict) == self.task.TargetVocabSize, 'Incorrect target vocabulary size'
+        # TODO
 
-        assert self.source_dict.get(self.task.PAD, None) == self.task.PAD_ID, 'Incorrect source PAD id'
-        assert self.target_dict.get(self.task.PAD, None) == self.task.PAD_ID, 'Incorrect target PAD id'
-        assert self.source_dict.get(self.task.EOS, None) == self.task.EOS_ID, 'Incorrect source EOS id'
-        assert self.target_dict.get(self.task.EOS, None) == self.task.EOS_ID, 'Incorrect target EOS id'
-        assert self.source_dict.get(self.task.UNK, None) == self.task.UNK_ID, 'Incorrect source UNK id'
-        assert self.target_dict.get(self.task.UNK, None) == self.task.UNK_ID, 'Incorrect target UNK id'
+    def eval_dataloader(self, split, num_workers=0, max_tokens=None,
+                        max_sentences=None, max_positions=(1024, 1024),
+                        skip_invalid_size_inputs_valid_test=False,
+                        descending=False, shard_id=0, num_shards=1):
+        dataset = self._get_dataset(split)
+
+        # TODO
+
+    def _get_dataset(self, split_name):
+        if split_name not in self.splits:
+            src_path = self.task.get_filename(split_name, is_src_lang=True)
+            trg_path = self.task.get_filename(split_name, is_src_lang=False)
+            self.splits[split_name] = LanguagePairDataset(
+                TextDataset(src_path, self.source_dict),
+                TextDataset(trg_path, self.target_dict),
+                pad_id=self.source_dict.pad_id,
+                eos_id=self.source_dict.eos_id,
+            )
+
+        return self.splits[split_name]
+
+
+class TextDataset:
+    def __init__(self, path, dictionary, append_eos=True, reverse_order=False):
+        self.tokens_list = []
+        self.lines = []
+        self.sizes = []
+        self.append_eos = append_eos
+        self.reverse_order = reverse_order
+        self.read_data(path, dictionary)
+        self.size = len(self.tokens_list)
+
+    def __len__(self):
+        return self.size
+
+    def __getitem__(self, index):
+        self.check_index(index)
+        return self.tokens_list[index]
+
+    def check_index(self, i):
+        if i < 0 or i >= self.size:
+            raise IndexError('index out of range')
+
+    def read_data(self, path, dictionary):
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                self.lines.append(line.strip('\n'))
+                tokens = Tokenizer.tokenize(line, dictionary, add_if_not_exist=False,
+                                            append_eos=self.append_eos, reverse_order=self.reverse_order)
+                self.tokens_list.append(tokens)
+                self.sizes.append(len(tokens))
+        self.sizes = np.array(self.sizes)
+
+    def get_original_text(self, index):
+        self.check_index(index)
+        return self.lines[index]
 
 
 class LanguagePairDataset(Dataset):
+    """Language pair dataset.
+
+    Contains two `TextDataset` of source and target language.
+    """
+
     # Padding constants
     LEFT_PAD_SOURCE = True
     LEFT_PAD_TARGET = False
 
-    def __init__(self, src, trg, pad_idx, eos_idx):
+    def __init__(self, src, trg, pad_id, eos_id):
         self.src = src
         self.trg = trg
-        self.pad_idx = pad_idx
-        self.eos_idx = eos_idx
+        self.pad_id = pad_id
+        self.eos_id = eos_id
 
     def __len__(self):
         pass
 
     def __getitem__(self, index):
+        pass
+
+    def collater(self, samples):
+        return self.collate(samples, self.pad_id, self.eos_id, self.trg is not None)
+
+    @staticmethod
+    def collate(samples, pad_id, eos_id, has_target=True):
+        # TODO
+
         pass

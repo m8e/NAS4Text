@@ -13,7 +13,6 @@ Output:
     out:
 """
 
-# TODO: Solve the mask problem (nll_loss contains ignore_index, but softmax (in attention) does not).
 # TODO: Merge similar code in encoder and decoder.
 
 import logging
@@ -34,15 +33,15 @@ from .layers.attention import build_attention
 __author__ = 'fyabc'
 
 
-def _code2layer(layer_code, input_shape, hparams):
+def _code2layer(layer_code, input_shape, hparams, in_encoder=True):
     layer_type = layer_code[0]
 
     if layer_type == NetCodeEnum.LSTM:
-        return build_lstm(layer_code, input_shape, hparams)
+        return build_lstm(layer_code, input_shape, hparams, in_encoder)
     elif layer_type == NetCodeEnum.Convolutional:
-        return build_cnn(layer_code, input_shape, hparams)
+        return build_cnn(layer_code, input_shape, hparams, in_encoder)
     elif layer_type == NetCodeEnum.Attention:
-        return build_attention(layer_code, input_shape, hparams)
+        return build_attention(layer_code, input_shape, hparams, in_encoder)
     else:
         raise ValueError('Unknown layer type {}'.format(layer_type))
 
@@ -73,7 +72,7 @@ class ChildEncoder(nn.Module):
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
-            layer, output_shape = _code2layer(layer_code, input_shape, self.hparams)
+            layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=True)
             self._net.append(layer)
             setattr(self, 'layer_{}'.format(i), layer)
 
@@ -148,7 +147,7 @@ class ChildDecoder(nn.Module):
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
-            layer, output_shape = _code2layer(layer_code, input_shape, self.hparams)
+            layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=False)
             self._net.append(layer)
             setattr(self, 'layer_{}'.format(i), layer)
 

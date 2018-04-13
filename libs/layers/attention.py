@@ -31,7 +31,7 @@ _Spaces = {
 }
 
 
-def build_attention(layer_code, input_shape, hparams):
+def build_attention(layer_code, input_shape, hparams, in_encoder=True):
     """
 
     Args:
@@ -39,6 +39,8 @@ def build_attention(layer_code, input_shape, hparams):
         input_shape: torch.Size object
             Shape of input tensor, expect (batch_size, seq_len, input_size)
         hparams:
+        in_encoder: bool
+            Indicates if the layer is in encoder or decoder
 
     Returns: layer, output_shape
         output_shape: torch.Size object

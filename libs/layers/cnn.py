@@ -7,8 +7,6 @@ Layer code:
 [CNN, OutChannels, KernelSize, Stride, ...]
 """
 
-import math
-
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -36,8 +34,8 @@ _Spaces = {
 }
 
 
-class ConvLayer(nn.Module):
-    """1D convolution layer.
+class EncoderConvLayer(nn.Module):
+    """1D convolution layer for encoder.
 
     This layer contains:
         Input padding
@@ -53,6 +51,7 @@ class ConvLayer(nn.Module):
     """
 
     # TODO: Since CNN may change the sequence length, how to modify the mask?
+    # Current solution: assume that "stride == 1".
 
     def __init__(self, in_channels, out_channels, kernel_size, stride):
         super().__init__()
@@ -61,11 +60,6 @@ class ConvLayer(nn.Module):
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.stride = stride
-
-        if self.in_channels == self.out_channels:
-            self.projection = None
-        else:
-            self.projection = Linear(in_channels, out_channels)
 
         self.conv = nn.Conv1d(
             in_channels=in_channels,
@@ -103,7 +97,34 @@ class ConvLayer(nn.Module):
         return x.transpose(1, 2)
 
 
-def build_cnn(layer_code, input_shape, hparams):
+class DecoderConvLayer(nn.Module):
+    """1D convolution layer for decoder.
+
+    Similar to `EncoderConvLayer`.
+    Differences:
+        Padding:
+            Padding (kernel_size - 1) for left and right
+            Remove (kernel_size - 1) last sequence from output
+
+        Incremental state:
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride):
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+
+        # TODO
+
+    def forward(self, input_, mask=None):
+        # TODO
+        pass
+
+
+def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
     """
 
     Args:
@@ -111,6 +132,8 @@ def build_cnn(layer_code, input_shape, hparams):
         input_shape: torch.Size object
             Shape of input tensor, expect (batch_size, seq_len, in_channels)
         hparams:
+        in_encoder: bool
+            Indicates if the layer is in encoder or decoder
 
     Returns: layer, output_shape
     """
@@ -124,7 +147,7 @@ def build_cnn(layer_code, input_shape, hparams):
     kernel_size = space.KernelSizes[layer_code[2]]
     stride = space.Strides[layer_code[3]]
 
-    layer = ConvLayer(
+    layer = EncoderConvLayer(
         in_channels=in_channels,
         out_channels=out_channels,
         kernel_size=kernel_size,

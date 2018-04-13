@@ -62,25 +62,14 @@ class TextTask:
     # Automatically set by registration.
     TaskName = ''
 
+    # Unique filename for data files.
+    UniqueFilename = 'task'
+
     SourceLang = None
     TargetLang = None
 
     SourceVocabSize = None
     TargetVocabSize = None
-
-    SourceFiles = {
-        'train': None,
-        'dev': None,
-        'test': None,
-        'dict': None,
-    }
-
-    TargetFiles = {
-        'train': None,
-        'dev': None,
-        'test': None,
-        'dict': None,
-    }
 
     PAD = '<pad>'
     EOS = '<eos>'
@@ -89,6 +78,25 @@ class TextTask:
     PAD_ID = 0
     EOS_ID = 1
     UNK_ID = 2
+
+    @classmethod
+    def get_filename(cls, split, is_src_lang):
+        """Get dataset filename.
+
+        Args:
+            split: Data split. Can be 'train', 'test', 'valid' or 'dict'.
+            is_src_lang: Is source language (True) or target language (False)?
+
+        Returns:
+            String filename.
+            Format:
+                <split-name>.<unique-name>.<src-lang>-<trg-lang>.<current-lang>
+
+        Examples:
+            'train.iwslt.de-en.de'
+        """
+        return '{}.{}.{}-{}.{}'.format(split, cls.UniqueFilename, cls.SourceLang, cls.TargetLang,
+                                       cls.SourceLang if is_src_lang else cls.TargetLang)
 
 
 # Some common used tasks.
@@ -110,17 +118,3 @@ class DeEnIwslt(TextTask):
 
     SourceVocabSize = 32010
     TargetVocabSize = 22823
-
-    SourceFiles = {
-        'train': 'train.de-en.de',
-        'dev': 'dev.de-en.de',
-        'test': 'test.de-en.de',
-        'dict': 'dict.de-en.de',
-    }
-
-    TargetFiles = {
-        'train': 'train.de-en.en',
-        'dev': 'dev.de-en.en',
-        'test': 'test.de-en.en',
-        'dict': 'dict.de-en.en',
-    }
