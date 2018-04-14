@@ -72,7 +72,7 @@ class TextTask:
     TargetVocabSize = None
 
     PAD = '<pad>'
-    EOS = '<eos>'
+    EOS = '</s>'
     UNK = '<unk>'
 
     PAD_ID = 0
@@ -98,6 +98,13 @@ class TextTask:
         return '{}.{}.{}-{}.{}'.format(split, cls.UniqueFilename, cls.SourceLang, cls.TargetLang,
                                        cls.SourceLang if is_src_lang else cls.TargetLang)
 
+    @classmethod
+    def get_vocab_size(cls, is_src_lang=True):
+        if is_src_lang:
+            return cls.SourceVocabSize
+        else:
+            return cls.TargetVocabSize
+
 
 # Some common used tasks.
 
@@ -115,6 +122,8 @@ class Test(TextTask):
 class DeEnIwslt(TextTask):
     SourceLang = Languages.DE
     TargetLang = Languages.EN
+
+    UniqueFilename = 'iwslt'
 
     SourceVocabSize = 32010
     TargetVocabSize = 22823

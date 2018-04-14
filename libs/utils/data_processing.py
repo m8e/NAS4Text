@@ -42,7 +42,7 @@ __author__ = 'fyabc'
 
 class LanguageDatasets:
     """Container of all dataset splits of the task."""
-    def __init__(self, task_name, split_names):
+    def __init__(self, task_name):
         self.task = get_task(task_name)
         self.splits = {}
 
@@ -50,15 +50,15 @@ class LanguageDatasets:
 
         # Load dictionary.
         with open(os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=True)), 'rb') as f:
-            self.source_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task)
+            self.source_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task, is_src_lang=True)
         with open(os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=False)), 'rb') as f:
-            self.target_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task)
+            self.target_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task, is_src_lang=False)
 
     def train_dataloader(self, split, max_tokens=None,
                          max_sentences=None, max_positions=(1024, 1024),
                          seed=None, epoch=1, sample_without_replacement=0,
                          sort_by_source_size=False, shard_id=0, num_shards=1):
-        dataset = self._get_dataset(split)
+        dataset = self.get_dataset(split)
 
         # TODO
 
@@ -66,14 +66,14 @@ class LanguageDatasets:
                         max_sentences=None, max_positions=(1024, 1024),
                         skip_invalid_size_inputs_valid_test=False,
                         descending=False, shard_id=0, num_shards=1):
-        dataset = self._get_dataset(split)
+        dataset = self.get_dataset(split)
 
         # TODO
 
-    def _get_dataset(self, split_name):
+    def get_dataset(self, split_name):
         if split_name not in self.splits:
-            src_path = self.task.get_filename(split_name, is_src_lang=True)
-            trg_path = self.task.get_filename(split_name, is_src_lang=False)
+            src_path = os.path.join(self.dataset_dir, self.task.get_filename(split_name, is_src_lang=True))
+            trg_path = os.path.join(self.dataset_dir, self.task.get_filename(split_name, is_src_lang=False))
             self.splits[split_name] = LanguagePairDataset(
                 TextDataset(src_path, self.source_dict),
                 TextDataset(trg_path, self.target_dict),
@@ -137,10 +137,17 @@ class LanguagePairDataset(Dataset):
         self.eos_id = eos_id
 
     def __len__(self):
-        pass
+        return len(self.src)
 
     def __getitem__(self, index):
-        pass
+        source = self.src[index]
+        result = {
+            'id': index,
+            'source': source,
+        }
+        if self.trg:
+            result['target'] = self.trg[index]
+        return result
 
     def collater(self, samples):
         return self.collate(samples, self.pad_id, self.eos_id, self.trg is not None)

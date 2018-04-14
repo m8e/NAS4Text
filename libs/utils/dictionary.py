@@ -9,12 +9,13 @@ __author__ = 'fyabc'
 
 
 class Dictionary:
-    def __init__(self, dict_, task):
+    def __init__(self, dict_, task, is_src_lang=True):
         self._dict = dict_
 
         if isinstance(task, str):
             task = get_task(task)
         self.task = task
+        self.is_src_lang = is_src_lang
 
         self._check_dict()
 
@@ -35,7 +36,7 @@ class Dictionary:
         return self.task.UNK_ID
 
     def _check_dict(self):
-        assert len(self._dict) == self.task.SourceVocabSize, 'Incorrect vocabulary size'
+        assert len(self._dict) == self.task.get_vocab_size(self.is_src_lang), 'Incorrect vocabulary size'
 
         assert self._dict.get(self.task.PAD, None) == self.task.PAD_ID, 'Incorrect PAD id'
         assert self._dict.get(self.task.EOS, None) == self.task.EOS_ID, 'Incorrect EOS id'

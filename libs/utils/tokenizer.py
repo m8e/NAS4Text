@@ -25,7 +25,7 @@ class Tokenizer:
         if reverse_order:
             words = list(reversed(words))
         nwords = len(words)
-        ids = torch.IntTensor(nwords + 1 if append_eos else nwords)
+        ids = torch.LongTensor(nwords + 1 if append_eos else nwords)
 
         for i, word in enumerate(words):
             idx = dictionary.get(word, add_if_not_exist=add_if_not_exist)
