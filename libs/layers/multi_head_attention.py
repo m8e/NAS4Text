@@ -10,6 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .common import Linear
+from ..utils.common import mask_from_lengths
+from ..utils.data_processing import LanguagePairDataset
 
 __author__ = 'fyabc'
 
@@ -71,7 +73,7 @@ class MultiHeadAttention(nn.Module):
         - **output** (batch_size, length_q, d_model):
     """
 
-    def __init__(self, h, d_model, dropout=0.1):
+    def __init__(self, h, d_model, dropout=0.1, in_encoder=True):
         super().__init__()
 
         assert d_model % h == 0
@@ -85,12 +87,17 @@ class MultiHeadAttention(nn.Module):
 
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
+        self.in_encoder = in_encoder
 
-    def forward(self, query, key, value, mask=None):
-        if mask is not None:
+    def forward(self, query, key, value, lengths=None):
+        if lengths is not None:
+            left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if self.in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
+            mask = mask_from_lengths(lengths, left_pad=left_pad)
             assert query.size()[1] == mask.size()[1], 'Sequence length of query and mask must be same'
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)
+        else:
+            mask = None
         num_batches = query.size(0)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
@@ -118,8 +125,8 @@ class SelfAttention(MultiHeadAttention):
         - **output** (batch_size, length, d_model):
     """
 
-    def forward(self, x, mask=None):
-        return super().forward(x, x, x, mask=mask)
+    def forward(self, x, lengths=None):
+        return super().forward(x, x, x, lengths=lengths)
 
 
 __all__ = [

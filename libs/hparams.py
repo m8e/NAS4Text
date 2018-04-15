@@ -47,10 +47,15 @@ def get_hparams(name):
 @register_hparams('base')
 def hparams_base():
     """Base hparams, just for test."""
+
+    # TODO: Add these hparams into args
+
     return Namespace(
-        batch_size=4,
-        src_seq_length=15,
-        trg_seq_length=18,
+        max_sentences=None,
+        max_src_positions=15,
+        max_trg_positions=18,
+        max_tokens=6000,
+
         src_embedding_size=9,
         trg_embedding_size=10,
         dropout=0.1,
@@ -60,4 +65,17 @@ def hparams_base():
         attn_space='base',
 
         residual=True,
+
+        criterion='cross_entropy',
     )
+
+
+@register_hparams('normal')
+def hparams_normal():
+    """Normal hparams."""
+
+    hparams = hparams_base()
+    hparams.max_src_positions = 1024
+    hparams.max_trg_positions = 1024
+
+    return hparams

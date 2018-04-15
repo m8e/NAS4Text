@@ -56,6 +56,7 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
         h=num_heads,
         d_model=input_size,
         dropout=hparams.dropout,
+        in_encoder=in_encoder,
     )
 
     return layer, th.Size([batch_size, seq_length, input_size])

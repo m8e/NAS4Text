@@ -13,11 +13,13 @@ def get_args(args=None):
 
     parser.add_argument('-H', '--hparams-set', dest='hparams_set', type=str, default='base')
     parser.add_argument('-T', '--task', dest='task', type=str, default='test')
+    parser.add_argument('-E', '--max-epoch', dest='max_epoch', type=int, default=10)
 
     group_hparams = parser.add_argument_group('HParams Options', description='Options that set hyper-parameters.')
-    group_hparams.add_argument('-b', '--batch-size', dest='batch_size', type=int, default=None)
-    group_hparams.add_argument('--src-seq-length', dest='src_seq_length', type=int, default=None)
-    group_hparams.add_argument('--trg-seq-length', dest='trg_seq_length', type=int, default=None)
+    group_hparams.add_argument('-b', '--batch-size', dest='max_length', type=int, default=None,
+                               help='Maximum number of sentences in a batch')
+    group_hparams.add_argument('--max-src-positions', dest='max_src_positions', type=int, default=None)
+    group_hparams.add_argument('--max-trg-positions', dest='max_trg_positions', type=int, default=None)
     group_hparams.add_argument('--src-emb-size', dest='src_embedding_size', type=int, default=None)
     group_hparams.add_argument('--trg-emb-size', dest='trg_embedding_size', type=int, default=None)
     group_hparams.add_argument('--lstm-space', dest='lstm_space', type=str, default=None)

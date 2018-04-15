@@ -55,12 +55,12 @@ class ChildEncoder(nn.Module):
         self.task = get_task(hparams.task)
 
         # Encoder input shape (after embedding).
-        # [NOTE]: The shape[1] (seq_length) is variable and useless.
-        self.input_shape = th.Size([hparams.batch_size, 1, hparams.src_embedding_size])
+        # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
+        self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
 
         self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID)
         self.embed_positions = PositionalEmbedding(
-            hparams.src_seq_length,
+            hparams.max_src_positions,
             hparams.src_embedding_size,
             self.task.PAD_ID,
             left_pad=LanguagePairDataset.LEFT_PAD_SOURCE,
@@ -84,12 +84,12 @@ class ChildEncoder(nn.Module):
         # Encoder output shape
         self.output_shape = input_shape
 
-    def forward(self, src_tokens, src_mask=None):
+    def forward(self, src_tokens, src_lengths=None):
         """
 
         Args:
             src_tokens: (batch_size, src_seq_len) of int32
-            src_mask: (batch_size, src_seq_len) of byte
+            src_lengths: (batch_size,) of long
 
         Returns:
             (batch_size, src_seq_len, encoder_out_channels) of float32
@@ -105,7 +105,7 @@ class ChildEncoder(nn.Module):
         for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
             residual = x if projection is None else projection(x)
 
-            x = layer(x, src_mask)
+            x = layer(x, src_lengths)
 
             # Residual connection.
             # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
@@ -130,12 +130,12 @@ class ChildDecoder(nn.Module):
         # Encoder output shape
         self.encoder_output_shape = encoder_output_shape
         # Decoder input shape (after embedding)
-        # [NOTE]: The shape[1] (seq_length) is variable and useless.
-        self.input_shape = th.Size([hparams.batch_size, 1, hparams.trg_embedding_size])
+        # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
+        self.input_shape = th.Size([1, 1, hparams.trg_embedding_size])
 
         self.embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID)
         self.embed_positions = PositionalEmbedding(
-            hparams.trg_seq_length,
+            hparams.max_trg_positions,
             hparams.trg_embedding_size,
             self.task.PAD_ID,
             left_pad=LanguagePairDataset.LEFT_PAD_TARGET,
@@ -161,14 +161,14 @@ class ChildDecoder(nn.Module):
 
         self.fc_last = Linear(self.output_shape[2], self.task.TargetVocabSize)
 
-    def forward(self, encoder_out, src_mask, trg_tokens, trg_mask, incremental_state=None):
+    def forward(self, encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state=None):
         """
 
         Args:
             encoder_out: (batch_size, src_seq_len, encoder_out_channels) of float32
-            src_mask: (batch_size, src_seq_len) of byte
+            src_lengths: (batch_size,) of long
             trg_tokens: (batch_size, trg_seq_len) of int32
-            trg_mask: (batch_size, trg_seq_len) of byte
+            trg_lengths: (batch_size,) of long
             incremental_state: Incremental states for decoding. TODO
 
         Returns:
@@ -185,7 +185,7 @@ class ChildDecoder(nn.Module):
         for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
             residual = x if projection is None else projection(x)
 
-            x = layer(x, trg_mask)
+            x = layer(x, trg_lengths)
 
             # TODO: Add attention layer here
             #   x, attn_scores = attention(x, target_embedding, encoder_outs)
@@ -232,28 +232,28 @@ class ChildNet(nn.Module):
         self.encoder = ChildEncoder(net_code[0], hparams)
         self.decoder = ChildDecoder(net_code[1], hparams, encoder_output_shape=self.encoder.output_shape)
 
-    def forward(self, src_tokens, src_mask, trg_tokens, trg_mask):
+    def forward(self, src_tokens, src_lengths, trg_tokens, trg_lengths):
         """
 
         Args:
             src_tokens: (batch_size, src_seq_len) of int32
-            src_mask: (batch_size, src_seq_len) of byte
+            src_lengths: (batch_size,) of long
             trg_tokens: (batch_size, trg_seq_len) of int32
-            trg_mask: (batch_size, trg_seq_len) of byte
+            trg_lengths: (batch_size,) of long
 
         Returns:
             (batch_size, seq_len, tgt_vocab_size) of float32
         """
-        encoder_out = self.encoder(src_tokens, src_mask)
-        decoder_out = self.decoder(encoder_out, src_mask, trg_tokens, trg_mask)
+        encoder_out = self.encoder(src_tokens, src_lengths)
+        decoder_out = self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths)
 
         return decoder_out
 
-    def encode(self, src_tokens, src_mask):
-        return self.encoder(src_tokens, src_mask)
+    def encode(self, src_tokens, src_lengths):
+        return self.encoder(src_tokens, src_lengths)
 
-    def decode(self, encoder_out, src_mask, trg_tokens, trg_mask):
-        return self.decoder(encoder_out, src_mask, trg_tokens, trg_mask)
+    def decode(self, encoder_out, src_lengths, trg_tokens, trg_lengths):
+        return self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths)
 
     def get_normalized_probs(self, net_output, log_probs=False):
         return self.decoder.get_normalized_probs(net_output, log_probs)

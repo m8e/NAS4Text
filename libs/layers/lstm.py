@@ -39,8 +39,14 @@ _Spaces = {
 }
 
 
-class LSTMNoOutputStates(nn.LSTM):
-    """The LSTM module without output states."""
+class LSTMLayer(nn.LSTM):
+    """The LSTM layer.
+
+    This layer contains:
+        Handle variable length inputs with masks
+            TODO: See <https://zhuanlan.zhihu.com/p/28472545> for details
+        Discard output states (h & c)
+    """
     def forward(self, input_, mask=None):
         return super().forward(input_)[0]
 
@@ -68,7 +74,7 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
     bidirectional = space.UseBidirectional[layer_code[2]]
     num_directions = 2 if bidirectional else 1
 
-    layer = LSTMNoOutputStates(
+    layer = LSTMLayer(
         input_size=input_size,
         hidden_size=hidden_size,
         num_layers=space.NumLayers,

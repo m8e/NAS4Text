@@ -21,21 +21,22 @@ def get_sample_dataset(hparams):
     from libs.tasks import get_task
     task = get_task(hparams.task)
 
-    Batch = namedtuple('Batch', ['src_tokens', 'src_mask', 'trg_tokens', 'trg_mask'])
+    Batch = namedtuple('Batch', ['src_tokens', 'src_lengths', 'trg_tokens', 'trg_lengths'])
 
     result = []
     for _ in range(10):
+        bs = [4, 6][np.random.choice(2, 1)[0]]
         src_tokens = Variable(th.from_numpy(np.random.randint(
             1, task.SourceVocabSize,
-            size=(hparams.batch_size, np.random.randint(1, hparams.src_seq_length)),
+            size=(bs, np.random.randint(1, hparams.max_src_positions)),
             dtype='int64')))
-        src_mask = th.ones_like(src_tokens).byte()
+        src_lengths = Variable(th.LongTensor(bs).fill_(src_tokens.size()[1]))
         trg_tokens = Variable(th.from_numpy(np.random.randint(
             1, task.TargetVocabSize,
-            size=(hparams.batch_size, np.random.randint(1, hparams.trg_seq_length)),
+            size=(bs, np.random.randint(1, hparams.max_trg_positions)),
             dtype='int64')))
-        trg_mask = th.ones_like(trg_tokens).byte()
-        result.append(Batch(src_tokens, src_mask, trg_tokens, trg_mask))
+        trg_lengths = Variable(th.LongTensor(bs).fill_(trg_tokens.size()[1]))
+        result.append(Batch(src_tokens, src_lengths, trg_tokens, trg_lengths))
 
     return result
 
@@ -53,7 +54,7 @@ def main(args=None):
         [
             [NetCodeEnum.LSTM, 0, 1],
             [NetCodeEnum.Convolutional, 2, 1, 0],
-            [NetCodeEnum.Attention, 0],     # Cause error now here
+            [NetCodeEnum.Attention, 0],
         ],
         [
             [NetCodeEnum.LSTM, 1, 0],
