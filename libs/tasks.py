@@ -7,7 +7,7 @@ from .utils.registry_utils import camel2snake
 
 __author__ = 'fyabc'
 
-_Tasks = {}
+AllTasks = {}
 
 
 def register_task(cls_or_name):
@@ -20,9 +20,9 @@ def register_task(cls_or_name):
 
     """
     def decorator(cls, registration_name=None):
-        if registration_name in _Tasks:
+        if registration_name in AllTasks:
             raise ValueError('Name {} already exists'.format(registration_name))
-        _Tasks[registration_name] = cls
+        AllTasks[registration_name] = cls
         cls.TaskName = registration_name
         return cls
 
@@ -42,7 +42,7 @@ def get_task(name):
     Returns:
         TextTask
     """
-    return _Tasks[name]
+    return AllTasks[name]
 
 
 class Languages:
@@ -78,6 +78,10 @@ class TextTask:
     PAD_ID = 0
     EOS_ID = 1
     UNK_ID = 2
+
+    @classmethod
+    def get_lang_pair(cls):
+        return [cls.SourceLang, cls.TargetLang]
 
     @classmethod
     def get_filename(cls, split, is_src_lang):

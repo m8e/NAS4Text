@@ -45,3 +45,17 @@ def dump_json(net_code):
 
 def load_json(fp):
     pass
+
+
+def get_net_code(hparams):
+    # TODO
+    return [
+        [
+            [NetCodeEnum.LSTM, 0, 1],
+            [NetCodeEnum.Convolutional, 2, 1, 0],
+            [NetCodeEnum.Attention, 0],
+        ],
+        [
+            [NetCodeEnum.LSTM, 1, 0],
+        ]
+    ]

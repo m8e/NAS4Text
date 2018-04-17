@@ -29,13 +29,13 @@ def get_sample_dataset(hparams):
         src_tokens = Variable(th.from_numpy(np.random.randint(
             1, task.SourceVocabSize,
             size=(bs, np.random.randint(1, hparams.max_src_positions)),
-            dtype='int64')))
-        src_lengths = Variable(th.LongTensor(bs).fill_(src_tokens.size()[1]))
+            dtype='int64')).cuda())
+        src_lengths = Variable(th.LongTensor(bs).fill_(src_tokens.size()[1]).cuda())
         trg_tokens = Variable(th.from_numpy(np.random.randint(
             1, task.TargetVocabSize,
             size=(bs, np.random.randint(1, hparams.max_trg_positions)),
-            dtype='int64')))
-        trg_lengths = Variable(th.LongTensor(bs).fill_(trg_tokens.size()[1]))
+            dtype='int64')).cuda())
+        trg_lengths = Variable(th.LongTensor(bs).fill_(trg_tokens.size()[1]).cuda())
         result.append(Batch(src_tokens, src_lengths, trg_tokens, trg_lengths))
 
     return result
@@ -62,6 +62,7 @@ def main(args=None):
     ]
 
     net = ChildNet(net_code, hparams=hparams)
+    net = net.cuda()
 
     print('Network:', net)
     print()

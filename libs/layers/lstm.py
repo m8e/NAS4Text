@@ -33,7 +33,7 @@ class LSTMSpaceLarge(LSTMSpaceBase):
     HiddenSizes = [64, 128, 256, 512]
 
 
-_Spaces = {
+Spaces = {
     'base': LSTMSpaceBase,
     'large': LSTMSpaceLarge,
 }
@@ -47,7 +47,7 @@ class LSTMLayer(nn.LSTM):
             TODO: See <https://zhuanlan.zhihu.com/p/28472545> for details
         Discard output states (h & c)
     """
-    def forward(self, input_, mask=None):
+    def forward(self, input_, lengths=None):
         return super().forward(input_)[0]
 
 
@@ -67,7 +67,7 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
             Shape of output tensor, (batch_size, seq_len, hidden_size * num_directions)
     """
 
-    space = _Spaces[hparams.lstm_space]
+    space = Spaces[hparams.lstm_space]
 
     batch_size, seq_length, input_size = input_shape
     hidden_size = space.HiddenSizes[layer_code[1]]

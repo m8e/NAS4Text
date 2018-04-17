@@ -7,7 +7,7 @@ from .utils.registry_utils import camel2snake
 
 __author__ = 'fyabc'
 
-_HParams = {}
+AllHParams = {}
 
 
 def register_hparams(fn_or_name):
@@ -20,9 +20,9 @@ def register_hparams(fn_or_name):
 
     """
     def decorator(fn, registration_name=None):
-        if registration_name in _HParams:
+        if registration_name in AllHParams:
             raise ValueError('Name {} already exists'.format(registration_name))
-        _HParams[registration_name] = fn
+        AllHParams[registration_name] = fn
         return fn
 
     if isinstance(fn_or_name, str):
@@ -41,7 +41,7 @@ def get_hparams(name):
     Returns:
 
     """
-    return _HParams[name]()
+    return AllHParams[name]()
 
 
 @register_hparams('base')
@@ -51,10 +51,8 @@ def hparams_base():
     # TODO: Add these hparams into args
 
     return Namespace(
-        max_sentences=None,
         max_src_positions=15,
         max_trg_positions=18,
-        max_tokens=6000,
 
         src_embedding_size=9,
         trg_embedding_size=10,
@@ -63,10 +61,6 @@ def hparams_base():
         lstm_space='base',
         conv_space='base',
         attn_space='base',
-
-        residual=True,
-
-        criterion='cross_entropy',
     )
 
 

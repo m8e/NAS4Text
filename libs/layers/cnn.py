@@ -28,7 +28,7 @@ class ConvSpaceLarge(ConvSpaceBase):
     OutChannels = [64, 128, 256, 512]
 
 
-_Spaces = {
+Spaces = {
     'base': ConvSpaceBase,
     'large': ConvSpaceLarge,
 }
@@ -140,7 +140,7 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
 
     # TODO: Different convolutional layer for decoder (in inference)?
 
-    space = _Spaces[hparams.conv_space]
+    space = Spaces[hparams.conv_space]
 
     batch_size, seq_length, in_channels = input_shape
     out_channels = space.OutChannels[layer_code[1]]

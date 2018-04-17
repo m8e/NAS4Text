@@ -29,6 +29,7 @@ from .layers.net_code import NetCodeEnum
 from .layers.lstm import build_lstm
 from .layers.cnn import build_cnn
 from .layers.attention import build_attention
+from .layers.multi_head_attention import MultiHeadAttention
 
 __author__ = 'fyabc'
 
@@ -84,6 +85,8 @@ class ChildEncoder(nn.Module):
         # Encoder output shape
         self.output_shape = input_shape
 
+        self.fc2 = Linear(self.output_shape[2], hparams.src_embedding_size)
+
     def forward(self, src_tokens, src_lengths=None):
         """
 
@@ -116,7 +119,56 @@ class ChildEncoder(nn.Module):
 
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(x.shape)))
 
-        return x
+        # project back to size of embedding
+        # TODO: Explain this, why need to fc1: emb -> conv & fc2: conv -> emb?
+        x = self.fc2(x)
+
+        # TODO: scale gradients (this only affects backward, not forward)
+
+        # add output to input embedding for attention
+        y = (x + source_embedding) * math.sqrt(0.5)
+
+        return x, y
+
+    def max_positions(self):
+        return self.embed_positions.max_positions()
+
+
+class EncDecAttention(nn.Module):
+    def __init__(self, conv_channels, embed_dim, hparams):
+        super().__init__()
+        self.in_projection = Linear(conv_channels, embed_dim)
+        # [NOTE]: h = 1 now; can modify it?
+        self.multi_head = MultiHeadAttention(1, embed_dim, dropout=hparams.dropout, in_encoder=False)
+        self.out_projection = Linear(conv_channels, embed_dim)
+
+    def forward(self, x, target_embedding, encoder_outs, trg_lengths=None):
+        """
+
+        Args:
+            x: (batch_size, trg_seq_len, conv_channels) of float32
+            target_embedding: (batch_size, trg_seq_len, trg_emb_size) of float32
+            encoder_outs (tuple):
+                output: (batch_size, src_seq_len, encoder_out_channels) of float32
+                output add source embedding: same shape as output
+            trg_lengths: (batch_size, trg_seq_len) of long
+
+        Returns:
+            output: (batch_size, trg_seq_len, conv_channels) of float32
+            attn_score
+        """
+
+        # TODO: Shape bug here, how to design the enc-dec attention?
+
+        residual = x
+
+        x = (self.in_projection(x) + target_embedding) * math.sqrt(0.5)
+
+        x = self.multi_head(x, encoder_outs[0], encoder_outs[1], trg_lengths)
+
+        x = (self.out_projection(x) + residual) * math.sqrt(0.5)
+
+        return x, self.multi_head.attn
 
 
 class ChildDecoder(nn.Module):
@@ -144,6 +196,7 @@ class ChildDecoder(nn.Module):
         # The main decoder network.
         self._net = []
         self._projections = []
+        self._attentions = []
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
@@ -154,6 +207,11 @@ class ChildDecoder(nn.Module):
             projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
             self._projections.append(projection)
             setattr(self, 'projection_{}'.format(i), projection)
+
+            attention = EncDecAttention(output_shape[2], hparams.trg_embedding_size, self.hparams)
+            self._attentions.append(attention)
+            setattr(self, 'attention_{}'.format(i), attention)
+
             input_shape = output_shape
 
         # Decoder output shape (before softmax)
@@ -165,7 +223,9 @@ class ChildDecoder(nn.Module):
         """
 
         Args:
-            encoder_out: (batch_size, src_seq_len, encoder_out_channels) of float32
+            encoder_out (tuple):
+                output: (batch_size, src_seq_len, encoder_out_channels) of float32
+                output add source embedding: same shape as output
             src_lengths: (batch_size,) of long
             trg_tokens: (batch_size, trg_seq_len) of int32
             trg_lengths: (batch_size,) of long
@@ -182,13 +242,23 @@ class ChildDecoder(nn.Module):
         target_embedding = x
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
-        for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
+        avg_attn_scores = None
+        num_attn_layers = len(self._attentions)
+        for i, (layer, projection, attention) in enumerate(zip(self._net, self._projections, self._attentions)):
             residual = x if projection is None else projection(x)
 
             x = layer(x, trg_lengths)
 
+            # Attention layer.
             # TODO: Add attention layer here
             #   x, attn_scores = attention(x, target_embedding, encoder_outs)
+            # print('#', x.shape, target_embedding.shape, encoder_out[0].shape, encoder_out[1].shape, trg_lengths.shape)
+            # x, attn_scores = attention(x, target_embedding, encoder_out, trg_lengths)
+            # attn_scores = attn_scores / num_attn_layers
+            # if avg_attn_scores is None:
+            #     avg_attn_scores = attn_scores
+            # else:
+            #     avg_attn_scores.add_(attn_scores)
 
             # Residual connection.
             # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
@@ -204,7 +274,7 @@ class ChildDecoder(nn.Module):
         x = self.fc_last(x)
 
         logging.debug('Decoder output shape: {}'.format(list(x.shape)))
-        return x
+        return x, avg_attn_scores
 
     def _embed_tokens(self, tokens, incremental_state):
         if incremental_state is not None:
@@ -214,11 +284,14 @@ class ChildDecoder(nn.Module):
 
     @staticmethod
     def get_normalized_probs(net_output, log_probs=False):
-        logits = net_output
+        logits = net_output[0]
         if log_probs:
             return F.log_softmax(logits, dim=-1)
         else:
             return F.softmax(logits, dim=-1)
+
+    def max_positions(self):
+        return self.embed_positions.max_positions()
 
 
 class ChildNet(nn.Module):
@@ -249,11 +322,19 @@ class ChildNet(nn.Module):
 
         return decoder_out
 
-    def encode(self, src_tokens, src_lengths):
-        return self.encoder(src_tokens, src_lengths)
-
-    def decode(self, encoder_out, src_lengths, trg_tokens, trg_lengths):
-        return self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths)
-
     def get_normalized_probs(self, net_output, log_probs=False):
         return self.decoder.get_normalized_probs(net_output, log_probs)
+
+    def get_targets(self, sample, net_output):
+        """Get targets from either the sample or the net's output."""
+        return sample['target']
+
+    def max_encoder_positions(self):
+        return self.encoder.max_positions()
+
+    def max_decoder_positions(self):
+        return self.decoder.max_positions()
+
+    def num_parameters(self):
+        """Number of parameters."""
+        return sum(p.data.numel() for p in self.parameters())

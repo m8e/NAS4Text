@@ -25,7 +25,7 @@ class AttentionSpaceLarge(AttentionSpaceBase):
     pass
 
 
-_Spaces = {
+Spaces = {
     'base': AttentionSpaceBase,
     'large': AttentionSpaceLarge,
 }
@@ -47,7 +47,7 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
             Shape of output tensor, (batch_size, seq_len, hidden_size * num_directions)
     """
 
-    space = _Spaces[hparams.attn_space]
+    space = Spaces[hparams.attn_space]
 
     batch_size, seq_length, input_size = input_shape
     num_heads = space.NumHeads[layer_code[1]]

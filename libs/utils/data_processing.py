@@ -118,6 +118,10 @@ class LanguageDatasets:
 
         return self.splits[split_name]
 
+    def load_splits(self, splits):
+        for split in splits:
+            self.get_dataset(split)
+
 
 class TextDataset:
     def __init__(self, path, dictionary, append_eos=True, reverse_order=False):

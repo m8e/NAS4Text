@@ -35,6 +35,12 @@ class Dictionary:
     def unk_id(self):
         return self.task.UNK_ID
 
+    @property
+    def language(self):
+        if self.is_src_lang:
+            return self.task.SourceLang
+        return self.task.TargetLang
+
     def _check_dict(self):
         assert len(self._dict) == self.task.get_vocab_size(self.is_src_lang), 'Incorrect vocabulary size'
 
