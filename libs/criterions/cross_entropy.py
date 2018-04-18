@@ -24,7 +24,7 @@ class CrossEntropyCriterion(BaseCriterion):
         3) logging outputs to display while training
         """
 
-        # TODO: Add mask into loss.
+        # TODO: Add mask into loss (need or not?).
 
         net_output = model(**sample['net_input'])
         lprobs = model.get_normalized_probs(net_output, log_probs=True)

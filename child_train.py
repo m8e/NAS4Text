@@ -11,8 +11,12 @@ __author__ = 'fyabc'
 
 def main(args=None):
     hparams = get_args(args)
-    # TODO: Check hparams and call other main entry here.
-    single_process_main(hparams)
+    if hparams.distributed_port > 0 or hparams.distributed_init_method is not None:
+        raise NotImplementedError('Distributed training is not implemented')
+    elif hparams.distributed_world_size > 1:
+        raise NotImplementedError('Multiprocessing training is not implemented')
+    else:
+        single_process_main(hparams)
 
 
 if __name__ == '__main__':

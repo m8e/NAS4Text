@@ -17,7 +17,7 @@ See docstring of [`libs/utils/data_processing.py`](libs/utils/data_processing.py
 python train.py [More options]
 
 # Example on de-en iwslt dataset
-python train.py \
+python child_train.py \
     -T de_en_iwslt \
     -H normal \
     --max-tokens 500 \

@@ -91,6 +91,8 @@ def add_train_args(parser):
                        choices=AllCriterions.keys(),
                        help='training criterion: {} (default: cross_entropy)'.format(
                            ', '.join(AllCriterions.keys())))
+    for criterion in AllCriterions.values():
+        criterion.add_args(group)
     group.add_argument('--max-epoch', '--me', default=0, type=int, metavar='N',
                        help='force stop training at specified epoch, default is inf')
     group.add_argument('--max-update', '--mu', default=0, type=int, metavar='N',
@@ -105,6 +107,8 @@ def add_train_args(parser):
     group.add_argument('--optimizer', default='nag', metavar='OPT',
                        choices=AllOptimizers.keys(),
                        help='optimizer: {} (default: nag)'.format(', '.join(AllOptimizers.keys())))
+    for optimizer in AllOptimizers.values():
+        optimizer.add_args(group)
     group.add_argument('--lr', '--learning-rate', default='0.25', metavar='LR_1,LR_2,...,LR_N',
                        help='learning rate for the first N epochs; all epochs >N using LR_N'
                             ' (note: this may be interpreted differently depending on --lr-scheduler)')
@@ -116,6 +120,8 @@ def add_train_args(parser):
     group.add_argument('--lr-scheduler', default='reduce_lr_on_plateau',
                        help='learning rate scheduler: {} (default: reduce_lr_on_plateau)'.format(
                            ', '.join(AllLRSchedulers.keys())))
+    for lr_scheduler in AllLRSchedulers.values():
+        lr_scheduler.add_args(group)
     group.add_argument('--lr-shrink', default=0.1, type=float, metavar='LS',
                        help='learning rate shrink factor for annealing, lr_new = (lr * lr_shrink)')
     group.add_argument('--min-lr', default=1e-5, type=float, metavar='LR',
