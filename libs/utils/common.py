@@ -166,13 +166,21 @@ def make_positions(tensor, padding_idx, left_pad):
     return tensor.clone().masked_scatter_(mask, positions[mask])
 
 
-def mask_from_lengths(lengths, left_pad, cuda=False):
+def mask_from_lengths(lengths, left_pad, max_length=None, cuda=False):
     if isinstance(lengths, Variable):
         lengths_ = lengths.data
     else:
         lengths_ = lengths
     batch_size = len(lengths_)
-    max_length = max(lengths_)
+
+    _ml = max(lengths_)
+    if max_length is None:
+        max_length = _ml
+    else:
+        # [NOTE]: In parallel training, `_ml < max_length` may be True in some chunks,
+        # so add the argument `max_length` to set it directly.
+        if _ml > max_length:
+            raise RuntimeError('Max length is less than the maximum value in lengths')
     if cuda:
         tensor_type = th.cuda.ByteTensor
     else:
