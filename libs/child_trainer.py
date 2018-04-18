@@ -11,7 +11,7 @@ import torch.nn as nn
 from .child_net import ChildNet
 from .optimizers import build_optimizer
 from .optimizers.lr_schedulers import build_lr_scheduler
-from .utils import common, distributed_utils
+from .utils import common, distributed_utils, UseFairseqParallel
 from .utils.meters import AverageMeter, TimeMeter
 
 __author__ = 'fyabc'
@@ -161,7 +161,7 @@ class ChildTrainer:
                     raise e
 
         # synchronize logging outputs for multi-GPU training
-        if self.hparams.distributed_world_size > 1:
+        if UseFairseqParallel and self.hparams.distributed_world_size > 1:
             sample_sizes, logging_outputs, ooms = zip(*list(
                 distributed_utils.all_gather_list((sample_size, logging_output, oom))))
             ooms = sum(ooms)
@@ -189,7 +189,7 @@ class ChildTrainer:
                     raise e
 
         # all-reduce grads and rescale by grad_denom
-        if self.hparams.distributed_world_size > 1:
+        if UseFairseqParallel and self.hparams.distributed_world_size > 1:
             grads = [p.grad.data for p in self.model.parameters() if p.requires_grad]
             distributed_utils.all_reduce_and_rescale_tensors(grads, grad_denom)
         else:

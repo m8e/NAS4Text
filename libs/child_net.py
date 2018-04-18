@@ -369,3 +369,23 @@ class ChildNet(nn.Module):
     def num_parameters(self):
         """Number of parameters."""
         return sum(p.data.numel() for p in self.parameters())
+
+
+class ParalleledChildNet(nn.DataParallel):
+    def get_normalized_probs(self, *args, **kwargs):
+        return self.module.get_normalized_probs(*args, **kwargs)
+
+    def get_targets(self, *args, **kwargs):
+        return self.module.get_targets(*args, **kwargs)
+
+    def max_encoder_positions(self, *args, **kwargs):
+        return self.module.max_encoder_positions(*args, **kwargs)
+
+    def max_decoder_positions(self, *args, **kwargs):
+        return self.module.max_decoder_positions(*args, **kwargs)
+
+    def upgrade_state_dict(self, *args, **kwargs):
+        return self.module.upgrade_state_dict(*args, **kwargs)
+
+    def num_parameters(self, *args, **kwargs):
+        return self.module.num_parameters(*args, **kwargs)
