@@ -56,6 +56,8 @@ def hparams_base():
 
         src_embedding_size=9,
         trg_embedding_size=10,
+        decoder_out_embedding_size=8,
+        share_input_output_embedding=False,
         dropout=0.1,
 
         lstm_space='base',
@@ -71,5 +73,8 @@ def hparams_normal():
     hparams = hparams_base()
     hparams.max_src_positions = 1024
     hparams.max_trg_positions = 1024
+    hparams.src_embedding_size = 512
+    hparams.trg_embedding_size = 512
+    hparams.decoder_out_embedding_size = 256
 
     return hparams

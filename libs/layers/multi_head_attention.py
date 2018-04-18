@@ -30,8 +30,8 @@ def attention(query, key, value, mask=None, dropout=None):
 
     Returns:
         tuple
-            Attention value (batch_size, length_q, d_v):
-            p_attn (batch_size, length_q, length_kv): Attention probability distribution
+            Attention value (batch_size, num_heads, length_q, d_v):
+            p_attn (batch_size, num_heads, length_q, length_kv): Attention probability distribution
     """
 
     d_k = query.size(-1)
@@ -129,7 +129,80 @@ class SelfAttention(MultiHeadAttention):
         return super().forward(x, x, x, lengths=lengths)
 
 
+class EncDecAttention(nn.Module):
+    """Encoder-decoder attention module, modified for different input sizes."""
+    def __init__(self, h, conv_channels, trg_emb_size, src_emb_size, dropout=0.1, in_encoder=True):
+        super().__init__()
+
+        assert trg_emb_size % h == 0
+
+        self.h = h
+        d_model = trg_emb_size
+
+        # [NOTE]: We assume that d_v always == d_k.
+        self.d_k = d_model // h
+        self.h = h
+
+        # 4 Weights matrices.
+        self.linears = nn.ModuleList([
+            Linear(conv_channels, d_model),
+            Linear(src_emb_size, d_model),
+            Linear(src_emb_size, d_model),
+            Linear(d_model, conv_channels),
+        ])
+
+        self.attn = None
+        self.dropout = nn.Dropout(p=dropout)
+        self.in_encoder = in_encoder
+
+    def forward(self, x, target_embedding, encoder_outs, trg_lengths=None):
+        """
+
+        Args:
+            x: (batch_size, trg_seq_len, conv_channels) of float32
+            target_embedding: (batch_size, trg_seq_len, trg_emb_size) of float32
+            encoder_outs (tuple):
+                output: (batch_size, src_seq_len, src_emb_size) of float32
+                output add source embedding: same shape as output
+            trg_lengths: (batch_size, trg_seq_len) of long
+
+        Returns:
+            output: (batch_size, trg_seq_len, conv_channels) of float32
+            attn_score: (batch_size, num_heads, trg_seq_len, src_seq_len) of float32
+        """
+        if trg_lengths is not None:
+            left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if self.in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
+            mask = mask_from_lengths(trg_lengths, left_pad=left_pad, cuda=True)
+            assert x.size()[1] == mask.size()[1], 'Sequence length of query and mask must be same'
+            # Same mask applied to all h heads.
+            mask = mask.unsqueeze(1)
+        else:
+            mask = None
+        num_batches = x.size(0)
+
+        residual = x
+
+        # 1) Do all the linear projections in batch from d_model => h x d_k
+        # conv_channel -> trg_emb_size (+ target_embedding)
+        x = (self.linears[0](x) + target_embedding) * math.sqrt(0.5)
+        query = x.view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
+        key = self.linears[1](encoder_outs[0]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
+        value = self.linears[2](encoder_outs[1]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
+
+        # 2) Apply attention on all the projected vectors in batch.
+        x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
+
+        # 3) "Concat" using a view and apply a final linear.
+        x = x.transpose(1, 2).contiguous().view(num_batches, -1, self.h * self.d_k)
+
+        # [NOTE]: Residual connection, from fairseq-py
+        x = (self.linears[-1](x) + residual) * math.sqrt(0.5)
+
+        return x, self.attn
+
+
 __all__ = [
     'MultiHeadAttention',
     'SelfAttention',
+    'EncDecAttention',
 ]

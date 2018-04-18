@@ -11,7 +11,6 @@ import os
 import pprint
 
 import torch as th
-import torch.nn as nn
 
 from .utils.data_processing import LanguageDatasets
 from .layers.net_code import get_net_code
@@ -21,6 +20,7 @@ from .tasks import get_task
 from .child_trainer import ChildTrainer
 from .utils.paths import ModelDir
 from .utils.meters import StopwatchMeter, AverageMeter
+from .utils.progress_bar import build_progress_bar
 
 __author__ = 'fyabc'
 
@@ -51,13 +51,18 @@ def single_process_main(hparams, datasets=None):
     logging.info('HParams set: {}'.format(hparams.hparams_set))
     logging.info('Child training hparams:\n{}'.format(pprint.pformat(hparams.__dict__)))
 
-    task = get_task(hparams.task)
-
     if not th.cuda.is_available():
         raise RuntimeError('Want to training on GPU but CUDA is not available')
     th.cuda.set_device(hparams.device_id)
 
     th.manual_seed(hparams.seed)
+
+    # Get net code
+    net_code = get_net_code(hparams)
+    logging.info('Net code information:')
+    logging.info('LSTM search space: {}'.format(hparams.lstm_space))
+    logging.info('Convolutional search space: {}'.format(hparams.conv_space))
+    logging.info('Attention search space: {}'.format(hparams.attn_space))
 
     # Load datasets
     datasets = LanguageDatasets(hparams.task) if datasets is None else datasets
@@ -71,13 +76,6 @@ def single_process_main(hparams, datasets=None):
     datasets.load_splits(splits)
     for split in splits:
         logging.info('Split {}: len = {}'.format(split, len(datasets.splits[split])))
-
-    # Get net code
-    net_code = get_net_code(hparams)
-    logging.info('Net code information:')
-    logging.info('LSTM search space: {}'.format(hparams.lstm_space))
-    logging.info('Convolutional search space: {}'.format(hparams.conv_space))
-    logging.info('Attention search space: {}'.format(hparams.attn_space))
 
     # Build model and criterion
     model = ChildNet(net_code, hparams)
@@ -182,8 +180,7 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
         num_shards=hparams.distributed_world_size,
     )
 
-    # TODO: Progress bar
-    # progress = progress_bar.build_progress_bar(hparams, itr, epoch, no_progress_bar='simple')
+    progress = build_progress_bar(hparams, itr, epoch, no_progress_bar='simple')
     itr = itertools.islice(itr, batch_offset, None)
 
     # Reset training meters
@@ -194,7 +191,7 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
 
     extra_meters = collections.defaultdict(lambda: AverageMeter())
     max_update = hparams.max_update or math.inf
-    for i, sample in enumerate(itr, start=batch_offset):
+    for i, sample in enumerate(progress, start=batch_offset):
         log_output = trainer.train_step(sample)
 
         # Log mid-epoch stats
@@ -207,7 +204,7 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
             else:
                 extra_meters[k].update(v)
             stats[k] = extra_meters[k].avg
-        # progress.log(stats)
+        progress.log(stats)
 
         if i == batch_offset:
             # Ignore the first mini-batch in words-per-second calculation
@@ -225,7 +222,7 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
     stats = get_training_stats(trainer)
     for k, meter in extra_meters.items():
         stats[k] = meter.avg
-    # progress.print(stats)
+    progress.print(stats)
 
 
 def get_training_stats(trainer):
@@ -280,11 +277,11 @@ def validate(hparams, trainer, datasets, subset, epoch):
     )
 
     # TODO: Progress bar
-    # progress = progress_bar.build_progress_bar(
-    #     hparams, itr, epoch,
-    #     prefix='valid on \'{}\' subset'.format(subset),
-    #     no_progress_bar='simple'
-    # )
+    progress = build_progress_bar(
+        hparams, itr, epoch,
+        prefix='valid on \'{}\' subset'.format(subset),
+        no_progress_bar='simple'
+    )
 
     # Reset validation loss meters
     for k in ['valid_loss', 'valid_nll_loss']:
@@ -293,7 +290,7 @@ def validate(hparams, trainer, datasets, subset, epoch):
             meter.reset()
 
     extra_meters = collections.defaultdict(lambda: AverageMeter())
-    for sample in itr:
+    for sample in progress:
         log_output = trainer.valid_step(sample)
 
         # log mid-validation stats
@@ -303,13 +300,13 @@ def validate(hparams, trainer, datasets, subset, epoch):
                 continue
             extra_meters[k].update(v)
             stats[k] = extra_meters[k].avg
-        # progress.log(stats)
+        progress.log(stats)
 
     # log validation stats
     stats = get_valid_stats(trainer)
     for k, meter in extra_meters.items():
         stats[k] = meter.avg
-    # progress.print(stats)
+    progress.print(stats)
 
     return stats['valid_loss']
 
@@ -346,16 +343,19 @@ def save_checkpoint(trainer, hparams, epoch, batch_offset, val_loss=None):
         if not hparams.no_epoch_checkpoints:
             epoch_filename = os.path.join(save_dir, 'checkpoint{}.pt'.format(epoch))
             trainer.save_checkpoint(epoch_filename, extra_state)
+            logging.info('Save checkpoint to {} (epoch {})'.format(epoch_filename, epoch))
 
         assert val_loss is not None
         if not hasattr(save_checkpoint, 'best') or val_loss < save_checkpoint.best:
             save_checkpoint.best = val_loss
             best_filename = os.path.join(save_dir, 'checkpoint_best.pt')
             trainer.save_checkpoint(best_filename, extra_state)
+            logging.info('Save checkpoint to {} (epoch {})'.format(best_filename, epoch))
     elif not hparams.no_epoch_checkpoints:
         epoch_filename = os.path.join(
             save_dir, 'checkpoint{}_{}.pt'.format(epoch, batch_offset))
         trainer.save_checkpoint(epoch_filename, extra_state)
+        logging.info('Save checkpoint to {} (epoch {})'.format(epoch_filename, epoch))
 
     last_filename = os.path.join(save_dir, 'checkpoint_last.pt')
     trainer.save_checkpoint(last_filename, extra_state)

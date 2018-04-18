@@ -19,12 +19,17 @@ def add_general_args(parser):
     group.add_argument('--log-level', dest='logging_level', type=str, default='INFO', metavar='LEVEL',
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                        help='logging level, default is %(default)s')
+    group.add_argument('--no-progress-bar', action='store_true', help='disable progress bar')
+    group.add_argument('--log-interval', type=int, default=1000, metavar='N',
+                       help='log progress every N batches (when progress bar is disabled)')
+    group.add_argument('--log-format', default=None, help='log format to use',
+                       choices=['json', 'none', 'simple', 'tqdm'])
     group.add_argument('-H', '--hparams-set', dest='hparams_set', type=str, default='base')
     group.add_argument('-T', '--task', dest='task', type=str, default='test')
     group.add_argument('--seed', dest='seed', type=int, default=1, metavar='N',
                        help='pseudo random number generator seed')
     group.add_argument('-N', '--net-code-file', dest='net_code_file', type=str, metavar='FILE',
-                       help='net code filename')
+                       default='net_code_example/default.json', help='net code filename')
     return group
 
 
@@ -37,6 +42,11 @@ def add_hparams_args(parser):
                        help='max number of tokens in the target sequence')
     group.add_argument('--src-emb-size', dest='src_embedding_size', type=int, default=None)
     group.add_argument('--trg-emb-size', dest='trg_embedding_size', type=int, default=None)
+    group.add_argument('--decoder-out-embed-size', dest='decoder_out_embedding_size', type=int, metavar='N',
+                       default=None, help='decoder output embedding dimension')
+    group.add_argument('--share-input-output-embed', dest='share_input_output_embedding', action='store_true',
+                       default=None, help='share input and output embeddings (requires --decoder-out-embed-size'
+                                          ' and --trg-emb-size to be equal)')
     group.add_argument('--lstm-space', dest='lstm_space', type=str, default=None,
                        choices=lstm.Spaces.keys(),
                        help='LSTM search space: {}'.format(', '.join(lstm.Spaces.keys())))

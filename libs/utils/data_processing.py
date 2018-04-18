@@ -8,16 +8,16 @@ Mainly copied from fairseq-py.
 Language dataset format:
 
 ```
-# Assume source language = de, target language = en
+# Assume source language = de, target language = en, unique name = iwslt
 dataset-name/
-    train.de-en.de
-    train.de-en.en
-    dev.de-en.de
-    dev.de-en.en
-    test.de-en.de
-    test.de-en.en
-    dict.de-en.de
-    dict.de-en.en
+    train.iwslt.de-en.de
+    train.iwslt.de-en.en
+    dev.iwslt.de-en.de
+    dev.iwslt.de-en.en
+    test.iwslt.de-en.de
+    test.iwslt.de-en.en
+    dict.iwslt.de-en.de
+    dict.iwslt.de-en.en
 ```
 
 Dict format: pickled dict

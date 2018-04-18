@@ -24,12 +24,14 @@ import torch.nn.functional as F
 
 from .tasks import get_task
 from .utils.data_processing import LanguagePairDataset
+from .utils import common
 from .layers.common import Linear, Embedding, PositionalEmbedding
 from .layers.net_code import NetCodeEnum
 from .layers.lstm import build_lstm
 from .layers.cnn import build_cnn
 from .layers.attention import build_attention
-from .layers.multi_head_attention import MultiHeadAttention
+from .layers.multi_head_attention import EncDecAttention
+from .layers.grad_multiply import GradMultiply
 
 __author__ = 'fyabc'
 
@@ -55,6 +57,9 @@ class ChildEncoder(nn.Module):
         self.hparams = hparams
         self.task = get_task(hparams.task)
 
+        # Value from decoder
+        self.num_attention_layers = None
+
         # Encoder input shape (after embedding).
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
         self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
@@ -66,6 +71,8 @@ class ChildEncoder(nn.Module):
             self.task.PAD_ID,
             left_pad=LanguagePairDataset.LEFT_PAD_SOURCE,
         )
+
+        # TODO: Need fc1 to project src_emb_size to in_channels here?
 
         # The main encoder network.
         self._net = []
@@ -95,7 +102,8 @@ class ChildEncoder(nn.Module):
             src_lengths: (batch_size,) of long
 
         Returns:
-            (batch_size, src_seq_len, encoder_out_channels) of float32
+            Output: (batch_size, src_seq_len, src_emb_size) of float32
+            Output with embedding: (batch_size, src_seq_len, src_emb_size) of float32
         """
         x = src_tokens
         logging.debug('Encoder input shape: {}'.format(list(x.shape)))
@@ -120,55 +128,22 @@ class ChildEncoder(nn.Module):
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(x.shape)))
 
         # project back to size of embedding
-        # TODO: Explain this, why need to fc1: emb -> conv & fc2: conv -> emb?
         x = self.fc2(x)
 
-        # TODO: scale gradients (this only affects backward, not forward)
+        # scale gradients (this only affects backward, not forward)
+        x = GradMultiply.apply(x, 1.0 / (2.0 * self.num_attention_layers))
 
         # add output to input embedding for attention
         y = (x + source_embedding) * math.sqrt(0.5)
 
+        logging.debug('Encoder output shape: {} & {}'.format(list(x.shape), list(y.shape)))
         return x, y
+
+    def upgrade_state_dict(self, state_dict):
+        return state_dict
 
     def max_positions(self):
         return self.embed_positions.max_positions()
-
-
-class EncDecAttention(nn.Module):
-    def __init__(self, conv_channels, embed_dim, hparams):
-        super().__init__()
-        self.in_projection = Linear(conv_channels, embed_dim)
-        # [NOTE]: h = 1 now; can modify it?
-        self.multi_head = MultiHeadAttention(1, embed_dim, dropout=hparams.dropout, in_encoder=False)
-        self.out_projection = Linear(conv_channels, embed_dim)
-
-    def forward(self, x, target_embedding, encoder_outs, trg_lengths=None):
-        """
-
-        Args:
-            x: (batch_size, trg_seq_len, conv_channels) of float32
-            target_embedding: (batch_size, trg_seq_len, trg_emb_size) of float32
-            encoder_outs (tuple):
-                output: (batch_size, src_seq_len, encoder_out_channels) of float32
-                output add source embedding: same shape as output
-            trg_lengths: (batch_size, trg_seq_len) of long
-
-        Returns:
-            output: (batch_size, trg_seq_len, conv_channels) of float32
-            attn_score
-        """
-
-        # TODO: Shape bug here, how to design the enc-dec attention?
-
-        residual = x
-
-        x = (self.in_projection(x) + target_embedding) * math.sqrt(0.5)
-
-        x = self.multi_head(x, encoder_outs[0], encoder_outs[1], trg_lengths)
-
-        x = (self.out_projection(x) + residual) * math.sqrt(0.5)
-
-        return x, self.multi_head.attn
 
 
 class ChildDecoder(nn.Module):
@@ -208,7 +183,8 @@ class ChildDecoder(nn.Module):
             self._projections.append(projection)
             setattr(self, 'projection_{}'.format(i), projection)
 
-            attention = EncDecAttention(output_shape[2], hparams.trg_embedding_size, self.hparams)
+            attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
+                                        dropout=hparams.dropout, in_encoder=False)
             self._attentions.append(attention)
             setattr(self, 'attention_{}'.format(i), attention)
 
@@ -217,14 +193,23 @@ class ChildDecoder(nn.Module):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
-        self.fc_last = Linear(self.output_shape[2], self.task.TargetVocabSize)
+        self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size)
+
+        if hparams.share_input_output_embedding:
+            assert hparams.trg_embedding_size == hparams.decoder_out_embedding_size, \
+                'Shared embed weights implies same dimensions out_embedding_size={} vs trg_embedding_size={}'.format(
+                    hparams.decoder_out_embedding_size, hparams.trg_embedding_size)
+            self.fc_last = nn.Linear(hparams.decoder_out_embedding_size, self.task.TargetVocabSize)
+            self.fc_last.weight = self.embed_tokens.weight
+        else:
+            self.fc_last = Linear(hparams.decoder_out_embedding_size, self.task.TargetVocabSize)
 
     def forward(self, encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state=None):
         """
 
         Args:
             encoder_out (tuple):
-                output: (batch_size, src_seq_len, encoder_out_channels) of float32
+                output: (batch_size, src_seq_len, src_emb_size) of float32
                 output add source embedding: same shape as output
             src_lengths: (batch_size,) of long
             trg_tokens: (batch_size, trg_seq_len) of int32
@@ -232,8 +217,13 @@ class ChildDecoder(nn.Module):
             incremental_state: Incremental states for decoding. TODO
 
         Returns:
-
+            Output: (batch_size, trg_seq_len, trg_vocab_size) of float32
+            Attention scores: (batch_size, num_heads(8), trg_seq_len, src_seq_len) of float32
         """
+
+        # split and (transpose) encoder outputs
+        encoder_out = self._split_encoder_out(encoder_out, incremental_state)
+
         x = trg_tokens
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))
 
@@ -243,22 +233,19 @@ class ChildDecoder(nn.Module):
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         avg_attn_scores = None
-        num_attn_layers = len(self._attentions)
+        num_attn_layers = len(self._attentions)     # TODO: Explain why include layers without attention (None)?
         for i, (layer, projection, attention) in enumerate(zip(self._net, self._projections, self._attentions)):
             residual = x if projection is None else projection(x)
 
             x = layer(x, trg_lengths)
 
             # Attention layer.
-            # TODO: Add attention layer here
-            #   x, attn_scores = attention(x, target_embedding, encoder_outs)
-            # print('#', x.shape, target_embedding.shape, encoder_out[0].shape, encoder_out[1].shape, trg_lengths.shape)
-            # x, attn_scores = attention(x, target_embedding, encoder_out, trg_lengths)
-            # attn_scores = attn_scores / num_attn_layers
-            # if avg_attn_scores is None:
-            #     avg_attn_scores = attn_scores
-            # else:
-            #     avg_attn_scores.add_(attn_scores)
+            x, attn_scores = attention(x, target_embedding, encoder_out, trg_lengths)
+            attn_scores = attn_scores / num_attn_layers
+            if avg_attn_scores is None:
+                avg_attn_scores = attn_scores
+            else:
+                avg_attn_scores.add_(attn_scores)
 
             # Residual connection.
             # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
@@ -270,10 +257,11 @@ class ChildDecoder(nn.Module):
             logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
 
         # Project back to size of vocabulary
-        # TODO: fc2, dropout, fc3 in fairseq-py
+        x = self.fc2(x)
+        x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         x = self.fc_last(x)
 
-        logging.debug('Decoder output shape: {}'.format(list(x.shape)))
+        logging.debug('Decoder output shape: {} & {}'.format(list(x.shape), list(avg_attn_scores.shape)))
         return x, avg_attn_scores
 
     def _embed_tokens(self, tokens, incremental_state):
@@ -281,6 +269,26 @@ class ChildDecoder(nn.Module):
             # Keep only the last token for incremental forward pass
             tokens = tokens[:, -1:]
         return self.embed_tokens(tokens)
+
+    def _split_encoder_out(self, encoder_out, incremental_state):
+        """Split and transpose encoder outputs.
+
+        This is cached when doing incremental inference.
+        """
+        cached_result = common.get_incremental_state(self, incremental_state, 'encoder_out')
+        if cached_result is not None:
+            return cached_result
+
+        # # transpose only once to speed up attention layers
+        # # TODO: Does not do transpose here because of multi-head attention
+        # encoder_a, encoder_b = encoder_out
+        # encoder_a = encoder_a.transpose(1, 2).contiguous()
+        # result = (encoder_a, encoder_b)
+        result = encoder_out
+
+        if incremental_state is not None:
+            common.set_incremental_state(self, incremental_state, 'encoder_out', result)
+        return result
 
     @staticmethod
     def get_normalized_probs(net_output, log_probs=False):
@@ -290,8 +298,15 @@ class ChildDecoder(nn.Module):
         else:
             return F.softmax(logits, dim=-1)
 
+    def upgrade_state_dict(self, state_dict):
+        return state_dict
+
     def max_positions(self):
         return self.embed_positions.max_positions()
+
+    @property
+    def num_attention_layers(self):
+        return sum(layer is not None for layer in self._attentions)
 
 
 class ChildNet(nn.Module):
@@ -304,6 +319,7 @@ class ChildNet(nn.Module):
 
         self.encoder = ChildEncoder(net_code[0], hparams)
         self.decoder = ChildDecoder(net_code[1], hparams, encoder_output_shape=self.encoder.output_shape)
+        self.encoder.num_attention_layers = self.decoder.num_attention_layers
 
     def forward(self, src_tokens, src_lengths, trg_tokens, trg_lengths):
         """
@@ -334,6 +350,21 @@ class ChildNet(nn.Module):
 
     def max_decoder_positions(self):
         return self.decoder.max_positions()
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Copies parameters and buffers from state_dict into this module and
+        its descendants.
+
+        Overrides the method in nn.Module; compared with that method this
+        additionally "upgrades" state_dicts from old checkpoints.
+        """
+        state_dict = self.upgrade_state_dict(state_dict)
+        super().load_state_dict(state_dict, strict)
+
+    def upgrade_state_dict(self, state_dict):
+        state_dict = self.encoder.upgrade_state_dict(state_dict)
+        state_dict = self.decoder.upgrade_state_dict(state_dict)
+        return state_dict
 
     def num_parameters(self):
         """Number of parameters."""

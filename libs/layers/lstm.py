@@ -18,6 +18,9 @@ import torch.nn as nn
 __author__ = 'fyabc'
 
 
+ApplyMaskInLSTM = True
+
+
 class LSTMSpaceBase:
     """Search space of LSTM.
 
@@ -44,11 +47,25 @@ class LSTMLayer(nn.LSTM):
 
     This layer contains:
         Handle variable length inputs with masks
-            TODO: See <https://zhuanlan.zhihu.com/p/28472545> for details
+            See <https://zhuanlan.zhihu.com/p/28472545> for details
         Discard output states (h & c)
     """
     def forward(self, input_, lengths=None):
-        return super().forward(input_)[0]
+        if not ApplyMaskInLSTM:
+            return super().forward(input_)[0]
+
+        # TODO: Need test (correctness).
+        if lengths is None:
+            return super().forward(input_)[0]
+
+        _, sort_index = th.sort(-lengths)
+        _, unsort_index = th.sort(sort_index)
+        input_, lengths = input_[sort_index], lengths[sort_index]
+        packed_input = nn.utils.rnn.pack_padded_sequence(input_, list(lengths.data), batch_first=True)
+        packed_output, _ = super().forward(packed_input)
+        output, _ = nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True, padding_value=0.0)
+        output = output[unsort_index]
+        return output
 
 
 def build_lstm(layer_code, input_shape, hparams, in_encoder=True):

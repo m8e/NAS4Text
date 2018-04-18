@@ -23,6 +23,10 @@ Standard format:
 ]
 """
 
+import json
+import os
+import pickle
+
 __author__ = 'fyabc'
 
 
@@ -44,18 +48,27 @@ def dump_json(net_code):
 
 
 def load_json(fp):
+    return json.load(fp)
+
+
+def load_pickle(fp):
+    return pickle.load(fp)
+
+
+def check_correctness(code):
     pass
 
 
 def get_net_code(hparams):
-    # TODO
-    return [
-        [
-            [NetCodeEnum.LSTM, 0, 1],
-            [NetCodeEnum.Convolutional, 2, 1, 0],
-            [NetCodeEnum.Attention, 0],
-        ],
-        [
-            [NetCodeEnum.LSTM, 1, 0],
-        ]
-    ]
+    # TODO: Other format, correctness check, etc.
+    with open(hparams.net_code_file, 'r') as f:
+        ext = os.path.splitext(f.name)[1]
+        if ext == '.json':
+            code = load_json(f)
+        elif ext == '.pkl':
+            code = load_pickle(f)
+        else:
+            raise ValueError('Does not support this net code file format now')
+
+        check_correctness(code)
+        return code
