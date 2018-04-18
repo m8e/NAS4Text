@@ -137,6 +137,9 @@ def add_train_args(parser):
 
 
 def add_distributed_args(parser):
+    # TODO: Use `DataParallel` now, clean and refactor arguments and other related code.
+    # Move these options into DataParallel.
+
     group = parser.add_argument_group(
         'Distributed Options', description='Options that set distributed training.')
     group.add_argument('--distributed-world-size', type=int, metavar='N',

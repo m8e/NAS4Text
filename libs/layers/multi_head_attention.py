@@ -92,7 +92,7 @@ class MultiHeadAttention(nn.Module):
     def forward(self, query, key, value, lengths=None):
         if lengths is not None:
             left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if self.in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
-            mask = mask_from_lengths(lengths, left_pad=left_pad, cuda=True)
+            mask = mask_from_lengths(lengths, left_pad=left_pad, max_length=query.size()[1], cuda=True)
             assert query.size()[1] == mask.size()[1], 'Sequence length of query and mask must be same'
             # Same mask applied to all h heads.
             mask = mask.unsqueeze(1)
