@@ -14,6 +14,7 @@ Layer code:
 
 import torch as th
 import torch.nn as nn
+import torch.nn.functional as F
 
 __author__ = 'fyabc'
 
@@ -65,6 +66,13 @@ class LSTMLayer(nn.LSTM):
         packed_output, _ = super().forward(packed_input)
         output, _ = nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True, padding_value=0.0)
         output = output[unsort_index]
+
+        # [NOTE]: The input and output sequence length must be equal.
+        # In parallel training, input is split into chunks, so maximum lengths may less than global maximum,
+        # So output may be shorter than input, then we should pad it.
+        if output.shape[1] < input_.shape[1]:
+            output = F.pad(output, (0, 0, 0, input_.shape[1] - output.shape[1], 0, 0), value=0.0)
+
         return output
 
 

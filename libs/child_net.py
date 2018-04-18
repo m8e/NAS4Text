@@ -75,19 +75,18 @@ class ChildEncoder(nn.Module):
         # TODO: Need fc1 to project src_emb_size to in_channels here?
 
         # The main encoder network.
-        self._net = []
-        self._projections = []
-
+        # [NOTE]: If we put layers into `self._net`, this member will not update when duplicating the model,
+        # so `self._net` will point to the modules of other model replicas (on another GPUs), which is wrong.
+        self.num_layers = 0
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=True)
-            self._net.append(layer)
             setattr(self, 'layer_{}'.format(i), layer)
 
             projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
-            self._projections.append(projection)
             setattr(self, 'projection_{}'.format(i), projection)
             input_shape = output_shape
+            self.num_layers += 1
 
         # Encoder output shape
         self.output_shape = input_shape
@@ -113,7 +112,10 @@ class ChildEncoder(nn.Module):
         source_embedding = x
 
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
-        for i, (layer, projection) in enumerate(zip(self._net, self._projections)):
+        for i in range(self.num_layers):
+            layer = getattr(self, 'layer_{}'.format(i))
+            projection = getattr(self, 'projection_{}'.format(i))
+
             residual = x if projection is None else projection(x)
 
             x = layer(x, src_lengths)
@@ -169,26 +171,22 @@ class ChildDecoder(nn.Module):
         )
 
         # The main decoder network.
-        self._net = []
-        self._projections = []
-        self._attentions = []
+        self.num_layers = 0
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=False)
-            self._net.append(layer)
             setattr(self, 'layer_{}'.format(i), layer)
 
             projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
-            self._projections.append(projection)
             setattr(self, 'projection_{}'.format(i), projection)
 
             attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
                                         dropout=hparams.dropout, in_encoder=False)
-            self._attentions.append(attention)
             setattr(self, 'attention_{}'.format(i), attention)
 
             input_shape = output_shape
+            self.num_layers += 1
 
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
@@ -233,8 +231,12 @@ class ChildDecoder(nn.Module):
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         avg_attn_scores = None
-        num_attn_layers = len(self._attentions)     # TODO: Explain why include layers without attention (None)?
-        for i, (layer, projection, attention) in enumerate(zip(self._net, self._projections, self._attentions)):
+        num_attn_layers = self.num_layers   # TODO: Explain why include layers without attention (None)?
+        for i in range(self.num_layers):
+            layer = getattr(self, 'layer_{}'.format(i))
+            projection = getattr(self, 'projection_{}'.format(i))
+            attention = getattr(self, 'attention_{}'.format(i))
+
             residual = x if projection is None else projection(x)
 
             x = layer(x, trg_lengths)
@@ -280,7 +282,7 @@ class ChildDecoder(nn.Module):
             return cached_result
 
         # # transpose only once to speed up attention layers
-        # # TODO: Does not do transpose here because of multi-head attention
+        # # TODO: NOT do transpose here because of multi-head attention
         # encoder_a, encoder_b = encoder_out
         # encoder_a = encoder_a.transpose(1, 2).contiguous()
         # result = (encoder_a, encoder_b)
@@ -306,7 +308,7 @@ class ChildDecoder(nn.Module):
 
     @property
     def num_attention_layers(self):
-        return sum(layer is not None for layer in self._attentions)
+        return sum(getattr(self, 'attention_{}'.format(i)) is not None for i in range(self.num_layers))
 
 
 class ChildNet(nn.Module):
