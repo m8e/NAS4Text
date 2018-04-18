@@ -50,7 +50,7 @@ class EncoderConvLayer(nn.Module):
         - Output: :math:`(N, L_{out}, C_{out})`
     """
 
-    # TODO: Since CNN may change the sequence length, how to modify the mask?
+    # [NOTE]: Since CNN may change the sequence length, how to modify the mask?
     # Current solution: assume that "stride == 1".
 
     def __init__(self, in_channels, out_channels, kernel_size, stride):

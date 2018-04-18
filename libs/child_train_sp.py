@@ -276,7 +276,6 @@ def validate(hparams, trainer, datasets, subset, epoch):
         num_shards=hparams.distributed_world_size,
     )
 
-    # TODO: Progress bar
     progress = build_progress_bar(
         hparams, itr, epoch,
         prefix='valid on \'{}\' subset'.format(subset),
