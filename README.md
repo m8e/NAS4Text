@@ -11,6 +11,12 @@ Neural Architecture Search on Text Tasks.
 
 See docstring of [`libs/utils/data_processing.py`](libs/utils/data_processing.py).
 
+## Net Code Format
+
+See docstring of [`libs/layers/net_code.py`](libs/layers/net_code.py).
+
+User can put their net code files in `usr_net_code/`, which is ignored by git.
+
 ## Train Child Model
 
 ```bash
@@ -25,7 +31,20 @@ python child_train.py \
     -N net_code_example/default.json
 ```
 
-## Decoding Child Model
+## Model Storage
+
+```
+models/
+    <task-name>/
+        <hparams-set-name>/
+            <net-code-filename-without-ext>/
+                checkpoint1.pt
+                checkpoint_best.pt
+                checkpoint_last.pt
+                ...
+```
+
+## Inference Child Model
 
 TODO
 

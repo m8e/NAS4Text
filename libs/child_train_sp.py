@@ -17,7 +17,7 @@ from .layers.net_code import get_net_code
 from .child_net import ChildNet, ParalleledChildNet
 from .criterions import build_criterion
 from .child_trainer import ChildTrainer
-from .utils.paths import ModelDir
+from .utils.paths import get_model_path
 from .utils.meters import StopwatchMeter, AverageMeter
 from .utils.progress_bar import build_progress_bar
 
@@ -93,8 +93,9 @@ def single_process_main(hparams, datasets=None):
     ))
 
     # Load the latest checkpoint if one is available
-    os.makedirs(os.path.join(ModelDir, hparams.task), exist_ok=True)
-    checkpoint_path = os.path.join(ModelDir, hparams.task, hparams.restore_file)
+    model_path = get_model_path(hparams)
+    os.makedirs(model_path, exist_ok=True)
+    checkpoint_path = os.path.join(model_path, hparams.restore_file)
     extra_state = trainer.load_checkpoint(checkpoint_path)
     if extra_state is not None:
         epoch = extra_state['epoch']
@@ -336,7 +337,7 @@ def save_checkpoint(trainer, hparams, epoch, batch_offset, val_loss=None):
         'val_loss': val_loss,
     }
 
-    save_dir = os.path.join(ModelDir, hparams.task)
+    save_dir = get_model_path(hparams)
 
     if batch_offset == 0:
         if not hparams.no_epoch_checkpoints:

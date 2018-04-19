@@ -108,3 +108,6 @@ ENV/
 
 # Models
 /models/
+
+# User net code
+/usr_net_code/
