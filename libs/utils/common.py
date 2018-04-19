@@ -147,15 +147,21 @@ def make_positions(tensor, padding_idx, left_pad):
     """
     max_pos = padding_idx + 1 + tensor.size(1)
 
-    # [NOTE]: Do not use range buffer if not use fairseq parallel,
-    # because tensor and buffer must be on the same GPU device.
     if UseFairseqParallel:
         if not hasattr(make_positions, 'range_buf'):
             make_positions.range_buf = tensor.new()
         make_positions.range_buf = make_positions.range_buf.type_as(tensor)
         range_buf = make_positions.range_buf
     else:
-        range_buf = tensor.new()
+        # [NOTE]: Use multiple range buffers if not use fairseq parallel,
+        # because tensor and buffer must be on the same GPU device.
+        if not hasattr(make_positions, 'range_buf_dict'):
+            make_positions.range_buf_dict = {}
+        device_id = th.cuda.current_device()
+        if device_id not in make_positions.range_buf_dict:
+            make_positions.range_buf_dict[device_id] = tensor.new()
+        make_positions.range_buf_dict[device_id] = make_positions.range_buf_dict[device_id].type_as(tensor)
+        range_buf = make_positions.range_buf_dict[device_id]
 
     if range_buf.numel() < max_pos:
         th.arange(padding_idx + 1, max_pos, out=range_buf)
