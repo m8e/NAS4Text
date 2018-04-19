@@ -63,6 +63,8 @@ def add_dataset_args(parser, train=False, gen=False):
     group = parser.add_argument_group('Dataset Options:')
     group.add_argument('-b', '--max-sentences', '--batch-size', dest='max_sentences', type=int, metavar='N',
                        help='maximum number of sentences in a batch')
+    group.add_argument('--max-tokens', default=6000, type=int, metavar='N',
+                       help='maximum number of tokens in a batch')
     group.add_argument('--skip-invalid-size-inputs-valid-test', action='store_true',
                        help='Ignore too long or too short lines in valid and test set')
     if train:
@@ -97,8 +99,6 @@ def add_train_args(parser):
                        help='force stop training at specified epoch, default is inf')
     group.add_argument('--max-update', '--mu', default=0, type=int, metavar='N',
                        help='force stop training at specified update, default is inf')
-    group.add_argument('--max-tokens', default=6000, type=int, metavar='N',
-                       help='maximum number of tokens in a batch')
     group.add_argument('--clip-norm', default=25, type=float, metavar='NORM',
                        help='clip threshold of gradients')
     group.add_argument('--sentence-avg', action='store_true', default=False,
@@ -185,12 +185,15 @@ def add_generation_args(parser):
                        help='beam size')
     group.add_argument('--nbest', default=1, type=int, metavar='N',
                        help='number of hypotheses to output')
-    group.add_argument('--max-len-a', default=0, type=float, metavar='N',
+    group.add_argument('--max-len-a', default=0, type=float, metavar='N', dest='maxlen_a',
                        help=('generate sequences of maximum length ax + b, '
                              'where x is the source length'))
-    group.add_argument('--max-len-b', default=200, type=int, metavar='N',
+    group.add_argument('--max-len-b', default=200, type=int, metavar='N', dest='maxlen_b',
                        help=('generate sequences of maximum length ax + b, '
                              'where x is the source length'))
+    # TODO: This option need test
+    group.add_argument('--use-task-maxlen', default=False, action='store_true',
+                       help='use maxlen information in the task')
     group.add_argument('--remove-bpe', nargs='?', const='@@ ', default=None,
                        help='remove BPE tokens before scoring')
     group.add_argument('--no-early-stop', action='store_true',

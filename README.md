@@ -20,7 +20,7 @@ User can put their net code files in `usr_net_code/`, which is ignored by git.
 ## Train Child Model
 
 ```bash
-python train.py [More options]
+python child_train.py [More options]
 
 # Example on de-en iwslt dataset
 python child_train.py \
@@ -46,7 +46,18 @@ models/
 
 ## Inference Child Model
 
-TODO
+```bash
+python child_gen.py [More options]
+
+# Example on de-en iwslt dataset
+python child_gen.py \
+    -T de_en_iwslt \
+    -H normal \
+    -N net_code_example/default.json \
+    --max-tokens 500 \
+    --path checkpoint_last.pt \
+    --use-task-maxlen
+```
 
 ## Train Teacher Model
 

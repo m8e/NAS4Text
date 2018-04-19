@@ -79,6 +79,20 @@ class TextTask:
     EOS_ID = 1
     UNK_ID = 2
 
+    # Average sentence lengths of the dataset
+    LengthInfo = {
+        'src': {
+            'train': 1,
+            'dev': 2,
+            'test': 1,
+        },
+        'trg': {
+            'train': 1,
+            'dev': 2,
+            'test': 1,
+        },
+    }
+
     @classmethod
     def get_lang_pair(cls):
         return [cls.SourceLang, cls.TargetLang]
@@ -101,6 +115,24 @@ class TextTask:
         """
         return '{}.{}.{}-{}.{}'.format(split, cls.UniqueFilename, cls.SourceLang, cls.TargetLang,
                                        cls.SourceLang if is_src_lang else cls.TargetLang)
+
+    @classmethod
+    def get_avg_length(cls, split, is_src_lang):
+        return cls.LengthInfo['src' if is_src_lang else 'trg'][split]
+
+    @classmethod
+    def get_maxlen_a_b(cls):
+        """Get the factors a & b of target length in generation.
+
+        Get it from average length in train and dev datasets.
+
+        trg_length = a * src_length + b
+        """
+        x1, x2 = cls.LengthInfo['src']['train'], cls.LengthInfo['src']['dev']
+        y1, y2 = cls.LengthInfo['trg']['train'], cls.LengthInfo['trg']['dev']
+        a = (y2 - y1) / (x2 - x1)
+        b = y1 - a * x1
+        return a, b
 
     @classmethod
     def get_vocab_size(cls, is_src_lang=True):
@@ -131,3 +163,16 @@ class DeEnIwslt(TextTask):
 
     SourceVocabSize = 32010
     TargetVocabSize = 22823
+
+    LengthInfo = {
+        'src': {
+            'train': 18.5276143642,
+            'dev': 18.5530205194,
+            'test': 19.6278518519,
+        },
+        'trg': {
+            'train': 19.5001891395,
+            'dev': 19.5236045344,
+            'test': 20.4282962963,
+        },
+    }
