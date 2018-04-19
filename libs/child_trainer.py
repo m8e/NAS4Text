@@ -70,18 +70,22 @@ class ChildTrainer:
     def save_checkpoint(self, filename, extra_state):
         """Save all training state in a checkpoint file."""
         if distributed_utils.is_master(self.hparams):
-            common.save_state(filename, self.hparams, self.model, self.criterion, self.optimizer,
-                              self.lr_scheduler, self._num_updates, self._optim_history, extra_state)
+            model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+            common.save_state(filename, self.hparams, model, self.criterion, self.optimizer,
+                              self.lr_scheduler, self._num_updates, self._optim_history, extra_state,
+                              model.net_code)
 
     def load_checkpoint(self, filename):
         """Load all training state from a checkpoint file."""
 
+        model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+
         extra_state, self._optim_history, last_optim_state = common.load_model_state(
-            filename, self.model, cuda_device=th.cuda.current_device())
+            filename, model, cuda_device=th.cuda.current_device())
 
         if last_optim_state is not None:
             # rebuild optimizer after loading model, since params may have changed
-            self.optimizer = build_optimizer(self.hparams, self.model.parameters())
+            self.optimizer = build_optimizer(self.hparams, model.parameters())
             self.lr_scheduler = build_lr_scheduler(self.hparams, self.optimizer)
 
             # only reload optimizer and lr_scheduler if they match

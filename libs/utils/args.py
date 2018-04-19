@@ -159,20 +159,75 @@ def add_distributed_args(parser):
     return group
 
 
-def add_checkpoint_args(parser):
+def add_checkpoint_args(parser, gen=False):
     group = parser.add_argument_group('Checkpoint Options')
     group.add_argument('--restore-file', default='checkpoint_last.pt',
                        help='Filename in model directory from which to load checkpoint, '
                             'default is %(default)s')
-    group.add_argument('--save-interval', type=int, default=-1, metavar='N',
-                       help='save a checkpoint every N updates')
-    group.add_argument('--no-save', action='store_true', default=False,
-                       help='don\'t save models and checkpoints')
-    group.add_argument('--no-epoch-checkpoints', action='store_true',
-                       help='only store last and best checkpoints')
-    group.add_argument('--validate-interval', type=int, default=1, metavar='N',
-                       help='validate every N epochs')
+    if not gen:
+        group.add_argument('--save-interval', type=int, default=-1, metavar='N',
+                           help='save a checkpoint every N updates')
+        group.add_argument('--no-save', action='store_true', default=False,
+                           help='don\'t save models and checkpoints')
+        group.add_argument('--no-epoch-checkpoints', action='store_true',
+                           help='only store last and best checkpoints')
+        group.add_argument('--validate-interval', type=int, default=1, metavar='N',
+                           help='validate every N epochs')
     return group
+
+
+def add_generation_args(parser):
+    group = parser.add_argument_group('Generation Options')
+
+    group.add_argument('--path', metavar='FILE', action='append',
+                       help='path(s) to model file(s)')
+    group.add_argument('--beam', default=5, type=int, metavar='N',
+                       help='beam size')
+    group.add_argument('--nbest', default=1, type=int, metavar='N',
+                       help='number of hypotheses to output')
+    group.add_argument('--max-len-a', default=0, type=float, metavar='N',
+                       help=('generate sequences of maximum length ax + b, '
+                             'where x is the source length'))
+    group.add_argument('--max-len-b', default=200, type=int, metavar='N',
+                       help=('generate sequences of maximum length ax + b, '
+                             'where x is the source length'))
+    group.add_argument('--remove-bpe', nargs='?', const='@@ ', default=None,
+                       help='remove BPE tokens before scoring')
+    group.add_argument('--no-early-stop', action='store_true',
+                       help=('continue searching even after finalizing k=beam '
+                             'hypotheses; this is more correct, but increases '
+                             'generation time by 50%%'))
+    group.add_argument('--unnormalized', action='store_true',
+                       help='compare unnormalized hypothesis scores')
+    group.add_argument('--cpu', action='store_true', help='generate on CPU')
+    group.add_argument('--no-beamable-mm', action='store_true',
+                       help='don\'t use BeamableMM in attention layers')
+    group.add_argument('--lenpen', default=1, type=float,
+                       help='length penalty: <1.0 favors shorter, >1.0 favors longer sentences')
+    group.add_argument('--unkpen', default=0, type=float,
+                       help='unknown word penalty: <0 produces more unks, >0 produces fewer')
+    group.add_argument('--replace-unk', nargs='?', const=True, default=None,
+                       help='perform unknown replacement (optionally with alignment dictionary)')
+    group.add_argument('--quiet', action='store_true',
+                       help='only print final scores')
+    group.add_argument('--score-reference', action='store_true',
+                       help='just score the reference translation')
+    group.add_argument('--prefix-size', default=0, type=int, metavar='PS',
+                       help='initialize generation by target prefix of given length')
+    group.add_argument('--sampling', action='store_true',
+                       help='sample hypotheses instead of using beam search')
+    return group
+
+
+def _set_default_hparams(parsed_args):
+    """Set default value of hparams."""
+    base_hparams = get_hparams(parsed_args.hparams_set)
+
+    for name, value in base_hparams.__dict__.items():
+        if getattr(parsed_args, name, None) is None:
+            setattr(parsed_args, name, value)
+
+    return parsed_args
 
 
 def get_args(args=None):
@@ -186,16 +241,28 @@ def get_args(args=None):
     add_checkpoint_args(parser)
 
     parsed_args = parser.parse_args(args)
-    base_hparams = get_hparams(parsed_args.hparams_set)
 
-    # Set default value of hparams.
-    for name, value in base_hparams.__dict__.items():
-        if getattr(parsed_args, name, None) is None:
-            setattr(parsed_args, name, value)
+    _set_default_hparams(parsed_args)
 
     # Post process args.
     parsed_args.lr = list(map(float, parsed_args.lr.split(',')))
     if parsed_args.max_sentences_valid is None:
         parsed_args.max_sentences_valid = parsed_args.max_sentences
+
+    return parsed_args
+
+
+def get_generator_args(args=None):
+    parser = argparse.ArgumentParser(description='Generating Script.')
+
+    add_general_args(parser)
+    add_checkpoint_args(parser, gen=True)
+    add_dataset_args(parser, gen=True)
+    add_generation_args(parser)
+    # TODO: Add other args.
+
+    parsed_args = parser.parse_args(args)
+
+    _set_default_hparams(parsed_args)
 
     return parsed_args

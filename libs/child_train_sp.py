@@ -12,6 +12,7 @@ import pprint
 
 import torch as th
 
+from .utils.main_utils import main_entry
 from .utils.data_processing import LanguageDatasets
 from .layers.net_code import get_net_code
 from .child_net import ChildNet, ParalleledChildNet
@@ -27,58 +28,25 @@ __author__ = 'fyabc'
 def single_process_main(hparams, datasets=None):
     """Main entry for training the child network.
 
-        Can be called by user or the teacher model.
+    Can be called by user or the teacher model.
 
-        Args:
-            hparams: Hyper-parameters passed to the child trainer.
-            datasets: Preload datasets, may be used to share dataset when called by teacher model.
+    Args:
+        hparams: Hyper-parameters passed to the child trainer.
+        datasets: Preload datasets, may be used to share dataset when called by teacher model.
 
-        Returns:
-            The child trainer instance.
-        """
+    Returns:
+        The child trainer instance.
+    """
 
     # TODO: Like fairseq-py, add multiprocessing and distributed training.
 
-    logging.basicConfig(
-        format='[{levelname:<8}] {asctime}.{msecs:0>3.0f}: <{filename}:{lineno}> {message}',
-        level=hparams.logging_level,
-        style='{',
-    )
-
-    logging.info('Start single process training')
-    logging.info('Task: {}'.format(hparams.task))
-    logging.info('HParams set: {}'.format(hparams.hparams_set))
-    logging.info('Child training hparams:\n{}'.format(pprint.pformat(hparams.__dict__)))
-
-    if not th.cuda.is_available():
-        raise RuntimeError('Want to training on GPU but CUDA is not available')
-    th.cuda.set_device(hparams.device_id)
-
-    th.manual_seed(hparams.seed)
-
-    # Get net code
-    net_code = get_net_code(hparams)
-    logging.info('Net code information:')
-    logging.info('LSTM search space: {}'.format(hparams.lstm_space))
-    logging.info('Convolutional search space: {}'.format(hparams.conv_space))
-    logging.info('Attention search space: {}'.format(hparams.attn_space))
-
-    # Load datasets
-    datasets = LanguageDatasets(hparams.task) if datasets is None else datasets
-    logging.info('Dataset information:')
-    _d_src = datasets.source_dict
-    logging.info('Source dictionary [{}]: len = {}'.format(_d_src.language, len(_d_src)))
-    _d_trg = datasets.target_dict
-    logging.info('Source dictionary [{}]: len = {}'.format(_d_trg.language, len(_d_trg)))
-
-    splits = ['train', 'dev']
-    datasets.load_splits(splits)
-    for split in splits:
-        logging.info('Split {}: len = {}'.format(split, len(datasets.splits[split])))
+    components = main_entry(hparams, datasets, train=True)
+    net_code = components['net_code']
+    datasets = components['datasets']
 
     # Build model and criterion
     model = ChildNet(net_code, hparams)
-    model = ParalleledChildNet(model)
+    model = ParalleledChildNet(model, output_device=hparams.device_id)
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
     logging.info('Model structure:\n{}'.format(model))
     logging.info('Criterion: {}'.format(criterion.__class__.__name__))

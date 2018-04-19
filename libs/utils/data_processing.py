@@ -123,6 +123,22 @@ class LanguageDatasets:
             self.get_dataset(split)
 
 
+class ShardedIterator:
+    def __init__(self, itr, num_shards, shard_id):
+        assert 0 <= shard_id < num_shards
+        self.itr = itr
+        self.num_shards = num_shards
+        self.shard_id = shard_id
+
+    def __len__(self):
+        return len(self.itr)
+
+    def __iter__(self):
+        for i, v in enumerate(self.itr):
+            if i % self.num_shards == self.shard_id:
+                yield v
+
+
 class TextDataset:
     def __init__(self, path, dictionary, append_eos=True, reverse_order=False):
         self.tokens_list = []

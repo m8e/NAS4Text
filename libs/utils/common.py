@@ -27,7 +27,7 @@ def torch_persistent_save(*args, **kwargs):
 
 
 def save_state(filename, hparams, model, criterion, optimizer, lr_scheduler,
-               num_updates, optim_history=None, extra_state=None):
+               num_updates, optim_history=None, extra_state=None, net_code=None):
     if optim_history is None:
         optim_history = []
     if extra_state is None:
@@ -44,6 +44,7 @@ def save_state(filename, hparams, model, criterion, optimizer, lr_scheduler,
             }
         ],
         'last_optimizer_state': optimizer.state_dict(),
+        'net_code': net_code,
         'extra_state': extra_state,
     }
     torch_persistent_save(state_dict, filename)
@@ -113,6 +114,52 @@ def _upgrade_state_dict(state):
     if 'num_updates' not in state['optimizer_history'][-1]:
         state['optimizer_history'][-1]['num_updates'] = 0
     return state
+
+
+def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=None):
+    """Load an ensemble of models for inference.
+
+    model_arg_overrides allows you to pass a dictionary model_arg_overrides --
+    {'arg_name': arg} -- to override model hparams that were used during model
+    training
+    """
+    from ..child_net import ChildNet
+
+    # load model architectures and weights
+    states = []
+    for filename in filenames:
+        if not os.path.exists(filename):
+            raise IOError('Model file not found: {}'.format(filename))
+        states.append(
+            th.load(filename, map_location=lambda s, l: default_restore_location(s, 'cpu'))
+        )
+    hparams = states[0]['hparams']
+    if model_arg_overrides is not None:
+        hparams = _override_model_hparams(hparams, model_arg_overrides)
+
+    # build ensemble
+    ensemble = []
+    for state in states:
+        net_code_from_pt = state.get('net_code', None)
+        if net_code_from_pt is None:
+            if net_code is None:
+                raise ValueError('Must provide net code from checkpoint or argument')
+            final_net_code = net_code
+        else:
+            if net_code is not None and net_code_from_pt != net_code:
+                raise RuntimeError('Net code from checkpoint is different from that in argument')
+            final_net_code = net_code_from_pt
+        model = ChildNet(final_net_code, hparams)
+        model.load_state_dict(state['model'])
+        ensemble.append(model)
+    return ensemble, hparams
+
+
+def _override_model_hparams(hparams, model_arg_overrides):
+    # Uses model_arg_overrides {'arg_name': arg} to override model hparams
+    for arg_name, arg_val in model_arg_overrides.items():
+        setattr(hparams, arg_name, arg_val)
+    return hparams
 
 
 def maybe_no_grad(condition=True):

@@ -340,6 +340,12 @@ class ChildNet(nn.Module):
 
         return decoder_out
 
+    def encode(self, src_tokens, src_lengths):
+        return self.encoder(src_tokens, src_lengths)
+
+    def decode(self, encoder_out, src_lengths, trg_tokens, trg_lengths):
+        return self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths)
+
     def get_normalized_probs(self, net_output, log_probs=False):
         return self.decoder.get_normalized_probs(net_output, log_probs)
 
@@ -373,21 +379,18 @@ class ChildNet(nn.Module):
         return sum(p.data.numel() for p in self.parameters())
 
 
+def _forward_call(method_name):
+    def _method(self, *args, **kwargs):
+        return getattr(self.module, method_name)(*args, **kwargs)
+    return _method
+
+
 class ParalleledChildNet(nn.DataParallel):
-    def get_normalized_probs(self, *args, **kwargs):
-        return self.module.get_normalized_probs(*args, **kwargs)
-
-    def get_targets(self, *args, **kwargs):
-        return self.module.get_targets(*args, **kwargs)
-
-    def max_encoder_positions(self, *args, **kwargs):
-        return self.module.max_encoder_positions(*args, **kwargs)
-
-    def max_decoder_positions(self, *args, **kwargs):
-        return self.module.max_decoder_positions(*args, **kwargs)
-
-    def upgrade_state_dict(self, *args, **kwargs):
-        return self.module.upgrade_state_dict(*args, **kwargs)
-
-    def num_parameters(self, *args, **kwargs):
-        return self.module.num_parameters(*args, **kwargs)
+    encode = _forward_call('encode')
+    decode = _forward_call('decode')
+    get_normalized_probs = _forward_call('get_normalized_probs')
+    get_targets = _forward_call('get_targets')
+    max_encoder_positions = _forward_call('max_encoder_positions')
+    max_decoder_positions = _forward_call('max_decoder_positions')
+    upgrade_state_dict = _forward_call('upgrade_state_dict')
+    num_parameters = _forward_call('num_parameters')
