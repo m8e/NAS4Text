@@ -111,3 +111,6 @@ ENV/
 
 # User net code
 /usr_net_code/
+
+# Translated output
+/translated/

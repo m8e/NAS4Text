@@ -7,7 +7,7 @@ import os
 import torch as th
 
 from .utils.main_utils import main_entry
-from .utils.paths import get_model_path
+from .utils.paths import get_model_path, get_translate_output_path
 from .utils.data_processing import ShardedIterator
 from .utils.meters import StopwatchMeter
 from .utils import common
@@ -63,6 +63,7 @@ class ChildGenerator:
 
         src_dict, trg_dict = self.datasets.source_dict, self.datasets.target_dict
 
+        translated_strings = []
         for i, sample in enumerate(itr):
             batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
             print('Batch {}:'.format(i))
@@ -70,12 +71,23 @@ class ChildGenerator:
                     sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
                 print('SOURCE:', src_dict.string(src_tokens, bpe_symbol=self.hparams.remove_bpe))
                 print('REF   :', trg_dict.string(trg_tokens, bpe_symbol=self.hparams.remove_bpe, escape_unk=True))
-                print('DECODE:', trg_dict.string(
-                    translated_tokens, bpe_symbol=self.hparams.remove_bpe, escape_unk=True))
+                trans_str = trg_dict.string(translated_tokens, bpe_symbol=self.hparams.remove_bpe, escape_unk=True)
+                print('DECODE:', trans_str)
+                translated_strings.append(trans_str)
             print()
 
         logging.info('Translated {} sentences in {:.1f}s ({:.2f} sentences/s)'.format(
             gen_timer.n, gen_timer.sum, 1. / gen_timer.avg))
+
+        # Dump decoding outputs.
+        if self.hparams.output_file is not None:
+            output_path = get_translate_output_path(self.hparams)
+            os.makedirs(output_path, exist_ok=True)
+            full_path = os.path.join(output_path, self.hparams.output_file)
+            with open(full_path, 'w') as f:
+                for line in translated_strings:
+                    print(line, file=f)
+            logging.info('Decode output write to {}.'.format(full_path))
 
     def _greedy_decoding(self, sample, timer=None):
         """

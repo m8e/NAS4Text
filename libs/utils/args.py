@@ -219,6 +219,8 @@ def add_generation_args(parser):
                        help='initialize generation by target prefix of given length')
     group.add_argument('--sampling', action='store_true',
                        help='sample hypotheses instead of using beam search')
+    group.add_argument('--output-file', default=None, type=str, metavar='FILE',
+                       help='Translation output file, default stored in ')
     return group
 
 

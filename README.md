@@ -56,7 +56,8 @@ python child_gen.py \
     -N net_code_example/default.json \
     --max-tokens 500 \
     --path checkpoint_last.pt \
-    --use-task-maxlen
+    --use-task-maxlen \
+    --output-file output_pt1.txt
 ```
 
 ## Train Teacher Model
