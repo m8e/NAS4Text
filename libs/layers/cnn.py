@@ -39,7 +39,6 @@ class EncoderConvLayer(nn.Module):
 
     This layer contains:
         Input padding
-        Residual connections
         Residual convolutional layer for different input and output shape
         GLU gate
 
@@ -117,11 +116,38 @@ class DecoderConvLayer(nn.Module):
         self.kernel_size = kernel_size
         self.stride = stride
 
-        # TODO
+        self.conv = nn.Conv1d(
+            in_channels=in_channels,
+            out_channels=out_channels * 2,  # Multiply by 2 for GLU
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=(kernel_size - 1),
+        )
+
+        # Residual convolutional layer for different input and output sequence length (stride > 1).
+        if self.stride > 1:
+            self.residual_conv = nn.Conv1d(
+                in_channels=out_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=stride,
+                padding=0,
+            )
+        else:
+            self.residual_conv = None
 
     def forward(self, input_, mask=None):
-        # TODO
-        pass
+        x = input_.transpose(1, 2)
+
+        x = self.conv(x)
+
+        # GLU.
+        x = F.glu(x, dim=1)
+
+        # Remove last (kernel_size - 1) sequence
+        x = x[:, :, :1 - self.kernel_size]
+
+        return x.transpose(1, 2)
 
 
 def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
@@ -147,11 +173,19 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
     kernel_size = space.KernelSizes[layer_code[2]]
     stride = space.Strides[layer_code[3]]
 
-    layer = EncoderConvLayer(
-        in_channels=in_channels,
-        out_channels=out_channels,
-        kernel_size=kernel_size,
-        stride=stride,
-    )
+    if in_encoder:
+        layer = EncoderConvLayer(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+        )
+    else:
+        layer = DecoderConvLayer(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+        )
 
     return layer, th.Size([batch_size, seq_length, out_channels])

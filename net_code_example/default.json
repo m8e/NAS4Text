@@ -1,3 +1,73 @@
+/// Default network example.
+/// Layer types:
+///     0:  LSTM
+///     Parameters:
+///         1) Hidden size [0 ~ 3]
+///             Base:   [32, 64, 128, 256]
+///             Large:  [64, 128, 256, 512]
+///         2) Is bidirectional [0 ~ 1]
+///             Base: [False, True]
+///
+///     1:  Convolutional
+///     Parameters:
+///         1) Output channels (hidden size) [0 ~ 3]
+///             Base:   [8, 16, 32, 64]
+///             Large:  [64, 128, 256, 512]
+///         2) Kernel size [0 ~ 3]
+///             Base:   [1, 3, 5, 7]
+///         3) Stride [0 ~ 2]   FIXME: This must be 0 (stride = 1) now
+///             Base:   [0, 1, 2]
+///
+///     2:  Self-Attention
+///     Parameters:
+///         1) Number of heads [0 ~ 3]
+///             Base:   [2, 4, 8, 16]
+///
+
+/// Result Network:
+//
+//ParalleledChildNet(
+//  (module): ChildNet(
+//    (encoder): ChildEncoder(
+//      (embed_tokens): Embedding(32010, 512, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
+//      (layer_0): LSTMLayer(512, 32, batch_first=True, dropout=0.1, bidirectional=True)
+//      (projection_0): Linear(in_features=512, out_features=64)
+//      (layer_1): EncoderConvLayer(
+//        (conv): Conv1d (64, 64, kernel_size=(3,), stride=(1,))
+//      )
+//      (projection_1): Linear(in_features=64, out_features=32)
+//      (layer_2): SelfAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=32, out_features=32)
+//          (1): Linear(in_features=32, out_features=32)
+//          (2): Linear(in_features=32, out_features=32)
+//          (3): Linear(in_features=32, out_features=32)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (fc2): Linear(in_features=32, out_features=512)
+//    )
+//    (decoder): ChildDecoder(
+//      (embed_tokens): Embedding(22823, 512, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
+//      (layer_0): LSTMLayer(512, 64, batch_first=True, dropout=0.1)
+//      (projection_0): Linear(in_features=512, out_features=64)
+//      (attention_0): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=64, out_features=512)
+//          (1): Linear(in_features=512, out_features=512)
+//          (2): Linear(in_features=512, out_features=512)
+//          (3): Linear(in_features=512, out_features=64)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (fc2): Linear(in_features=64, out_features=256)
+//      (fc_last): Linear(in_features=256, out_features=22823)
+//    )
+//  )
+//)
+
 [
     [
         [0, 0, 1],

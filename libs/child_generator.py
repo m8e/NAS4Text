@@ -144,6 +144,7 @@ class ChildGenerator:
         return trg_tokens[:, 1:].data
 
     def beam_search(self):
+        # TODO
         pass
 
     def _get_normalized_probs(self, net_outputs):

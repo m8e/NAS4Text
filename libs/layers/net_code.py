@@ -26,6 +26,7 @@ Standard format:
 import json
 import os
 import pickle
+import re
 
 __author__ = 'fyabc'
 
@@ -36,19 +37,14 @@ class NetCodeEnum:
     Convolutional = 1
     Attention = 2
 
-    # Recurrent hyperparameters.
 
-    # Convolutional hyperparameters.
-
-    # Attention hyperparameters.
-
-
-def dump_json(net_code):
-    pass
+def dump_json(net_code, fp):
+    json.dump(net_code, fp)
 
 
 def load_json(fp):
-    return json.load(fp)
+    """Load net code from JSON file, remove line comments."""
+    return json.loads(''.join(re.sub(r'//.*\n', '\n', _line) for _line in fp))
 
 
 def load_pickle(fp):

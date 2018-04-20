@@ -1,0 +1,54 @@
+/// Stacked LSTM (2 encoder layers, 2 decoder layers)
+/// Result Network:
+//
+//ParalleledChildNet(
+//  (module): ChildNet(
+//    (encoder): ChildEncoder(
+//      (embed_tokens): Embedding(32010, 512, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
+//      (layer_0): LSTMLayer(512, 128, batch_first=True, dropout=0.1, bidirectional=True)
+//      (projection_0): Linear(in_features=512, out_features=256)
+//      (layer_1): LSTMLayer(256, 128, batch_first=True, dropout=0.1)
+//      (projection_1): Linear(in_features=256, out_features=128)
+//      (fc2): Linear(in_features=128, out_features=512)
+//    )
+//    (decoder): ChildDecoder(
+//      (embed_tokens): Embedding(22823, 512, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
+//      (layer_0): LSTMLayer(512, 64, batch_first=True, dropout=0.1)
+//      (projection_0): Linear(in_features=512, out_features=64)
+//      (attention_0): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=64, out_features=512)
+//          (1): Linear(in_features=512, out_features=512)
+//          (2): Linear(in_features=512, out_features=512)
+//          (3): Linear(in_features=512, out_features=64)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (layer_1): LSTMLayer(64, 64, batch_first=True, dropout=0.1)
+//      (attention_1): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=64, out_features=512)
+//          (1): Linear(in_features=512, out_features=512)
+//          (2): Linear(in_features=512, out_features=512)
+//          (3): Linear(in_features=512, out_features=64)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (fc2): Linear(in_features=64, out_features=256)
+//      (fc_last): Linear(in_features=256, out_features=22823)
+//    )
+//  )
+//)
+
+[
+    [
+        [0, 2, 1],
+        [0, 2, 0]
+    ],
+    [
+        [0, 1, 0],
+        [0, 1, 0]
+    ]
+]

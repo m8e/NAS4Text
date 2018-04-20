@@ -79,6 +79,8 @@ class ChildEncoder(nn.Module):
         # so `self._net` will point to the modules of other model replicas (on another GPUs), which is wrong.
         self.num_layers = 0
         input_shape = self.input_shape
+        # self.fc1 = Linear(input_shape[2], 128)
+        # input_shape = th.Size([1, 1, 128])
         for i, layer_code in enumerate(code):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=True)
             setattr(self, 'layer_{}'.format(i), layer)
@@ -110,6 +112,8 @@ class ChildEncoder(nn.Module):
         x = self.embed_tokens(x) + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
+
+        # x = self.fc1(x)
 
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         for i in range(self.num_layers):
