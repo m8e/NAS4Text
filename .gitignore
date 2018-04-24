@@ -114,3 +114,7 @@ ENV/
 
 # Translated output
 /translated/
+
+# Logs
+/log/
+
