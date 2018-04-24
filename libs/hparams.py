@@ -78,3 +78,17 @@ def hparams_normal():
     hparams.decoder_out_embedding_size = 256
 
     return hparams
+
+
+@register_hparams('fairseq_de_en_iwslt')
+def hparams_fairseq_de_en_iwslt():
+    """HParams of de-en iwslt, copied from fairseq-py."""
+
+    hparams = hparams_normal()
+
+    hparams.conv_space = 'large'
+    hparams.src_embedding_size = 256
+    hparams.trg_embedding_size = 256
+    hparams.decoder_out_embedding_size = 256
+
+    return hparams

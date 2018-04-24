@@ -197,5 +197,6 @@ def generate_main(hparams, datasets=None):
     generator = ChildGenerator(hparams, datasets, models)
     if use_cuda:
         generator.cuda()
+        logging.info('Use CUDA, running on device {}'.format(th.cuda.current_device()))
 
     generator.greedy_decoding()

@@ -1,0 +1,95 @@
+/// Fairseq model settings (for de_en_iwslt).
+/// Settings copied from fairseq-py:
+//
+//@register_model_architecture('fconv', 'fconv_iwslt_de_en')
+//def fconv_iwslt_de_en(args):
+//    base_architecture(args)
+//    args.encoder_embed_dim = 256
+//    args.encoder_layers = '[(256, 3)] * 4'
+//    args.decoder_embed_dim = 256
+//    args.decoder_layers = '[(256, 3)] * 3'
+//    args.decoder_out_embed_dim = 256
+
+/// Related argument options:
+//
+// --hparams fairseq_de_en_iwslt
+
+/// Result Network:
+//
+//ParalleledChildNet(
+//  (module): ChildNet(
+//    (encoder): ChildEncoder(
+//      (embed_tokens): Embedding(32010, 256, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 256, padding_idx=0)
+//      (layer_0): EncoderConvLayer(
+//        (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,))
+//      )
+//      (layer_1): EncoderConvLayer(
+//        (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,))
+//      )
+//      (layer_2): EncoderConvLayer(
+//        (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,))
+//      )
+//      (layer_3): EncoderConvLayer(
+//        (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,))
+//      )
+//      (fc2): Linear(in_features=256, out_features=256)
+//    )
+//    (decoder): ChildDecoder(
+//      (embed_tokens): Embedding(22823, 256, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 256, padding_idx=0)
+//      (layer_0): DecoderConvLayer(
+//        (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,), padding=(2,))
+//      )
+//      (attention_0): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=256, out_features=256)
+//          (1): Linear(in_features=256, out_features=256)
+//          (2): Linear(in_features=256, out_features=256)
+//          (3): Linear(in_features=256, out_features=256)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (layer_1): DecoderConvLayer(
+//        (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,), padding=(2,))
+//      )
+//      (attention_1): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=256, out_features=256)
+//          (1): Linear(in_features=256, out_features=256)
+//          (2): Linear(in_features=256, out_features=256)
+//          (3): Linear(in_features=256, out_features=256)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (layer_2): DecoderConvLayer(
+//        (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,), padding=(2,))
+//      )
+//      (attention_2): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=256, out_features=256)
+//          (1): Linear(in_features=256, out_features=256)
+//          (2): Linear(in_features=256, out_features=256)
+//          (3): Linear(in_features=256, out_features=256)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (fc2): Linear(in_features=256, out_features=256)
+//      (fc_last): Linear(in_features=256, out_features=22823)
+//    )
+//  )
+//)
+
+[
+    [
+        [1, 2, 1, 0],
+        [1, 2, 1, 0],
+        [1, 2, 1, 0],
+        [1, 2, 1, 0]
+    ],
+    [
+        [1, 2, 1, 0],
+        [1, 2, 1, 0],
+        [1, 2, 1, 0]
+    ]
+]
