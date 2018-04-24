@@ -63,17 +63,19 @@ class ChildGenerator:
 
         src_dict, trg_dict = self.datasets.source_dict, self.datasets.target_dict
 
-        translated_strings = []
+        gen_subset_len = len(self.datasets.get_dataset(self.hparams.gen_subset))
+
+        translated_strings = [None for _ in range(gen_subset_len)]
         for i, sample in enumerate(itr):
             batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
             print('Batch {}:'.format(i))
-            for src_tokens, trg_tokens, translated_tokens in zip(
-                    sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
+            for id_, src_tokens, trg_tokens, translated_tokens in zip(
+                    sample['id'], sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
                 print('SOURCE:', src_dict.string(src_tokens, bpe_symbol=self.hparams.remove_bpe))
                 print('REF   :', trg_dict.string(trg_tokens, bpe_symbol=self.hparams.remove_bpe, escape_unk=True))
                 trans_str = trg_dict.string(translated_tokens, bpe_symbol=self.hparams.remove_bpe, escape_unk=True)
                 print('DECODE:', trans_str)
-                translated_strings.append(trans_str)
+                translated_strings[id_] = trans_str
             print()
 
         logging.info('Translated {} sentences in {:.1f}s ({:.2f} sentences/s)'.format(
@@ -86,6 +88,7 @@ class ChildGenerator:
             full_path = os.path.join(output_path, self.hparams.output_file)
             with open(full_path, 'w') as f:
                 for line in translated_strings:
+                    assert line is not None, 'There is a sentence not being translated'
                     print(line, file=f)
             logging.info('Decode output write to {}.'.format(full_path))
 
