@@ -91,7 +91,7 @@ def add_train_args(parser):
     group = parser.add_argument_group('Training Options', description='Options in training process.')
     group.add_argument('--criterion', default='cross_entropy', metavar='CRIT',
                        choices=AllCriterions.keys(),
-                       help='training criterion: {} (default: cross_entropy)'.format(
+                       help='training criterion: {} (default: %(default)s)'.format(
                            ', '.join(AllCriterions.keys())))
     for criterion in AllCriterions.values():
         criterion.add_args(group)
@@ -106,7 +106,7 @@ def add_train_args(parser):
                             ' (default is to normalize by number of tokens)')
     group.add_argument('--optimizer', default='nag', metavar='OPT',
                        choices=AllOptimizers.keys(),
-                       help='optimizer: {} (default: nag)'.format(', '.join(AllOptimizers.keys())))
+                       help='optimizer: {} (default: %(default)s)'.format(', '.join(AllOptimizers.keys())))
     for optimizer in AllOptimizers.values():
         optimizer.add_args(group)
     group.add_argument('--lr', '--learning-rate', default='0.25', metavar='LR_1,LR_2,...,LR_N',
