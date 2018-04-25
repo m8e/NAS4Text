@@ -83,6 +83,10 @@ def single_process_main(hparams, datasets=None):
     train_meter = StopwatchMeter()
     train_meter.start()
     while lr > hparams.min_lr and epoch <= max_epoch:
+        # [DEBUG] {
+        # for k, subset in enumerate(hparams.valid_subset.split(',')):
+        #     val_loss = validate(hparams, trainer, datasets, subset, epoch)
+        # }
         # Train for one epoch
         train(hparams, trainer, datasets, epoch, batch_offset)
 

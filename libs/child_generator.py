@@ -112,6 +112,9 @@ class ChildGenerator:
             a, b = self.hparams.maxlen_a, self.hparams.maxlen_b
         maxlen = int(a * srclen + b)
 
+        for model in self.models:
+            model.eval()
+
         if timer is not None:
             timer.start()
 

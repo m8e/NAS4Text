@@ -4,6 +4,7 @@
 import math
 
 from ..utils import common
+from ..utils.debug_utils import get_valid_first_token_likelihood
 from . import BaseCriterion, register_criterion
 
 __author__ = 'fyabc'
@@ -33,6 +34,9 @@ class LabelSmoothedCrossEntropyCriterion(BaseCriterion):
         lprobs = model.get_normalized_probs(net_output, log_probs=True)
         lprobs = lprobs.view(-1, lprobs.size(-1))
         target = model.get_targets(sample, net_output).view(-1, 1)
+        # [DEBUG] {
+        # get_valid_first_token_likelihood(model, model.get_targets(sample, net_output), net_output)
+        # }
         non_pad_mask = target.ne(self.padding_idx)
         nll_loss = -lprobs.gather(dim=-1, index=target)[non_pad_mask]
         smooth_loss = -lprobs.sum(dim=-1, keepdim=True)[non_pad_mask]
