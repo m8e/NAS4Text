@@ -125,7 +125,7 @@ class SelfAttention(MultiHeadAttention):
         - **output** (batch_size, length, d_model):
     """
 
-    def forward(self, x, lengths=None):
+    def forward(self, x, lengths=None, **kwargs):
         return super().forward(x, x, x, lengths=lengths)
 
 

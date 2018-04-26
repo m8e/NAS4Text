@@ -80,7 +80,7 @@ class EncoderConvLayer(nn.Module):
         else:
             self.residual_conv = None
 
-    def forward(self, input_, mask=None):
+    def forward(self, input_, lengths=None, **kwargs):
         x = input_.transpose(1, 2)
 
         # Add padding.
@@ -136,7 +136,7 @@ class DecoderConvLayer(nn.Module):
         else:
             self.residual_conv = None
 
-    def forward(self, input_, mask=None):
+    def forward(self, input_, lengths=None, **kwargs):
         x = input_.transpose(1, 2)
 
         x = self.conv(x)

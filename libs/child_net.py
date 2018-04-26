@@ -8,7 +8,8 @@ Network architecture:
 Layer format: callable (nn.Module instance recommended)
 Inputs:
     x:
-    mask:
+    lengths:
+    **kwargs:
 Output:
     out:
 """
@@ -27,7 +28,7 @@ from .utils.data_processing import LanguagePairDataset
 from .utils import common
 from .layers.common import Linear, Embedding, PositionalEmbedding
 from .layers.net_code import NetCodeEnum
-from .layers.lstm import build_lstm
+from .layers.lstm import build_lstm, LSTMLayer
 from .layers.cnn import build_cnn
 from .layers.attention import build_attention
 from .layers.multi_head_attention import EncDecAttention
@@ -90,10 +91,10 @@ class ChildEncoder(nn.Module):
             input_shape = output_shape
             self.num_layers += 1
 
-        # Encoder output shape
-        self.output_shape = input_shape
+        self.fc2 = Linear(input_shape[2], hparams.src_embedding_size)
 
-        self.fc2 = Linear(self.output_shape[2], hparams.src_embedding_size)
+        # Encoder output shape
+        self.output_shape = th.Size([input_shape[0], input_shape[1], hparams.src_embedding_size])
 
     def forward(self, src_tokens, src_lengths=None):
         """
@@ -117,8 +118,8 @@ class ChildEncoder(nn.Module):
 
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         for i in range(self.num_layers):
-            layer = getattr(self, 'layer_{}'.format(i))
-            projection = getattr(self, 'projection_{}'.format(i))
+            layer = self.get_layer(i)
+            projection = self.get_projection(i)
 
             residual = x if projection is None else projection(x)
 
@@ -151,17 +152,27 @@ class ChildEncoder(nn.Module):
     def max_positions(self):
         return self.embed_positions.max_positions()
 
+    def get_layer(self, i):
+        return getattr(self, 'layer_{}'.format(i))
+
+    def get_layers(self):
+        return [self.get_layer(i) for i in range(self.num_layers)]
+
+    def get_projection(self, i):
+        return getattr(self, 'projection_{}'.format(i))
+
+    def get_projections(self):
+        return [self.get_projection(i) for i in range(self.num_layers)]
+
 
 class ChildDecoder(nn.Module):
-    def __init__(self, code, hparams, encoder_output_shape):
+    def __init__(self, code, hparams):
         super().__init__()
 
         self.code = code
         self.hparams = hparams
         self.task = get_task(hparams.task)
 
-        # Encoder output shape
-        self.encoder_output_shape = encoder_output_shape
         # Decoder input shape (after embedding)
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
         self.input_shape = th.Size([1, 1, hparams.trg_embedding_size])
@@ -226,6 +237,8 @@ class ChildDecoder(nn.Module):
         # split and (transpose) encoder outputs
         encoder_out = self._split_encoder_out(encoder_out, incremental_state)
 
+        encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
+
         x = trg_tokens
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))
 
@@ -237,13 +250,13 @@ class ChildDecoder(nn.Module):
         avg_attn_scores = None
         num_attn_layers = self.num_layers   # TODO: Explain why include layers without attention (None)?
         for i in range(self.num_layers):
-            layer = getattr(self, 'layer_{}'.format(i))
-            projection = getattr(self, 'projection_{}'.format(i))
-            attention = getattr(self, 'attention_{}'.format(i))
+            layer = self.get_layer(i)
+            projection = self.get_projection(i)
+            attention = self.get_attention(i)
 
             residual = x if projection is None else projection(x)
 
-            x = layer(x, trg_lengths)
+            x = layer(x, trg_lengths, encoder_state=encoder_state_mean)
 
             # Attention layer.
             x, attn_scores = attention(x, target_embedding, encoder_out, trg_lengths)
@@ -296,6 +309,21 @@ class ChildDecoder(nn.Module):
             common.set_incremental_state(self, incremental_state, 'encoder_out', result)
         return result
 
+    def _contains_lstm(self):
+        """Test if the decoder contains LSTM layers."""
+        return any(isinstance(l, LSTMLayer) for l in self.get_layers())
+
+    def _get_encoder_state_mean(self, encoder_out, src_lengths):
+        if not self._contains_lstm():
+            return None
+
+        enc_hidden = encoder_out[0]
+
+        src_mask = common.mask_from_lengths(src_lengths, left_pad=False, max_length=enc_hidden.size(1), cuda=True)
+
+        return (th.sum(enc_hidden * src_mask.unsqueeze(dim=2).type_as(enc_hidden), dim=1) /
+                src_lengths.unsqueeze(dim=1).type_as(enc_hidden))
+
     @staticmethod
     def get_normalized_probs(net_output, log_probs=False):
         logits = net_output[0]
@@ -312,7 +340,25 @@ class ChildDecoder(nn.Module):
 
     @property
     def num_attention_layers(self):
-        return sum(getattr(self, 'attention_{}'.format(i)) is not None for i in range(self.num_layers))
+        return sum(a is not None for a in self.get_attentions())
+
+    def get_layer(self, i):
+        return getattr(self, 'layer_{}'.format(i))
+
+    def get_layers(self):
+        return [self.get_layer(i) for i in range(self.num_layers)]
+
+    def get_projection(self, i):
+        return getattr(self, 'projection_{}'.format(i))
+
+    def get_projections(self):
+        return [self.get_projection(i) for i in range(self.num_layers)]
+
+    def get_attention(self, i):
+        return getattr(self, 'attention_{}'.format(i))
+
+    def get_attentions(self):
+        return [self.get_attention(i) for i in range(self.num_layers)]
 
 
 class ChildNet(nn.Module):
@@ -324,7 +370,7 @@ class ChildNet(nn.Module):
         self.task = get_task(hparams.task)
 
         self.encoder = ChildEncoder(net_code[0], hparams)
-        self.decoder = ChildDecoder(net_code[1], hparams, encoder_output_shape=self.encoder.output_shape)
+        self.decoder = ChildDecoder(net_code[1], hparams)
         self.encoder.num_attention_layers = self.decoder.num_attention_layers
 
     def forward(self, src_tokens, src_lengths, trg_tokens, trg_lengths):
