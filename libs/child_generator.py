@@ -110,7 +110,7 @@ class ChildGenerator:
             a, b = self.task.get_maxlen_a_b()
         else:
             a, b = self.hparams.maxlen_a, self.hparams.maxlen_b
-        maxlen = int(a * srclen + b)
+        maxlen = max(1, int(a * srclen + b))
 
         for model in self.models:
             model.eval()

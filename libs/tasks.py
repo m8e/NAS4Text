@@ -95,6 +95,9 @@ class TextTask:
         },
     }
 
+    # Extra length bias for decoding, for some long target sentences
+    LengthBias = 4
+
     @classmethod
     def get_lang_pair(cls):
         return [cls.SourceLang, cls.TargetLang]
@@ -133,7 +136,8 @@ class TextTask:
         x1, x2 = cls.LengthInfo['src']['train'], cls.LengthInfo['src']['dev']
         y1, y2 = cls.LengthInfo['trg']['train'], cls.LengthInfo['trg']['dev']
         a = (y2 - y1) / (x2 - x1)
-        b = y1 - a * x1
+        b = y1 - a * x1 + cls.LengthBias
+
         return a, b
 
     @classmethod
