@@ -92,3 +92,21 @@ def hparams_fairseq_de_en_iwslt():
     hparams.decoder_out_embedding_size = 256
 
     return hparams
+
+
+@register_hparams('transformer_de_en_iwslt')
+def hparams_transformer_de_en_iwslt():
+    """HParams of de-en iwslt, copied from T2T."""
+
+    hparams = hparams_normal()
+
+    hparams.max_src_positions = 256
+    hparams.max_trg_positions = 256
+    hparams.src_embedding_size = 256
+    hparams.trg_embedding_size = 256
+    hparams.decoder_out_embedding_size = 256
+
+    # TODO: Layer preprocess = 'n', postprocess = 'da'
+    # TODO: filter_size = 1024
+
+    return hparams
