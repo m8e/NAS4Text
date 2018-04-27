@@ -194,8 +194,6 @@ def add_generation_args(parser):
     # TODO: This option need test
     group.add_argument('--use-task-maxlen', default=False, action='store_true',
                        help='use maxlen information in the task')
-    group.add_argument('--remove-bpe', nargs='?', const='@@ ', default=None,
-                       help='remove BPE tokens before scoring')
     group.add_argument('--no-early-stop', action='store_true',
                        help=('continue searching even after finalizing k=beam '
                              'hypotheses; this is more correct, but increases '

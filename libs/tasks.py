@@ -79,6 +79,8 @@ class TextTask:
     EOS_ID = 1
     UNK_ID = 2
 
+    BPESymbol = None
+
     # Average sentence lengths of the dataset
     LengthInfo = {
         'src': {
@@ -174,5 +176,31 @@ class DeEnIwslt(TextTask):
             'train': 19.5001891395,
             'dev': 19.5236045344,
             'test': 20.4282962963,
+        },
+    }
+
+
+@register_task
+class DeEnIwsltBpe(TextTask):
+    SourceLang = Languages.DE
+    TargetLang = Languages.EN
+
+    UniqueFilename = 'iwslt-bpe'
+
+    SourceVocabSize = 24898
+    TargetVocabSize = 24898
+
+    BPESymbol = '@@ '
+
+    LengthInfo = {
+        'src': {
+            'train': 19.68445664792664,
+            'dev': 19.74730951356005,
+            'test': 20.887703703703703,
+        },
+        'trg': {
+            'train': 19.674830100570027,
+            'dev': 19.74931841010188,
+            'test': 20.657037037037036,
         },
     }

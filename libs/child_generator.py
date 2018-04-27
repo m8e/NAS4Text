@@ -71,9 +71,9 @@ class ChildGenerator:
             print('Batch {}:'.format(i))
             for id_, src_tokens, trg_tokens, translated_tokens in zip(
                     sample['id'], sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
-                print('SOURCE:', src_dict.string(src_tokens, bpe_symbol=self.hparams.remove_bpe))
-                print('REF   :', trg_dict.string(trg_tokens, bpe_symbol=self.hparams.remove_bpe, escape_unk=True))
-                trans_str = trg_dict.string(translated_tokens, bpe_symbol=self.hparams.remove_bpe, escape_unk=True)
+                print('SOURCE:', src_dict.string(src_tokens, bpe_symbol=self.task.BPESymbol))
+                print('REF   :', trg_dict.string(trg_tokens, bpe_symbol=self.task.BPESymbol, escape_unk=True))
+                trans_str = trg_dict.string(translated_tokens, bpe_symbol=self.task.BPESymbol, escape_unk=True)
                 print('DECODE:', trans_str)
                 translated_strings[id_] = trans_str
             print()
