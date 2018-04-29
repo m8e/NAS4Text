@@ -116,6 +116,17 @@ def _upgrade_state_dict(state):
     return state
 
 
+def _hparams_back_compat(hparams):
+    from ..hparams import hparams_base
+    base_hparams = hparams_base()
+
+    for key, value in base_hparams.__dict__.items():
+        if getattr(hparams, key, None) is None:
+            setattr(hparams, key, value)
+
+    return hparams
+
+
 def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=None):
     """Load an ensemble of models for inference.
 
@@ -134,6 +145,7 @@ def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=No
             th.load(filename, map_location=lambda s, l: default_restore_location(s, 'cpu'))
         )
     hparams = states[0]['hparams']
+    _hparams_back_compat(hparams)
     if model_arg_overrides is not None:
         hparams = _override_model_hparams(hparams, model_arg_overrides)
 
