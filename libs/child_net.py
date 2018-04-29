@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from .tasks import get_task
 from .utils.data_processing import LanguagePairDataset
 from .utils import common
-from .layers.common import Linear, Embedding, PositionalEmbedding
+from .layers.common import Linear, Embedding, PositionalEmbedding, FairseqAttention
 from .layers.net_code import NetCodeEnum
 from .layers.lstm import build_lstm, LSTMLayer
 from .layers.cnn import build_cnn
@@ -196,8 +196,13 @@ class ChildDecoder(nn.Module):
             projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
             setattr(self, 'projection_{}'.format(i), projection)
 
-            attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
-                                        dropout=hparams.dropout, in_encoder=False)
+            if hparams.enc_dec_attn_type == 'dot_product':
+                attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
+                                            dropout=hparams.dropout, in_encoder=False)
+            elif hparams.enc_dec_attn_type == 'fairseq':
+                attention = FairseqAttention(output_shape[2], hparams.trg_embedding_size)
+            else:
+                raise ValueError('Unknown encoder-decoder attention type {}'.format(hparams.enc_dec_attn_type))
             setattr(self, 'attention_{}'.format(i), attention)
 
             input_shape = output_shape
@@ -234,10 +239,10 @@ class ChildDecoder(nn.Module):
             Attention scores: (batch_size, num_heads(8), trg_seq_len, src_seq_len) of float32
         """
 
+        encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
+
         # split and (transpose) encoder outputs
         encoder_out = self._split_encoder_out(encoder_out, incremental_state)
-
-        encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
 
         x = trg_tokens
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))
@@ -298,12 +303,14 @@ class ChildDecoder(nn.Module):
         if cached_result is not None:
             return cached_result
 
-        # # transpose only once to speed up attention layers
-        # # TODO: NOT do transpose here because of multi-head attention
-        # encoder_a, encoder_b = encoder_out
-        # encoder_a = encoder_a.transpose(1, 2).contiguous()
-        # result = (encoder_a, encoder_b)
-        result = encoder_out
+        # transpose only once to speed up attention layers
+        if self.hparams.enc_dec_attn_type == 'fairseq':
+            # [NOTE]: Only do transpose here for fairseq attention
+            encoder_a, encoder_b = encoder_out
+            encoder_a = encoder_a.transpose(1, 2).contiguous()
+            result = (encoder_a, encoder_b)
+        else:
+            result = encoder_out
 
         if incremental_state is not None:
             common.set_incremental_state(self, incremental_state, 'encoder_out', result)

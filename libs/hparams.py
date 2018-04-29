@@ -63,6 +63,9 @@ def hparams_base():
         lstm_space='base',
         conv_space='base',
         attn_space='base',
+
+        # Candidates: dot_product, fairseq
+        enc_dec_attn_type='dot_product',
     )
 
 
@@ -90,6 +93,16 @@ def hparams_fairseq_de_en_iwslt():
     hparams.src_embedding_size = 256
     hparams.trg_embedding_size = 256
     hparams.decoder_out_embedding_size = 256
+
+    return hparams
+
+
+@register_hparams('fairseq_attn')
+def hparams_fairseq_attn_de_en_iwslt():
+    """HParams of fairseq-py on de-en iwslt, and use fairseq attention."""
+
+    hparams = hparams_fairseq_de_en_iwslt()
+    hparams.enc_dec_attn_type = 'fairseq'
 
     return hparams
 
