@@ -164,7 +164,12 @@ class ChildGenerator:
             else:
                 avg_probs.add_(probs)
             if attn is not None:
-                attn = attn[:, :, -1, :].data
+                if self.hparams.enc_dec_attn_type == 'fairseq':
+                    attn = attn[:, -1, :].data
+                elif self.hparams.enc_dec_attn_type == 'dot_product':
+                    attn = attn[:, :, -1, :].data
+                else:
+                    raise ValueError('Unknown encoder-decoder attention type {}'.format(self.hparams.enc_dec_attn_type))
                 if avg_attn is None:
                     avg_attn = attn
                 else:
