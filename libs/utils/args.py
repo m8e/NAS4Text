@@ -181,6 +181,8 @@ def add_generation_args(parser):
 
     group.add_argument('--path', metavar='FILE', action='append',
                        help='path(s) to model file(s)')
+    group.add_argument('--greedy-sample-temp', default=0.0, type=float, metavar='N', dest='greedy_sample_temperature',
+                       help='greedy sample temperature, default is %(default)s')
     group.add_argument('--beam', default=5, type=int, metavar='N',
                        help='beam size')
     group.add_argument('--nbest', default=1, type=int, metavar='N',

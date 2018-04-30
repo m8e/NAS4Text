@@ -139,7 +139,13 @@ class ChildGenerator:
                 ]
 
                 avg_probs, _ = self._get_normalized_probs(net_outputs)
-                _, next_word = avg_probs.max(dim=1)
+
+                if self.hparams.greedy_sample_temperature == 0.0:
+                    _, next_word = avg_probs.max(dim=1)
+                else:
+                    assert self.hparams.greedy_sample_temperature > 0.0
+                    next_word = th.multinomial(th.exp(avg_probs) / self.hparams.greedy_sample_temperature, 1)[:, 0]
+
                 trg_tokens.data = th.cat([trg_tokens.data, th.unsqueeze(next_word, dim=1)], dim=1)
                 trg_lengths += 1
 
