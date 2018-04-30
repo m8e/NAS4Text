@@ -123,3 +123,13 @@ def hparams_transformer_de_en_iwslt():
     # TODO: filter_size = 1024
 
     return hparams
+
+
+@register_hparams('transformer_attn')
+def hparams_transformer_attn_de_en_iwslt():
+    """HParams of T2T on de-en iwslt, and use fairseq attention."""
+
+    hparams = hparams_transformer_de_en_iwslt()
+    hparams.enc_dec_attn_type = 'fairseq'
+
+    return hparams
