@@ -263,6 +263,11 @@ def mask_from_lengths(lengths, left_pad, max_length=None, cuda=False):
     return result
 
 
+def subsequent_mask(size):
+    """Mask out subsequent positions."""
+    return th.from_numpy(np.triu(np.ones([1, size, size]), k=1).astype('uint8')) == 0
+
+
 def volatile_variable(*args, **kwargs):
     if hasattr(th, 'no_grad'):
         # volatile has been deprecated, use the no_grad context manager instead

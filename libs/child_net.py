@@ -264,7 +264,7 @@ class ChildDecoder(nn.Module):
             x = layer(x, trg_lengths, encoder_state=encoder_state_mean)
 
             # Attention layer.
-            x, attn_scores = attention(x, target_embedding, encoder_out, trg_lengths)
+            x, attn_scores = attention(x, target_embedding, encoder_out, src_lengths)
             attn_scores = attn_scores / num_attn_layers
             if avg_attn_scores is None:
                 avg_attn_scores = attn_scores

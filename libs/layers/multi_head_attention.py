@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .common import Linear
-from ..utils.common import mask_from_lengths
+from ..utils import common
 from ..utils.data_processing import LanguagePairDataset
 
 __author__ = 'fyabc'
@@ -25,7 +25,7 @@ def attention(query, key, value, mask=None, dropout=None):
         query (batch_size, num_heads, length_q, d_k):
         key (batch_size, num_heads, length_kv, d_k):
         value (batch_size, num_heads, length_kv, d_v):
-        mask (batch_size, 1, length_q):
+        mask (batch_size, 1, 1 or length_q, length_kv):
         dropout:
 
     Returns:
@@ -38,7 +38,7 @@ def attention(query, key, value, mask=None, dropout=None):
     scores = th.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
 
     if mask is not None:
-        scores = scores.masked_fill_(mask.unsqueeze(3) == 0, -1e9)
+        scores = scores.masked_fill_(mask == 0, -1e9)
     p_attn = F.softmax(scores, dim=-1)
 
     if dropout is not None:
@@ -67,7 +67,7 @@ class MultiHeadAttention(nn.Module):
         - **query** (batch_size, length_q, d_model):
         - **key** (batch_size, length_kv, d_model):
         - **value** (batch_size, length_kv, d_model):
-        - **mask** (batch_size, length_q) or None:
+        - **mask** (batch_size, 1, 1 or length_q, length_kv) or None:
 
     Output:
         - **output** (batch_size, length_q, d_model):
@@ -89,15 +89,7 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.in_encoder = in_encoder
 
-    def forward(self, query, key, value, lengths=None):
-        if lengths is not None:
-            left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if self.in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
-            mask = mask_from_lengths(lengths, left_pad=left_pad, max_length=query.size()[1], cuda=True)
-            assert query.size()[1] == mask.size()[1], 'Sequence length of query and mask must be same'
-            # Same mask applied to all h heads.
-            mask = mask.unsqueeze(1)
-        else:
-            mask = None
+    def forward(self, query, key, value, mask=None):
         num_batches = query.size(0)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
@@ -114,19 +106,46 @@ class MultiHeadAttention(nn.Module):
         return self.linears[-1](x)
 
 
+def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
+    if lengths is None:
+        return None
+
+    if maxlen is None:
+        maxlen = x.size(1)
+
+    left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if layer.in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
+    mask = common.mask_from_lengths(lengths, left_pad=left_pad, max_length=maxlen, cuda=True)
+
+    # Same mask applied to whole query sequence.
+    mask = mask.unsqueeze(1)
+
+    # Apply subsequent mask.
+    if subsequent_mask:
+        mask = mask & common.make_variable(
+            common.subsequent_mask(x.size(1)),
+            cuda=True,
+        )
+
+    # Same mask applied to all h heads.
+    mask = mask.unsqueeze(1)
+
+    return mask
+
+
 class SelfAttention(MultiHeadAttention):
     """Wraps multi-head attention into self attention.
 
-    Inputs: x, mask
+    Inputs: x, lengths
         - **x** (batch_size, length, d_model):
-        - **mask** (batch_size, length) or None:
+        - **lengths** (batch_size,) or None:
 
     Output:
         - **output** (batch_size, length, d_model):
     """
 
     def forward(self, x, lengths=None, **kwargs):
-        return super().forward(x, x, x, lengths=lengths)
+        mask = _mask_from_lengths(x, lengths, self, subsequent_mask=True)
+        return super().forward(x, x, x, mask=mask)
 
 
 class EncDecAttention(nn.Module):
@@ -155,7 +174,7 @@ class EncDecAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.in_encoder = in_encoder
 
-    def forward(self, x, target_embedding, encoder_outs, trg_lengths=None):
+    def forward(self, x, target_embedding, encoder_outs, src_lengths=None):
         """
 
         Args:
@@ -164,20 +183,14 @@ class EncDecAttention(nn.Module):
             encoder_outs (tuple):
                 output: (batch_size, src_seq_len, src_emb_size) of float32
                 output add source embedding: same shape as output
-            trg_lengths: (batch_size, trg_seq_len) of long
+            src_lengths: (batch_size,) of long
 
         Returns:
             output: (batch_size, trg_seq_len, conv_channels) of float32
             attn_score: (batch_size, num_heads, trg_seq_len, src_seq_len) of float32
         """
-        if trg_lengths is not None:
-            left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if self.in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
-            mask = mask_from_lengths(trg_lengths, left_pad=left_pad, max_length=x.size()[1], cuda=True)
-            assert x.size()[1] == mask.size()[1], 'Sequence length of query and mask must be same'
-            # Same mask applied to all h heads.
-            mask = mask.unsqueeze(1)
-        else:
-            mask = None
+        # Mask: (batch_size, 1, src_seq_len)
+        mask = _mask_from_lengths(x, src_lengths, self, subsequent_mask=False, maxlen=encoder_outs[0].size(1))
         num_batches = x.size(0)
 
         residual = x

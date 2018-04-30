@@ -52,7 +52,7 @@ class FairseqAttention(nn.Module):
 
         self.bmm = bmm if bmm is not None else th.bmm
 
-    def forward(self, x, target_embedding, encoder_out, trg_lengths=None):
+    def forward(self, x, target_embedding, encoder_out, src_lengths=None):
         residual = x
 
         # attention
