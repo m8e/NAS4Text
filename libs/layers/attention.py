@@ -4,7 +4,7 @@
 """Attention layer.
 
 Layer code:
-[Attention, NumHeads, ...]
+[Attention, NumHeads, ..., Preprocessors, Postprocessors]
 
 # TODO: GlobalAttention?, WindowSize, ...
 """
@@ -12,6 +12,7 @@ Layer code:
 import torch as th
 
 from .multi_head_attention import SelfAttention
+from .ppp import PPPSpace
 
 __author__ = 'fyabc'
 
@@ -19,6 +20,8 @@ __author__ = 'fyabc'
 class AttentionSpaceBase:
     # TODO: How to ensure the assertion "input_hidden_size % num_heads == 0" to be always True?
     NumHeads = [2, 4, 8, 16]
+    Preprocessors = PPPSpace.Preprocessors
+    Postprocessors = PPPSpace.Postprocessors
 
 
 class AttentionSpaceLarge(AttentionSpaceBase):
@@ -47,12 +50,21 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
             Shape of output tensor, (batch_size, seq_len, hidden_size * num_directions)
     """
 
+    if len(layer_code) == 2:
+        # Old-style layer code (without pre/post processing)
+        layer_code += [0, 0]
+    else:
+        assert len(layer_code) == 4, 'Layer code must have length of 2 or 4, got {}'.format(len(layer_code))
+
     space = Spaces[hparams.attn_space]
 
     batch_size, seq_length, input_size = input_shape
     num_heads = space.NumHeads[layer_code[1]]
 
     layer = SelfAttention(
+        hparams=hparams,
+        preprocess_code=layer_code[-2],
+        postprocess_code=layer_code[-1],
         h=num_heads,
         d_model=input_size,
         dropout=hparams.dropout,

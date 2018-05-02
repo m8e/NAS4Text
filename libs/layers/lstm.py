@@ -4,12 +4,7 @@
 """LSTM layer.
 
 Layer code:
-[
-    LSTM,
-    hidden_size,
-    Bidirectional?,
-    ...
-]
+[LSTM, hidden_size, Bidirectional?, ..., Preprocessors, Postprocessors]
 """
 
 import torch as th
@@ -18,6 +13,8 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 
 from .common import Linear
+from .base import ChildLayer
+from .ppp import PPPSpace
 
 __author__ = 'fyabc'
 
@@ -35,6 +32,9 @@ class LSTMSpaceBase:
     UseBidirectional = [False, True]
     NumLayers = 1
 
+    Preprocessors = PPPSpace.Preprocessors
+    Postprocessors = PPPSpace.Postprocessors
+
 
 class LSTMSpaceLarge(LSTMSpaceBase):
     HiddenSizes = [64, 128, 256, 512]
@@ -46,7 +46,7 @@ Spaces = {
 }
 
 
-class LSTMLayer(nn.LSTM):
+class LSTMLayer(ChildLayer):
     """The LSTM layer.
 
     This layer contains:
@@ -55,27 +55,29 @@ class LSTMLayer(nn.LSTM):
         Discard output states (h & c)
     """
 
-    def __init__(self, *args, **kwargs):
-        self.hparams = kwargs.pop('hparams')
+    def __init__(self, hparams, preprocess_code, postprocess_code, *args, **kwargs):
+        super().__init__(hparams, preprocess_code, postprocess_code)
         self.in_encoder = kwargs.pop('in_encoder')
 
-        super().__init__(*args, **kwargs)
+        self.lstm = nn.LSTM(*args, **kwargs)
 
         # [NOTE]: If in decoder, requires to initialize the init state with encoder output states.
         if not self.in_encoder:
-            self.fc_init_state = Linear(self.hparams.src_embedding_size, self.hidden_size)
+            self.fc_init_state = Linear(self.hparams.src_embedding_size, self.lstm.hidden_size)
         else:
             self.fc_init_state = None
 
     def forward(self, input_, lengths=None, encoder_state=None, **kwargs):
+        input_ = self.preprocess(input_)
+
         init_h_c = self._get_init_state(input_, encoder_state)
 
         if not ApplyMaskInLSTM:
-            return super().forward(input_, init_h_c)[0]
+            return self.lstm(input_, init_h_c)[0]
 
         # TODO: Need test (correctness).
         if lengths is None:
-            return super().forward(input_)[0]
+            return self.lstm(input_)[0]
 
         _, sort_index = th.sort(-lengths)
         _, unsort_index = th.sort(sort_index)
@@ -86,8 +88,8 @@ class LSTMLayer(nn.LSTM):
         packed_input = nn.utils.rnn.pack_padded_sequence(input_, list(lengths.data), batch_first=True)
 
         # [NOTE]: Add this to disable the user warning, may reduce the memory usage.
-        self.flatten_parameters()
-        packed_output, _ = super().forward(packed_input, init_h_c)
+        self.lstm.flatten_parameters()
+        packed_output, _ = self.lstm(packed_input, init_h_c)
 
         output, _ = nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True, padding_value=0.0)
         output = output[unsort_index]
@@ -98,6 +100,8 @@ class LSTMLayer(nn.LSTM):
         if output.shape[1] < input_.shape[1]:
             output = F.pad(output, (0, 0, 0, input_.shape[1] - output.shape[1], 0, 0), value=0.0)
 
+        output = self.postprocess(output)
+
         return output
 
     def _get_init_state(self, input_, encoder_state):
@@ -105,12 +109,14 @@ class LSTMLayer(nn.LSTM):
             return None
 
         batch_size = input_.size(0)
-        num_directions = 2 if self.bidirectional else 1
+        num_layers = self.lstm.num_layers
+        hidden_size = self.lstm.hidden_size
+        num_directions = 2 if self.lstm.bidirectional else 1
 
         # FIXME: Requires grad (connect to encoder) or not?
-        h_0 = self.fc_init_state(encoder_state).unsqueeze(0).repeat(self.num_layers * num_directions, 1, 1)
+        h_0 = self.fc_init_state(encoder_state).unsqueeze(0).repeat(num_layers * num_directions, 1, 1)
         # FIXME: Also initialize c_0 with encoder states?
-        c_0 = Variable(input_.data.new(self.num_layers * num_directions, batch_size, self.hidden_size).zero_(),
+        c_0 = Variable(input_.data.new(num_layers * num_directions, batch_size, hidden_size).zero_(),
                        requires_grad=False)
 
         return h_0, c_0
@@ -132,6 +138,12 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
             Shape of output tensor, (batch_size, seq_len, hidden_size * num_directions)
     """
 
+    if len(layer_code) == 3:
+        # Old-style layer code (without pre/post processing)
+        layer_code += [0, 0]
+    else:
+        assert len(layer_code) == 5, 'Layer code must have length of 3 or 5, got {}'.format(len(layer_code))
+
     space = Spaces[hparams.lstm_space]
 
     batch_size, seq_length, input_size = input_shape
@@ -140,6 +152,9 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
     num_directions = 2 if bidirectional else 1
 
     layer = LSTMLayer(
+        hparams=hparams,
+        preprocess_code=layer_code[-2],
+        postprocess_code=layer_code[-1],
         input_size=input_size,
         hidden_size=hidden_size,
         num_layers=space.NumLayers,
@@ -147,7 +162,6 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
         batch_first=True,
         dropout=hparams.dropout,
         bidirectional=bidirectional,
-        hparams=hparams,
         in_encoder=in_encoder,
     )
 

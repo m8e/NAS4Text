@@ -9,6 +9,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .base import ChildLayer
 from .common import Linear
 from ..utils import common
 from ..utils.data_processing import LanguagePairDataset
@@ -47,7 +48,7 @@ def attention(query, key, value, mask=None, dropout=None):
     return th.matmul(p_attn, value), p_attn
 
 
-class MultiHeadAttention(nn.Module):
+class MultiHeadAttention(ChildLayer):
     r"""The module of multi-head attention.
 
     :math:`MultiHead(Q, K, V) = Concat(head_1, ..., head_h) * W^O`
@@ -73,8 +74,8 @@ class MultiHeadAttention(nn.Module):
         - **output** (batch_size, length_q, d_model):
     """
 
-    def __init__(self, h, d_model, dropout=0.1, in_encoder=True):
-        super().__init__()
+    def __init__(self, hparams, preprocess_code, postprocess_code, h, d_model, dropout=0.1, in_encoder=True):
+        super().__init__(hparams, preprocess_code, postprocess_code)
 
         assert d_model % h == 0
 
@@ -90,6 +91,8 @@ class MultiHeadAttention(nn.Module):
         self.in_encoder = in_encoder
 
     def forward(self, query, key, value, mask=None):
+        query = self.preprocess(query)
+
         num_batches = query.size(0)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
@@ -103,7 +106,9 @@ class MultiHeadAttention(nn.Module):
         # 3) "Concat" using a view and apply a final linear.
         x = x.transpose(1, 2).contiguous().view(num_batches, -1, self.h * self.d_k)
 
-        return self.linears[-1](x)
+        result = self.linears[-1](x)
+
+        return self.postprocess(result)
 
 
 def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):

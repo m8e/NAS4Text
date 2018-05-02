@@ -1,0 +1,15 @@
+/// Transformer with dropout after each layer.
+
+/// Result Network:
+//
+
+[
+    [
+        [2, 1, 0, 1],
+        [2, 1, 0, 1]
+    ],
+    [
+        [2, 1, 0, 1],
+        [2, 1, 0, 1]
+    ]
+]

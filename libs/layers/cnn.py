@@ -4,14 +4,15 @@
 """Convolutional layer.
 
 Layer code:
-[CNN, OutChannels, KernelSize, Stride, ...]
+[CNN, OutChannels, KernelSize, Stride, ..., Preprocessors, Postprocessors]
 """
 
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .common import Linear
+from .base import ChildLayer
+from .ppp import PPPSpace
 
 __author__ = 'fyabc'
 
@@ -22,6 +23,9 @@ class ConvSpaceBase:
     OutChannels = [8, 16, 32, 64]
     KernelSizes = [1, 3, 5, 7]
     Strides = [1, 2, 3]
+
+    Preprocessors = PPPSpace.Preprocessors
+    Postprocessors = PPPSpace.Postprocessors
 
 
 class ConvSpaceLarge(ConvSpaceBase):
@@ -34,7 +38,7 @@ Spaces = {
 }
 
 
-class EncoderConvLayer(nn.Module):
+class EncoderConvLayer(ChildLayer):
     """1D convolution layer for encoder.
 
     This layer contains:
@@ -52,8 +56,9 @@ class EncoderConvLayer(nn.Module):
     # [NOTE]: Since CNN may change the sequence length, how to modify the mask?
     # Current solution: assume that "stride == 1".
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride):
-        super().__init__()
+    def __init__(self, hparams, preprocess_code, postprocess_code,
+                 in_channels, out_channels, kernel_size, stride):
+        super().__init__(hparams, preprocess_code, postprocess_code)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -81,6 +86,8 @@ class EncoderConvLayer(nn.Module):
             self.residual_conv = None
 
     def forward(self, input_, lengths=None, **kwargs):
+        input_ = self.preprocess(input_)
+
         x = input_.transpose(1, 2)
 
         # Add padding.
@@ -93,10 +100,12 @@ class EncoderConvLayer(nn.Module):
         # GLU.
         x = F.glu(x, dim=1)
 
-        return x.transpose(1, 2)
+        result = x.transpose(1, 2)
+
+        return self.postprocess(result)
 
 
-class DecoderConvLayer(nn.Module):
+class DecoderConvLayer(ChildLayer):
     """1D convolution layer for decoder.
 
     Similar to `EncoderConvLayer`.
@@ -108,8 +117,9 @@ class DecoderConvLayer(nn.Module):
         Incremental state:
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride):
-        super().__init__()
+    def __init__(self, hparams, preprocess_code, postprocess_code,
+                 in_channels, out_channels, kernel_size, stride):
+        super().__init__(hparams, preprocess_code, postprocess_code)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -137,6 +147,8 @@ class DecoderConvLayer(nn.Module):
             self.residual_conv = None
 
     def forward(self, input_, lengths=None, **kwargs):
+        input_ = self.preprocess(input_)
+
         x = input_.transpose(1, 2)
 
         x = self.conv(x)
@@ -147,7 +159,9 @@ class DecoderConvLayer(nn.Module):
         # Remove last (kernel_size - 1) sequence
         x = x[:, :, :1 - self.kernel_size]
 
-        return x.transpose(1, 2)
+        result = x.transpose(1, 2)
+
+        return self.postprocess(result)
 
 
 def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
@@ -164,7 +178,11 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
     Returns: layer, output_shape
     """
 
-    # TODO: Different convolutional layer for decoder (in inference)?
+    if len(layer_code) == 4:
+        # Old-style layer code (without pre/post processing)
+        layer_code += [0, 0]
+    else:
+        assert len(layer_code) == 6, 'Layer code must have length of 4 or 6, got {}'.format(len(layer_code))
 
     space = Spaces[hparams.conv_space]
 
@@ -175,6 +193,9 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
 
     if in_encoder:
         layer = EncoderConvLayer(
+            hparams=hparams,
+            preprocess_code=layer_code[-2],
+            postprocess_code=layer_code[-1],
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
@@ -182,6 +203,9 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
         )
     else:
         layer = DecoderConvLayer(
+            hparams=hparams,
+            preprocess_code=layer_code[-2],
+            postprocess_code=layer_code[-1],
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,

@@ -66,6 +66,10 @@ def hparams_base():
 
         # Candidates: dot_product, fairseq
         enc_dec_attn_type='dot_product',
+
+        # Candidates: none, layer, batch, noam
+        norm_type='layer',
+        norm_epsilon=1e-6,
     )
 
 
