@@ -220,7 +220,8 @@ class ChildDecoder(nn.Module):
             self.fc_last = nn.Linear(hparams.decoder_out_embedding_size, self.task.TargetVocabSize)
             self.fc_last.weight = self.embed_tokens.weight
         else:
-            self.fc_last = Linear(hparams.decoder_out_embedding_size, self.task.TargetVocabSize)
+            self.fc_last = Linear(hparams.decoder_out_embedding_size,
+                                  self.task.TargetVocabSize, dropout=hparams.dropout)
 
     def forward(self, encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state=None):
         """

@@ -7,6 +7,8 @@ Layer code:
 [CNN, OutChannels, KernelSize, Stride, ..., Preprocessors, Postprocessors]
 """
 
+import math
+
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,7 +40,29 @@ Spaces = {
 }
 
 
-class EncoderConvLayer(ChildLayer):
+class ConvLayer(ChildLayer):
+    """Abstract base class of 1D convolutional layer."""
+    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
+        super().__init__(hparams)
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+
+    def forward(self, *args):
+        raise NotImplementedError
+
+    def conv_weight_norm(self, conv):
+        """Apply weight normalization on the conv layer."""
+        dropout = self.hparams.dropout
+        std = math.sqrt((4 * (1.0 - dropout)) / (conv.kernel_size * conv.in_channels))
+        conv.weight.data.normal_(mean=0, std=std)
+        conv.bias.data.zero_()
+
+        return conv
+
+
+class EncoderConvLayer(ConvLayer):
     """1D convolution layer for encoder.
 
     This layer contains:
@@ -57,20 +81,16 @@ class EncoderConvLayer(ChildLayer):
     # Current solution: assume that "stride == 1".
 
     def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
-        super().__init__(hparams, preprocess_code, postprocess_code)
+        super().__init__(hparams, in_channels, out_channels, kernel_size, stride)
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.stride = stride
-
-        self.conv = nn.Conv1d(
+        conv = nn.Conv1d(
             in_channels=in_channels,
             out_channels=out_channels * 2,  # Multiply by 2 for GLU
             kernel_size=kernel_size,
             stride=stride,
             padding=0,
         )
+        self.conv = self.conv_weight_norm(conv)
 
         # Residual convolutional layer for different input and output sequence length (stride > 1).
         if self.stride > 1:
@@ -104,7 +124,7 @@ class EncoderConvLayer(ChildLayer):
         return self.postprocess(result)
 
 
-class DecoderConvLayer(ChildLayer):
+class DecoderConvLayer(ConvLayer):
     """1D convolution layer for decoder.
 
     Similar to `EncoderConvLayer`.
@@ -117,20 +137,16 @@ class DecoderConvLayer(ChildLayer):
     """
 
     def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
-        super().__init__(hparams, preprocess_code, postprocess_code)
+        super().__init__(hparams, in_channels, out_channels, kernel_size, stride)
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.stride = stride
-
-        self.conv = nn.Conv1d(
+        conv = nn.Conv1d(
             in_channels=in_channels,
             out_channels=out_channels * 2,  # Multiply by 2 for GLU
             kernel_size=kernel_size,
             stride=stride,
             padding=(kernel_size - 1),
         )
+        self.conv = self.conv_weight_norm(conv)
 
         # Residual convolutional layer for different input and output sequence length (stride > 1).
         if self.stride > 1:
