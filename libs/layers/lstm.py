@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 from .common import Linear
 from .base import ChildLayer
-from .ppp import PPPSpace
+from .ppp import PPPSpace, push_prepostprocessors
 
 __author__ = 'fyabc'
 
@@ -55,8 +55,8 @@ class LSTMLayer(ChildLayer):
         Discard output states (h & c)
     """
 
-    def __init__(self, hparams, preprocess_code, postprocess_code, *args, **kwargs):
-        super().__init__(hparams, preprocess_code, postprocess_code)
+    def __init__(self, hparams, *args, **kwargs):
+        super().__init__(hparams)
         self.in_encoder = kwargs.pop('in_encoder')
 
         self.lstm = nn.LSTM(*args, **kwargs)
@@ -153,8 +153,6 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
 
     layer = LSTMLayer(
         hparams=hparams,
-        preprocess_code=layer_code[-2],
-        postprocess_code=layer_code[-1],
         input_size=input_size,
         hidden_size=hidden_size,
         num_layers=space.NumLayers,
@@ -165,4 +163,7 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
         in_encoder=in_encoder,
     )
 
-    return layer, th.Size([batch_size, seq_length, hidden_size * num_directions])
+    output_shape = th.Size([batch_size, seq_length, hidden_size * num_directions])
+    push_prepostprocessors(layer, layer_code[-2], layer_code[-1], input_shape, output_shape)
+
+    return layer, output_shape

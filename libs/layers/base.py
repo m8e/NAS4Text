@@ -5,20 +5,16 @@
 
 import torch.nn as nn
 
-from . import ppp
-
 __author__ = 'fyabc'
 
 
 class ChildLayer(nn.Module):
-    def __init__(self, hparams, preprocess_code, postprocess_code):
+    def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
 
         self.preprocessors = nn.ModuleList()
         self.postprocessors = nn.ModuleList()
-
-        ppp.push_prepostprocessors(self, preprocess_code, postprocess_code)
 
     def forward(self, *args):
         raise NotImplementedError

@@ -74,8 +74,8 @@ class MultiHeadAttention(ChildLayer):
         - **output** (batch_size, length_q, d_model):
     """
 
-    def __init__(self, hparams, preprocess_code, postprocess_code, h, d_model, dropout=0.1, in_encoder=True):
-        super().__init__(hparams, preprocess_code, postprocess_code)
+    def __init__(self, hparams, h, d_model, dropout=0.1, in_encoder=True):
+        super().__init__(hparams)
 
         assert d_model % h == 0
 

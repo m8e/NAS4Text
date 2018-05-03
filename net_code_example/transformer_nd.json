@@ -1,0 +1,15 @@
+/// Transformer with normalization before each layer, and dropout after each layer.
+
+/// Result Network:
+//
+
+[
+    [
+        [2, 1, 2, 1],
+        [2, 1, 2, 1]
+    ],
+    [
+        [2, 1, 2, 1],
+        [2, 1, 2, 1]
+    ]
+]

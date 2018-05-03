@@ -12,7 +12,7 @@ Layer code:
 import torch as th
 
 from .multi_head_attention import SelfAttention
-from .ppp import PPPSpace
+from .ppp import PPPSpace, push_prepostprocessors
 
 __author__ = 'fyabc'
 
@@ -63,12 +63,13 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
 
     layer = SelfAttention(
         hparams=hparams,
-        preprocess_code=layer_code[-2],
-        postprocess_code=layer_code[-1],
         h=num_heads,
         d_model=input_size,
         dropout=hparams.dropout,
         in_encoder=in_encoder,
     )
 
-    return layer, th.Size([batch_size, seq_length, input_size])
+    output_shape = th.Size([batch_size, seq_length, input_size])
+    push_prepostprocessors(layer, layer_code[-2], layer_code[-1], input_shape, output_shape)
+
+    return layer, output_shape

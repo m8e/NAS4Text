@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .base import ChildLayer
-from .ppp import PPPSpace
+from .ppp import PPPSpace, push_prepostprocessors
 
 __author__ = 'fyabc'
 
@@ -56,8 +56,7 @@ class EncoderConvLayer(ChildLayer):
     # [NOTE]: Since CNN may change the sequence length, how to modify the mask?
     # Current solution: assume that "stride == 1".
 
-    def __init__(self, hparams, preprocess_code, postprocess_code,
-                 in_channels, out_channels, kernel_size, stride):
+    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
         super().__init__(hparams, preprocess_code, postprocess_code)
 
         self.in_channels = in_channels
@@ -117,8 +116,7 @@ class DecoderConvLayer(ChildLayer):
         Incremental state:
     """
 
-    def __init__(self, hparams, preprocess_code, postprocess_code,
-                 in_channels, out_channels, kernel_size, stride):
+    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
         super().__init__(hparams, preprocess_code, postprocess_code)
 
         self.in_channels = in_channels
@@ -194,8 +192,6 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
     if in_encoder:
         layer = EncoderConvLayer(
             hparams=hparams,
-            preprocess_code=layer_code[-2],
-            postprocess_code=layer_code[-1],
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
@@ -204,12 +200,13 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
     else:
         layer = DecoderConvLayer(
             hparams=hparams,
-            preprocess_code=layer_code[-2],
-            postprocess_code=layer_code[-1],
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
         )
 
-    return layer, th.Size([batch_size, seq_length, out_channels])
+    output_shape = th.Size([batch_size, seq_length, out_channels])
+    push_prepostprocessors(layer, layer_code[-2], layer_code[-1], input_shape, output_shape)
+
+    return layer, output_shape
