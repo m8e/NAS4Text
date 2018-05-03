@@ -55,6 +55,8 @@ class LSTMLayer(ChildLayer):
         Discard output states (h & c)
     """
 
+    # TODO: Add weight normalization?
+
     def __init__(self, hparams, *args, **kwargs):
         super().__init__(hparams)
         self.in_encoder = kwargs.pop('in_encoder')

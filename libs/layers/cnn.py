@@ -55,7 +55,7 @@ class ConvLayer(ChildLayer):
     def conv_weight_norm(self, conv):
         """Apply weight normalization on the conv layer."""
         dropout = self.hparams.dropout
-        std = math.sqrt((4 * (1.0 - dropout)) / (conv.kernel_size * conv.in_channels))
+        std = math.sqrt((4 * (1.0 - dropout)) / (conv.kernel_size[0] * conv.in_channels))
         conv.weight.data.normal_(mean=0, std=std)
         conv.bias.data.zero_()
 
