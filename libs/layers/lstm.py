@@ -62,12 +62,21 @@ class LSTMLayer(ChildLayer):
         self.in_encoder = kwargs.pop('in_encoder')
 
         self.lstm = nn.LSTM(*args, **kwargs)
+        self._init_lstm_params()
 
         # [NOTE]: If in decoder, requires to initialize the init state with encoder output states.
         if not self.in_encoder:
             self.fc_init_state = Linear(self.hparams.src_embedding_size, self.lstm.hidden_size)
         else:
             self.fc_init_state = None
+
+    def _init_lstm_params(self):
+        # TODO: Need test here.
+        for name, param in self.lstm.named_parameters():
+            if 'bias' in name:
+                nn.init.constant(param, 0.0)
+            else:
+                nn.init.xavier_normal(param)
 
     def forward(self, input_, lengths=None, encoder_state=None, **kwargs):
         input_ = self.preprocess(input_)

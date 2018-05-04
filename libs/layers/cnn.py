@@ -52,6 +52,20 @@ class ConvLayer(ChildLayer):
     def forward(self, *args):
         raise NotImplementedError
 
+    def build_residual_conv(self, out_channels, stride):
+        """Residual convolutional layer for different input and output sequence length (stride > 1)."""
+        # TODO: Add normalization here?
+        if self.stride > 1:
+            return nn.Conv1d(
+                in_channels=out_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=stride,
+                padding=0,
+            )
+        else:
+            return None
+
     def conv_weight_norm(self, conv):
         """Apply weight normalization on the conv layer."""
         dropout = self.hparams.dropout
@@ -92,17 +106,7 @@ class EncoderConvLayer(ConvLayer):
         )
         self.conv = self.conv_weight_norm(conv)
 
-        # Residual convolutional layer for different input and output sequence length (stride > 1).
-        if self.stride > 1:
-            self.residual_conv = nn.Conv1d(
-                in_channels=out_channels,
-                out_channels=out_channels,
-                kernel_size=1,
-                stride=stride,
-                padding=0,
-            )
-        else:
-            self.residual_conv = None
+        self.residual_conv = self.build_residual_conv(out_channels, stride)
 
     def forward(self, input_, lengths=None, **kwargs):
         input_ = self.preprocess(input_)
@@ -148,17 +152,7 @@ class DecoderConvLayer(ConvLayer):
         )
         self.conv = self.conv_weight_norm(conv)
 
-        # Residual convolutional layer for different input and output sequence length (stride > 1).
-        if self.stride > 1:
-            self.residual_conv = nn.Conv1d(
-                in_channels=out_channels,
-                out_channels=out_channels,
-                kernel_size=1,
-                stride=stride,
-                padding=0,
-            )
-        else:
-            self.residual_conv = None
+        self.residual_conv = self.build_residual_conv(out_channels, stride)
 
     def forward(self, input_, lengths=None, **kwargs):
         input_ = self.preprocess(input_)

@@ -1,6 +1,8 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+# TODO: Support user-defined hparams.
+
 from argparse import Namespace
 
 from .utils.registry_utils import camel2snake
@@ -123,7 +125,6 @@ def hparams_transformer_de_en_iwslt():
     hparams.trg_embedding_size = 256
     hparams.decoder_out_embedding_size = 256
 
-    # TODO: Layer preprocess = 'n', postprocess = 'da'
     # TODO: filter_size = 1024
 
     return hparams
@@ -135,5 +136,15 @@ def hparams_transformer_attn_de_en_iwslt():
 
     hparams = hparams_transformer_de_en_iwslt()
     hparams.enc_dec_attn_type = 'fairseq'
+
+    return hparams
+
+
+@register_hparams('transformer_share_emb')
+def hparams_transformer_de_en_iwslt_share_emb():
+    """HParams of T2T on de-en iwslt, and use shared embedding and softmax."""
+
+    hparams = hparams_transformer_de_en_iwslt()
+    hparams.share_input_output_embedding = True
 
     return hparams
