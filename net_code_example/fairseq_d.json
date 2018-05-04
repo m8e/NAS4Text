@@ -1,0 +1,22 @@
+/// Fairseq model with dropout before each layer.
+
+/// Related argument options:
+//
+// --hparams fairseq_de_en_iwslt
+
+/// Result Network:
+//
+
+[
+    [
+        [1, 2, 1, 0, 1, 0],
+        [1, 2, 1, 0, 1, 0],
+        [1, 2, 1, 0, 1, 0],
+        [1, 2, 1, 0, 1, 0]
+    ],
+    [
+        [1, 2, 1, 0, 1, 0],
+        [1, 2, 1, 0, 1, 0],
+        [1, 2, 1, 0, 1, 0]
+    ]
+]
