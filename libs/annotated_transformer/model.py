@@ -6,10 +6,12 @@
 See <https://github.com/harvardnlp/annotated-transformer/blob/master/The%20Annotated%20Transformer.ipynb>.
 """
 
+import copy
+
 import torch.nn as nn
 import torch.nn.functional as F
 
-from . import utils
+from . import utils, attention
 
 __author__ = 'fyabc'
 
@@ -102,6 +104,10 @@ class EncoderDecoder(nn.Module):
     def decode(self, memory, src_mask, tgt, tgt_mask):
         return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
 
+    @property
+    def d_model(self):
+        return self.src_embed[0].d_model
+
 
 class Generator(nn.Module):
     """Define standard linear + softmax generation step."""
@@ -111,3 +117,26 @@ class Generator(nn.Module):
 
     def forward(self, x):
         return F.log_softmax(self.proj(x), dim=-1)
+
+
+def make_model(hparams, src_vocab, tgt_vocab, N=6,
+               d_model=512, d_ff=2048, h=8, dropout=0.1):
+    """Helper: Construct a model from hyperparameters."""
+    c = copy.deepcopy
+    attn = attention.MultiHeadedAttention(h, d_model)
+    ff = utils.PositionwiseFeedForward(d_model, d_ff, dropout)
+    position = utils.PositionalEncoding(d_model, dropout, max_len=hparams.max_src_positions)
+    model = EncoderDecoder(
+        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+        Decoder(DecoderLayer(d_model, c(attn), c(attn),
+                             c(ff), dropout), N),
+        nn.Sequential(utils.Embeddings(d_model, src_vocab), c(position)),
+        nn.Sequential(utils.Embeddings(d_model, tgt_vocab), c(position)),
+        Generator(d_model, tgt_vocab))
+
+    # This was important from their code.
+    # Initialize parameters with Glorot / fan_avg.
+    for p in model.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform(p)
+    return model

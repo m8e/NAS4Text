@@ -144,6 +144,7 @@ def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=No
         states.append(
             th.load(filename, map_location=lambda s, l: default_restore_location(s, 'cpu'))
         )
+        logging.info('Loaded checkpoint {} (epoch {})'.format(filename, states[-1]['extra_state']['epoch']))
     hparams = states[0]['hparams']
     _hparams_back_compat(hparams)
     if model_arg_overrides is not None:

@@ -8,13 +8,11 @@ import itertools
 import logging
 import math
 import os
-import pprint
 
 import torch as th
 
 from .utils.main_utils import main_entry
 from .utils.data_processing import LanguageDatasets
-from .layers.net_code import get_net_code
 from .child_net import ChildNet, ParalleledChildNet
 from .criterions import build_criterion
 from .child_trainer import ChildTrainer

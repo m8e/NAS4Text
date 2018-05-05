@@ -14,13 +14,14 @@ from ..utils.data_processing import LanguageDatasets
 __author__ = 'fyabc'
 
 
-def main_entry(hparams, datasets=None, train=True):
+def main_entry(hparams, datasets=None, train=True, net_code=True):
     """General code of main entries.
 
     Args:
         hparams:
         datasets (LanguageDatasets): Preload datasets or None.
         train (bool): In training or generation.
+        net_code (bool): Get net code or not.
 
     Returns:
         dict: Contains several components.
@@ -47,11 +48,14 @@ def main_entry(hparams, datasets=None, train=True):
         th.manual_seed(hparams.seed)
 
     # Get net code
-    net_code = get_net_code(hparams)
-    logging.info('Net code information:')
-    logging.info('LSTM search space: {}'.format(hparams.lstm_space))
-    logging.info('Convolutional search space: {}'.format(hparams.conv_space))
-    logging.info('Attention search space: {}'.format(hparams.attn_space))
+    if net_code:
+        code = get_net_code(hparams)
+        logging.info('Net code information:')
+        logging.info('LSTM search space: {}'.format(hparams.lstm_space))
+        logging.info('Convolutional search space: {}'.format(hparams.conv_space))
+        logging.info('Attention search space: {}'.format(hparams.attn_space))
+    else:
+        code = None
 
     # Load datasets
     datasets = LanguageDatasets(hparams.task) if datasets is None else datasets
@@ -67,6 +71,6 @@ def main_entry(hparams, datasets=None, train=True):
         logging.info('Split {}: len = {}'.format(split, len(datasets.splits[split])))
 
     return {
-        'net_code': net_code,
+        'net_code': code,
         'datasets': datasets,
     }
