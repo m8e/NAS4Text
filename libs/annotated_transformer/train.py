@@ -191,7 +191,6 @@ class SimpleTrainer:
 def annotated_train_main(hparams):
     components = main_entry(hparams, train=True, net_code=False)
 
-    assert hparams.net_code_file is None, 'Training of Annotated Transformer must not have net code file'
     hparams.net_code_file = 'annotated_transformer'
 
     datasets = components['datasets']
