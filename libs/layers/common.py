@@ -17,6 +17,8 @@ __author__ = 'fyabc'
 
 def clones(module, n):
     """Produce n identical layers."""
+    # [NOTE]: This only support leaf modules created by user.
+    # For example, the module returned from ``Linear`` function below cannot use this to clone.
     return nn.ModuleList([copy.deepcopy(module) for _ in range(n)])
 
 

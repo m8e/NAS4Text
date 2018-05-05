@@ -47,6 +47,8 @@ def add_hparams_args(parser):
     group.add_argument('--share-input-output-embed', dest='share_input_output_embedding', action='store_true',
                        default=None, help='share input and output embeddings (requires --decoder-out-embed-size'
                                           ' and --trg-emb-size to be equal)')
+    group.add_argument('--dropout', type=float, default=None, metavar='D',
+                       help='dropout value')
     group.add_argument('--lstm-space', dest='lstm_space', type=str, default=None,
                        choices=lstm.Spaces.keys(),
                        help='LSTM search space: {}'.format(', '.join(lstm.Spaces.keys())))
