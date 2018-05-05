@@ -99,3 +99,13 @@ class PositionalEncoding(nn.Module):
         x = x + Variable(self.pe[:, :x.size(1)],
                          requires_grad=False)
         return self.dropout(x)
+
+
+def fix_batch(batch, pad_id):
+    """Fix the batch from NAS4Text style to Annotated Transformer style."""
+
+    net_input = batch['net_input']
+    src_tokens, trg_tokens = net_input['src_tokens'], net_input['trg_tokens']
+    net_input['src_mask'] = (src_tokens != pad_id).unsqueeze(-2)
+    trg_mask = (trg_tokens != pad_id).unsqueeze(-2)
+    net_input['trg_mask'] = trg_mask & subsequent_mask(trg_tokens.size(-1), pad_id=pad_id).type_as(trg_mask)

@@ -10,11 +10,12 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from .utils import subsequent_mask
+from .utils import fix_batch
 from .model import make_model
 from ..utils.main_utils import main_entry
 from ..utils.common import make_variable, torch_persistent_save
 from ..utils.paths import get_model_path
+from ..utils.meters import StopwatchMeter
 
 __author__ = 'fyabc'
 
@@ -139,8 +140,8 @@ class SimpleTrainer:
         total_loss = 0
         tokens = 0
 
-        for i, batch in enumerate(train_iter):
-            self.fix_batch(batch, pad_id=self.datasets.task.PAD_ID)
+        for i, batch in enumerate(train_iter, start=1):
+            fix_batch(batch, pad_id=self.datasets.task.PAD_ID)
             sample = self._prepare_sample(batch, volatile=False)
 
             self.model.train()
@@ -153,24 +154,14 @@ class SimpleTrainer:
             total_tokens += sample['ntokens']
             tokens += sample['ntokens']
 
-            if i % 50 == 1:
+            if i % self.hparams.log_interval == 0:
                 elapsed = time.time() - start
-                print("Epoch Step: {}/{} Loss: {:.6f} Tokens per Sec: {:.6f}".format(
+                logging.info("Epoch Step: {}/{} Loss: {:.6f} Tokens per Sec: {:.6f}".format(
                     i, train_len, loss / sample['ntokens'], tokens / elapsed))
                 start = time.time()
                 tokens = 0
 
         return total_loss / total_tokens
-
-    @staticmethod
-    def fix_batch(batch, pad_id):
-        """Fix the batch from NAS4Text style to Annotated Transformer style."""
-
-        net_input = batch['net_input']
-        src_tokens, trg_tokens = net_input['src_tokens'], net_input['trg_tokens']
-        net_input['src_mask'] = (src_tokens != pad_id).unsqueeze(-2)
-        trg_mask = (trg_tokens != pad_id).unsqueeze(-2)
-        net_input['trg_mask'] = trg_mask & subsequent_mask(trg_tokens.size(-1), pad_id=pad_id).type_as(trg_mask)
 
     def save_checkpoint(self, epoch):
         save_dir = get_model_path(self.hparams)
@@ -221,8 +212,16 @@ def annotated_train_main(hparams):
     trainer = SimpleTrainer(hparams, model, criterion, optimizer, datasets)
 
     max_epoch = hparams.max_epoch or math.inf
-    epoch = 1
+    epoch, batch_offset = 1, 0
+
+    train_meter = StopwatchMeter()
+    train_meter.start()
     while epoch < max_epoch:
-        epoch_loss = trainer.train(epoch, batch_offset=0)
-        print('Epoch: {} Loss: {:.6f}'.format(epoch, epoch_loss))
+        epoch_loss = trainer.train(epoch, batch_offset=batch_offset)
+        logging.info('Epoch: {} Loss: {:.6f}'.format(epoch, epoch_loss))
         trainer.save_checkpoint(epoch)
+
+        epoch += 1
+        batch_offset = 0
+    train_meter.stop()
+    logging.info('Training done in {:.1f} seconds'.format(train_meter.sum))
