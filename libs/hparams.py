@@ -66,6 +66,9 @@ def hparams_base():
         conv_space='base',
         attn_space='base',
 
+        # Feed-forward size of self-attention layers (aka "filter_size" in T2T)
+        attn_d_ff=2048,
+
         # Candidates: dot_product, fairseq
         enc_dec_attn_type='dot_product',
 
@@ -124,8 +127,7 @@ def hparams_transformer_de_en_iwslt():
     hparams.src_embedding_size = 256
     hparams.trg_embedding_size = 256
     hparams.decoder_out_embedding_size = 256
-
-    # TODO: filter_size = 1024
+    hparams.attn_d_ff = 1024
 
     return hparams
 

@@ -187,6 +187,7 @@ def annotated_train_main(hparams):
     datasets = components['datasets']
 
     # FIXME: Hard-code hparams here.
+    logging.info('Building model')
     model = make_model(
         hparams=hparams,
         src_vocab=datasets.task.get_vocab_size(is_src_lang=True),
@@ -198,14 +199,18 @@ def annotated_train_main(hparams):
         dropout=0.1,
     )
     model.cuda()
+    logging.info('All model parameters:')
+    for name, param in model.named_parameters():
+        logging.info('\t {}: {}, {}'.format(name, list(param.shape), param.numel()))
+    logging.info('Number of parameters: {}'.format(sum(p.data.numel() for p in model.parameters())))
 
+    logging.info('Building criterion and optimizer')
     criterion = LabelSmoothing(
         size=datasets.task.get_vocab_size(is_src_lang=False),
         padding_idx=datasets.task.PAD_ID,
         smoothing=0.1,
     )
     criterion.cuda()
-
     optimizer = NoamOpt(model.d_model, 1, 2000,
                         torch.optim.Adam(model.parameters(), lr=0, betas=(.9, .98), eps=1e-9))
 

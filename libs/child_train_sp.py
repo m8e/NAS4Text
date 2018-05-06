@@ -48,6 +48,9 @@ def single_process_main(hparams, datasets=None):
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
     logging.info('Model structure:\n{}'.format(model))
     logging.info('Criterion: {}'.format(criterion.__class__.__name__))
+    logging.info('All model parameters:')
+    for name, param in model.named_parameters():
+        logging.info('\t {}: {}, {}'.format(name, list(param.shape), param.numel()))
     logging.info('Number of parameters: {}'.format(model.num_parameters()))
 
     # Build trainer

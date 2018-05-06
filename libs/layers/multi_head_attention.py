@@ -48,7 +48,7 @@ def attention(query, key, value, mask=None, dropout=None):
     return th.matmul(p_attn, value), p_attn
 
 
-class MultiHeadAttention(ChildLayer):
+class MultiHeadAttention(nn.Module):
     r"""The module of multi-head attention.
 
     :math:`MultiHead(Q, K, V) = Concat(head_1, ..., head_h) * W^O`
@@ -74,8 +74,8 @@ class MultiHeadAttention(ChildLayer):
         - **output** (batch_size, length_q, d_model):
     """
 
-    def __init__(self, hparams, h, d_model, dropout=0.1, in_encoder=True):
-        super().__init__(hparams)
+    def __init__(self, h, d_model, dropout=0.1):
+        super().__init__()
 
         assert d_model % h == 0
 
@@ -88,11 +88,8 @@ class MultiHeadAttention(ChildLayer):
 
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
-        self.in_encoder = in_encoder
 
     def forward(self, query, key, value, mask=None):
-        query = self.preprocess(query)
-
         num_batches = query.size(0)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
@@ -108,7 +105,7 @@ class MultiHeadAttention(ChildLayer):
 
         result = self.linears[-1](x)
 
-        return self.postprocess(result)
+        return result
 
 
 def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
@@ -137,7 +134,19 @@ def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
     return mask
 
 
-class SelfAttention(MultiHeadAttention):
+class PositionwiseFeedForward(nn.Module):
+    def __init__(self, d_model, d_ff, dropout=0.1):
+        super().__init__()
+
+        self.w_1 = nn.Linear(d_model, d_ff)
+        self.w_2 = nn.Linear(d_ff, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+
+
+class SelfAttention(ChildLayer):
     """Wraps multi-head attention into self attention.
 
     Inputs: x, lengths
@@ -148,9 +157,38 @@ class SelfAttention(MultiHeadAttention):
         - **output** (batch_size, length, d_model):
     """
 
+    def __init__(self, hparams, h, d_model, d_ff, dropout=0.1, in_encoder=True):
+        super().__init__(hparams)
+
+        self.in_encoder = in_encoder
+        self.attention = MultiHeadAttention(h, d_model, dropout=dropout)
+        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout=dropout)
+
     def forward(self, x, lengths=None, **kwargs):
+        """
+
+        Args:
+            x:
+            lengths:
+            **kwargs:
+
+        Returns:
+
+        Notes:
+            The self-attention layer contains a multi-head attention layer and a position-wise feed-forward layer.
+            Each need to be preprocessed and postprocessed.
+        """
+
+        x = self.preprocess(x)
         mask = _mask_from_lengths(x, lengths, self, subsequent_mask=True)
-        return super().forward(x, x, x, mask=mask)
+        attn_result = self.attention(x, x, x, mask=mask)
+        attn_result = self.postprocess(attn_result)
+
+        ff_input = self.preprocess(attn_result)
+        result = self.feed_forward(ff_input)
+        result = self.postprocess(result)
+
+        return result
 
 
 class EncDecAttention(nn.Module):
