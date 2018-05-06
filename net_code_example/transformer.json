@@ -22,22 +22,44 @@
 //      (embed_tokens): Embedding(24898, 256, padding_idx=0)
 //      (embed_positions): LearnedPositionalEmbedding(256, 256, padding_idx=0)
 //      (layer_0): SelfAttention(
-//        (linears): ModuleList(
-//          (0): Linear(in_features=256, out_features=256)
-//          (1): Linear(in_features=256, out_features=256)
-//          (2): Linear(in_features=256, out_features=256)
-//          (3): Linear(in_features=256, out_features=256)
+//        (preprocessors): ModuleList(
 //        )
-//        (dropout): Dropout(p=0.1)
+//        (postprocessors): ModuleList(
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=256, out_features=256)
+//            (1): Linear(in_features=256, out_features=256)
+//            (2): Linear(in_features=256, out_features=256)
+//            (3): Linear(in_features=256, out_features=256)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=256, out_features=1024)
+//          (w_2): Linear(in_features=1024, out_features=256)
+//          (dropout): Dropout(p=0.1)
+//        )
 //      )
 //      (layer_1): SelfAttention(
-//        (linears): ModuleList(
-//          (0): Linear(in_features=256, out_features=256)
-//          (1): Linear(in_features=256, out_features=256)
-//          (2): Linear(in_features=256, out_features=256)
-//          (3): Linear(in_features=256, out_features=256)
+//        (preprocessors): ModuleList(
 //        )
-//        (dropout): Dropout(p=0.1)
+//        (postprocessors): ModuleList(
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=256, out_features=256)
+//            (1): Linear(in_features=256, out_features=256)
+//            (2): Linear(in_features=256, out_features=256)
+//            (3): Linear(in_features=256, out_features=256)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=256, out_features=1024)
+//          (w_2): Linear(in_features=1024, out_features=256)
+//          (dropout): Dropout(p=0.1)
+//        )
 //      )
 //      (fc2): Linear(in_features=256, out_features=256)
 //    )
@@ -45,13 +67,24 @@
 //      (embed_tokens): Embedding(24898, 256, padding_idx=0)
 //      (embed_positions): LearnedPositionalEmbedding(256, 256, padding_idx=0)
 //      (layer_0): SelfAttention(
-//        (linears): ModuleList(
-//          (0): Linear(in_features=256, out_features=256)
-//          (1): Linear(in_features=256, out_features=256)
-//          (2): Linear(in_features=256, out_features=256)
-//          (3): Linear(in_features=256, out_features=256)
+//        (preprocessors): ModuleList(
 //        )
-//        (dropout): Dropout(p=0.1)
+//        (postprocessors): ModuleList(
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=256, out_features=256)
+//            (1): Linear(in_features=256, out_features=256)
+//            (2): Linear(in_features=256, out_features=256)
+//            (3): Linear(in_features=256, out_features=256)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=256, out_features=1024)
+//          (w_2): Linear(in_features=1024, out_features=256)
+//          (dropout): Dropout(p=0.1)
+//        )
 //      )
 //      (attention_0): EncDecAttention(
 //        (linears): ModuleList(
@@ -63,13 +96,24 @@
 //        (dropout): Dropout(p=0.1)
 //      )
 //      (layer_1): SelfAttention(
-//        (linears): ModuleList(
-//          (0): Linear(in_features=256, out_features=256)
-//          (1): Linear(in_features=256, out_features=256)
-//          (2): Linear(in_features=256, out_features=256)
-//          (3): Linear(in_features=256, out_features=256)
+//        (preprocessors): ModuleList(
 //        )
-//        (dropout): Dropout(p=0.1)
+//        (postprocessors): ModuleList(
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=256, out_features=256)
+//            (1): Linear(in_features=256, out_features=256)
+//            (2): Linear(in_features=256, out_features=256)
+//            (3): Linear(in_features=256, out_features=256)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=256, out_features=1024)
+//          (w_2): Linear(in_features=1024, out_features=256)
+//          (dropout): Dropout(p=0.1)
+//        )
 //      )
 //      (attention_1): EncDecAttention(
 //        (linears): ModuleList(
@@ -88,11 +132,11 @@
 
 [
     [
-        [2, 1, 0, 0],
-        [2, 1, 0, 0]
+        [2, 1, 0, 0, 0, 0],
+        [2, 1, 0, 0, 0, 0]
     ],
     [
-        [2, 1, 0, 0],
-        [2, 1, 0, 0]
+        [2, 1, 0, 0, 0, 0],
+        [2, 1, 0, 0, 0, 0]
     ]
 ]

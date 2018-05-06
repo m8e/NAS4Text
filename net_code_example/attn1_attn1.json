@@ -1,34 +1,55 @@
 /// All Attention (1 encoder layers, 1 decoder layers)
-/// FIXME: Attn2-attn2 will cause NaN loss after loss explode now
 /// Result Network:
 //
 //ParalleledChildNet(
 //  (module): ChildNet(
 //    (encoder): ChildEncoder(
-//      (embed_tokens): Embedding(32010, 512, padding_idx=0)
+//      (embed_tokens): Embedding(24898, 512, padding_idx=0)
 //      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
 //      (layer_0): SelfAttention(
-//        (linears): ModuleList(
-//          (0): Linear(in_features=512, out_features=512)
-//          (1): Linear(in_features=512, out_features=512)
-//          (2): Linear(in_features=512, out_features=512)
-//          (3): Linear(in_features=512, out_features=512)
+//        (preprocessors): ModuleList(
 //        )
-//        (dropout): Dropout(p=0.1)
+//        (postprocessors): ModuleList(
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=512, out_features=512)
+//            (1): Linear(in_features=512, out_features=512)
+//            (2): Linear(in_features=512, out_features=512)
+//            (3): Linear(in_features=512, out_features=512)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=512, out_features=2048)
+//          (w_2): Linear(in_features=2048, out_features=512)
+//          (dropout): Dropout(p=0.1)
+//        )
 //      )
 //      (fc2): Linear(in_features=512, out_features=512)
 //    )
 //    (decoder): ChildDecoder(
-//      (embed_tokens): Embedding(22823, 512, padding_idx=0)
+//      (embed_tokens): Embedding(24898, 512, padding_idx=0)
 //      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
 //      (layer_0): SelfAttention(
-//        (linears): ModuleList(
-//          (0): Linear(in_features=512, out_features=512)
-//          (1): Linear(in_features=512, out_features=512)
-//          (2): Linear(in_features=512, out_features=512)
-//          (3): Linear(in_features=512, out_features=512)
+//        (preprocessors): ModuleList(
 //        )
-//        (dropout): Dropout(p=0.1)
+//        (postprocessors): ModuleList(
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=512, out_features=512)
+//            (1): Linear(in_features=512, out_features=512)
+//            (2): Linear(in_features=512, out_features=512)
+//            (3): Linear(in_features=512, out_features=512)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=512, out_features=2048)
+//          (w_2): Linear(in_features=2048, out_features=512)
+//          (dropout): Dropout(p=0.1)
+//        )
 //      )
 //      (attention_0): EncDecAttention(
 //        (linears): ModuleList(
@@ -40,16 +61,16 @@
 //        (dropout): Dropout(p=0.1)
 //      )
 //      (fc2): Linear(in_features=512, out_features=256)
-//      (fc_last): Linear(in_features=256, out_features=22823)
+//      (fc_last): Linear(in_features=256, out_features=24898)
 //    )
 //  )
 //)
 
 [
     [
-        [2, 2]
+        [2, 2, 0, 0]
     ],
     [
-        [2, 2]
+        [2, 2, 0, 0]
     ]
 ]
