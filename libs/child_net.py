@@ -166,7 +166,7 @@ class ChildEncoder(nn.Module):
 
 
 class ChildDecoder(nn.Module):
-    def __init__(self, code, hparams):
+    def __init__(self, code, hparams, **kwargs):
         super().__init__()
 
         self.code = code
@@ -177,7 +177,18 @@ class ChildDecoder(nn.Module):
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
         self.input_shape = th.Size([1, 1, hparams.trg_embedding_size])
 
-        self.embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID)
+        if hparams.share_src_trg_embedding:
+            assert self.task.SourceVocabSize == self.task.TargetVocabSize, \
+                'Shared source and target embedding weights implies same source and target vocabulary size, but got ' \
+                '{}(src) vs {}(trg)'.format(self.task.SourceVocabSize, self.task.TargetVocabSize)
+            assert hparams.src_embedding_size == hparams.trg_embedding_size, \
+                'Shared source and target embedding weights implies same source and target embedding size, but got ' \
+                '{}(src) vs {}(trg)'.format(hparams.src_embedding_size, hparams.trg_embedding_size)
+            self.embed_tokens = nn.Embedding(
+                self.task.TargetVocabSize, hparams.trg_embedding_size, padding_idx=self.task.PAD_ID)
+            self.embed_tokens.weight = kwargs.pop('src_embedding').weight
+        else:
+            self.embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID)
         self.embed_positions = PositionalEmbedding(
             hparams.max_trg_positions,
             hparams.trg_embedding_size,
@@ -378,7 +389,7 @@ class ChildNet(nn.Module):
         self.task = get_task(hparams.task)
 
         self.encoder = ChildEncoder(net_code[0], hparams)
-        self.decoder = ChildDecoder(net_code[1], hparams)
+        self.decoder = ChildDecoder(net_code[1], hparams, src_embedding=self.encoder.embed_tokens)
         self.encoder.num_attention_layers = self.decoder.num_attention_layers
 
     def forward(self, src_tokens, src_lengths, trg_tokens, trg_lengths):

@@ -60,6 +60,7 @@ def hparams_base():
         trg_embedding_size=10,
         decoder_out_embedding_size=8,
         share_input_output_embedding=False,
+        share_src_trg_embedding=False,
         dropout=0.1,
 
         lstm_space='base',
@@ -148,5 +149,16 @@ def hparams_transformer_de_en_iwslt_share_emb():
 
     hparams = hparams_transformer_de_en_iwslt()
     hparams.share_input_output_embedding = True
+
+    return hparams
+
+
+@register_hparams('transformer_share3')
+def hparams_transformer_de_en_iwslt_share3():
+    """HParams of T2T on de-en iwslt, and use shared source embedding, target embedding and softmax."""
+
+    hparams = hparams_transformer_de_en_iwslt()
+    hparams.share_input_output_embedding = True
+    hparams.share_src_trg_embedding = True
 
     return hparams
