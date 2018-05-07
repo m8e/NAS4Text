@@ -107,6 +107,17 @@ def hparams_fairseq_de_en_iwslt():
     return hparams
 
 
+@register_hparams('fairseq_share3')
+def hparams_fairseq_de_en_iwslt_share3():
+    """HParams of fairseq-py on de-en iwslt, and use shared source embedding, target embedding and softmax."""
+
+    hparams = hparams_fairseq_de_en_iwslt()
+    hparams.share_input_output_embedding = True
+    hparams.share_src_trg_embedding = True
+
+    return hparams
+
+
 @register_hparams('fairseq_attn')
 def hparams_fairseq_attn_de_en_iwslt():
     """HParams of fairseq-py on de-en iwslt, and use fairseq attention."""
