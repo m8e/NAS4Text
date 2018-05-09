@@ -31,6 +31,8 @@ python child_train.py \
     -N net_code_example/default.json
 ```
 
+More examples can be seen in [`scripts/train_examples.sh`](scripts/train_examples.sh)
+
 ## Model Storage
 
 ```
@@ -58,6 +60,12 @@ python child_gen.py \
     --path checkpoint_last.pt \
     --use-task-maxlen \
     --output-file output_pt1.txt
+```
+
+Then compute BLEU:
+
+```bash
+perl scripts/multi-bleu.perl data/de_en_iwslt/test.iwslt.de-en.en < translated/[output file path above]
 ```
 
 ## Train Teacher Model

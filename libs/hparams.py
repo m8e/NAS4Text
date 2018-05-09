@@ -63,6 +63,7 @@ def hparams_base():
         share_src_trg_embedding=False,
         dropout=0.1,
 
+        # This define the search space of three layer types.
         lstm_space='base',
         conv_space='base',
         attn_space='base',
