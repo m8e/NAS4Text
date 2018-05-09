@@ -29,52 +29,140 @@
 //ParalleledChildNet(
 //  (module): ChildNet(
 //    (encoder): ChildEncoder(
-//      (embed_tokens): Embedding(32010, 512, padding_idx=0)
-//      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
-//      (layer_0): LSTMLayer(512, 32, batch_first=True, dropout=0.1, bidirectional=True)
-//      (projection_0): Linear(in_features=512, out_features=64)
+//      (embed_tokens): Embedding(24898, 256, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 256, padding_idx=0)
+//      (layer_0): LSTMLayer(
+//        (preprocessors): ModuleList(
+//          (0): LayerNorm(256, eps=1e-06)
+//        )
+//        (postprocessors): ModuleList(
+//          (0): Dropout(p=0.1)
+//        )
+//        (lstm): LSTM(256, 32, batch_first=True, dropout=0.1, bidirectional=True)
+//      )
+//      (projection_0): Linear(in_features=256, out_features=64)
 //      (layer_1): EncoderConvLayer(
+//        (preprocessors): ModuleList(
+//          (0): LayerNorm(64, eps=1e-06)
+//        )
+//        (postprocessors): ModuleList(
+//          (0): Dropout(p=0.1)
+//        )
 //        (conv): Conv1d (64, 64, kernel_size=(3,), stride=(1,))
 //      )
 //      (projection_1): Linear(in_features=64, out_features=32)
 //      (layer_2): SelfAttention(
-//        (linears): ModuleList(
-//          (0): Linear(in_features=32, out_features=32)
-//          (1): Linear(in_features=32, out_features=32)
-//          (2): Linear(in_features=32, out_features=32)
-//          (3): Linear(in_features=32, out_features=32)
+//        (preprocessors): ModuleList(
+//          (0): LayerNorm(32, eps=1e-06)
 //        )
-//        (dropout): Dropout(p=0.1)
+//        (postprocessors): ModuleList(
+//          (0): Dropout(p=0.1)
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=32, out_features=32)
+//            (1): Linear(in_features=32, out_features=32)
+//            (2): Linear(in_features=32, out_features=32)
+//            (3): Linear(in_features=32, out_features=32)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=32, out_features=2048)
+//          (w_2): Linear(in_features=2048, out_features=32)
+//          (dropout): Dropout(p=0.1)
+//        )
 //      )
-//      (fc2): Linear(in_features=32, out_features=512)
+//      (fc2): Linear(in_features=32, out_features=256)
 //    )
 //    (decoder): ChildDecoder(
-//      (embed_tokens): Embedding(22823, 512, padding_idx=0)
-//      (embed_positions): LearnedPositionalEmbedding(1024, 512, padding_idx=0)
-//      (layer_0): LSTMLayer(512, 64, batch_first=True, dropout=0.1)
-//      (projection_0): Linear(in_features=512, out_features=64)
+//      (embed_tokens): Embedding(24898, 256, padding_idx=0)
+//      (embed_positions): LearnedPositionalEmbedding(1024, 256, padding_idx=0)
+//      (layer_0): LSTMLayer(
+//        (preprocessors): ModuleList(
+//          (0): LayerNorm(256, eps=1e-06)
+//        )
+//        (postprocessors): ModuleList(
+//          (0): Dropout(p=0.1)
+//        )
+//        (lstm): LSTM(256, 64, batch_first=True, dropout=0.1)
+//        (fc_init_state): Linear(in_features=256, out_features=64)
+//      )
+//      (projection_0): Linear(in_features=256, out_features=64)
 //      (attention_0): EncDecAttention(
 //        (linears): ModuleList(
-//          (0): Linear(in_features=64, out_features=512)
-//          (1): Linear(in_features=512, out_features=512)
-//          (2): Linear(in_features=512, out_features=512)
-//          (3): Linear(in_features=512, out_features=64)
+//          (0): Linear(in_features=64, out_features=256)
+//          (1): Linear(in_features=256, out_features=256)
+//          (2): Linear(in_features=256, out_features=256)
+//          (3): Linear(in_features=256, out_features=64)
 //        )
 //        (dropout): Dropout(p=0.1)
 //      )
-//      (fc2): Linear(in_features=64, out_features=256)
-//      (fc_last): Linear(in_features=256, out_features=22823)
+//      (layer_1): DecoderConvLayer(
+//        (preprocessors): ModuleList(
+//          (0): LayerNorm(64, eps=1e-06)
+//        )
+//        (postprocessors): ModuleList(
+//          (0): Dropout(p=0.1)
+//        )
+//        (conv): Conv1d (64, 64, kernel_size=(3,), stride=(1,), padding=(2,))
+//      )
+//      (projection_1): Linear(in_features=64, out_features=32)
+//      (attention_1): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=32, out_features=256)
+//          (1): Linear(in_features=256, out_features=256)
+//          (2): Linear(in_features=256, out_features=256)
+//          (3): Linear(in_features=256, out_features=32)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (layer_2): SelfAttention(
+//        (preprocessors): ModuleList(
+//          (0): LayerNorm(32, eps=1e-06)
+//        )
+//        (postprocessors): ModuleList(
+//          (0): Dropout(p=0.1)
+//        )
+//        (attention): MultiHeadAttention(
+//          (linears): ModuleList(
+//            (0): Linear(in_features=32, out_features=32)
+//            (1): Linear(in_features=32, out_features=32)
+//            (2): Linear(in_features=32, out_features=32)
+//            (3): Linear(in_features=32, out_features=32)
+//          )
+//          (dropout): Dropout(p=0.1)
+//        )
+//        (feed_forward): PositionwiseFeedForward(
+//          (w_1): Linear(in_features=32, out_features=2048)
+//          (w_2): Linear(in_features=2048, out_features=32)
+//          (dropout): Dropout(p=0.1)
+//        )
+//      )
+//      (attention_2): EncDecAttention(
+//        (linears): ModuleList(
+//          (0): Linear(in_features=32, out_features=256)
+//          (1): Linear(in_features=256, out_features=256)
+//          (2): Linear(in_features=256, out_features=256)
+//          (3): Linear(in_features=256, out_features=32)
+//        )
+//        (dropout): Dropout(p=0.1)
+//      )
+//      (fc2): Linear(in_features=32, out_features=256)
+//      (fc_last): Linear(in_features=256, out_features=24898)
 //    )
 //  )
 //)
 
 [
     [
-        [0, 0, 1, 0, 0],
-        [1, 2, 1, 0, 0, 0],
-        [2, 0, 0, 0]
+        [0, 0, 1, 2, 1],
+        [1, 2, 1, 0, 2, 1],
+        [2, 0, 2, 1]
     ],
     [
-        [0, 1, 0, 0, 0]
+        [0, 1, 0, 2, 1],
+        [1, 2, 1, 0, 2, 1],
+        [2, 0, 2, 1]
     ]
 ]

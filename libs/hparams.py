@@ -94,6 +94,19 @@ def hparams_normal():
     return hparams
 
 
+@register_hparams('share3')
+def hparams_share3():
+    """HParams that share 3 embeddings and softmax."""
+
+    hparams = hparams_normal()
+    hparams.src_embedding_size = 256
+    hparams.trg_embedding_size = 256
+    hparams.share_input_output_embedding = True
+    hparams.share_src_trg_embedding = True
+
+    return hparams
+
+
 @register_hparams('fairseq_de_en_iwslt')
 def hparams_fairseq_de_en_iwslt():
     """HParams of de-en iwslt, copied from fairseq-py."""
