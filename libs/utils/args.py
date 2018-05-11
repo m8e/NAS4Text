@@ -5,7 +5,7 @@ import argparse
 
 import torch
 
-from ..hparams import get_hparams
+from ..hparams import get_hparams, hparams_base
 from ..layers import lstm, cnn, attention
 from ..optimizers import AllOptimizers
 from ..optimizers.lr_schedulers import AllLRSchedulers
@@ -114,7 +114,8 @@ def add_train_args(parser):
                        help='optimizer: {} (default: %(default)s)'.format(', '.join(AllOptimizers.keys())))
     for optimizer in AllOptimizers.values():
         optimizer.add_args(group)
-    group.add_argument('--lr', '--learning-rate', default='0.25', metavar='LR_1,LR_2,...,LR_N',
+    # TODO: Move these into hparams args.
+    group.add_argument('--lr', '--learning-rate', default=None, metavar='LR_1,LR_2,...,LR_N',
                        help='learning rate for the first N epochs; all epochs >N using LR_N'
                             ' (note: this may be interpreted differently depending on --lr-scheduler)')
     group.add_argument('--momentum', default=0.99, type=float, metavar='M',

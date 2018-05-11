@@ -77,6 +77,9 @@ def hparams_base():
         # Candidates: none, layer, batch, noam
         norm_type='layer',
         norm_epsilon=1e-6,
+
+        # About training
+        lr='0.25',
     )
 
 
