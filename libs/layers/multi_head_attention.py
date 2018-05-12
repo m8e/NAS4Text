@@ -63,6 +63,7 @@ class MultiHeadAttention(nn.Module):
         h: Number of heads.
         d_model: Model output size.
         dropout:
+        window: Local attention window size, None means global attention.
 
     Inputs: query, key, value, mask
         - **query** (batch_size, length_q, d_model):
@@ -74,7 +75,7 @@ class MultiHeadAttention(nn.Module):
         - **output** (batch_size, length_q, d_model):
     """
 
-    def __init__(self, h, d_model, dropout=0.1):
+    def __init__(self, h, d_model, dropout=0.1, window=None):
         super().__init__()
 
         assert d_model % h == 0
@@ -82,6 +83,10 @@ class MultiHeadAttention(nn.Module):
         # [NOTE]: We assume that d_v always == d_k.
         self.d_k = d_model // h
         self.h = h
+        self.window = window
+
+        assert window is None or (isinstance(window, int) and window % 2 == 1), \
+            'Local attention window size must be None or an odd number'
 
         # 4 Weights matrices.
         self.linears = nn.ModuleList([Linear(d_model, d_model) for _ in range(4)])
@@ -96,6 +101,15 @@ class MultiHeadAttention(nn.Module):
         query, key, value = [
             l(x).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
             for l, x in zip(self.linears, (query, key, value))]
+
+        # print('$d_k: {}, h: {}'.format(self.d_k, self.h))
+        # print('#Q: {}, K: {}, V: {}, M: {}'.format(query.shape, key.shape, value.shape, mask.shape))
+
+        key_local = None
+
+        # TODO: Implement local attention.
+        if self.window is not None:
+            pass
 
         # 2) Apply attention on all the projected vectors in batch.
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)

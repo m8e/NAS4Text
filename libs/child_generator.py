@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import math
 import os
 
 import torch as th
@@ -57,6 +58,12 @@ class ChildGenerator:
         return self
 
     def greedy_decoding(self):
+        return self.decoding(beam=None)
+
+    def beam_search(self):
+        return self.decoding(beam=self.hparams.beam)
+
+    def decoding(self, beam=None):
         itr = self._get_input_iter()
 
         gen_timer = StopwatchMeter()
@@ -67,7 +74,10 @@ class ChildGenerator:
 
         translated_strings = [None for _ in range(gen_subset_len)]
         for i, sample in enumerate(itr):
-            batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
+            if beam is None or beam <= 1:
+                batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
+            else:
+                batch_translated_tokens = self._beam_search_slow(sample, gen_timer, beam)
             print('Batch {}:'.format(i))
             for id_, src_tokens, trg_tokens, translated_tokens in zip(
                     sample['id'], sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
@@ -92,6 +102,14 @@ class ChildGenerator:
                     print(line, file=f)
             logging.info('Decode output write to {}.'.format(full_path))
 
+    def _get_maxlen(self, srclen):
+        if self.hparams.use_task_maxlen:
+            a, b = self.task.get_maxlen_a_b()
+        else:
+            a, b = self.hparams.maxlen_a, self.hparams.maxlen_b
+        maxlen = max(1, int(a * srclen + b))
+        return maxlen
+
     def _greedy_decoding(self, sample, timer=None):
         """
 
@@ -106,11 +124,7 @@ class ChildGenerator:
         srclen = input_['src_tokens'].size(1)
         start_symbol = self.task.EOS_ID
 
-        if self.hparams.use_task_maxlen:
-            a, b = self.task.get_maxlen_a_b()
-        else:
-            a, b = self.hparams.maxlen_a, self.hparams.maxlen_b
-        maxlen = max(1, int(a * srclen + b))
+        maxlen = self._get_maxlen(srclen)
 
         for model in self.models:
             model.eval()
@@ -155,11 +169,67 @@ class ChildGenerator:
         # Remove start tokens.
         return trg_tokens[:, 1:].data
 
-    def beam_search(self):
-        # TODO
-        pass
+    def _beam_search_slow(self, sample, beam, timer=None):
+        sample = common.make_variable(sample, volatile=True, cuda=self.is_cuda)
+        batch_size = sample['id'].numel()
+        input_ = sample['net_input']
+        src_tokens = input_['src_tokens']
+        srclen = src_tokens.size(1)
+        start_symbol = self.task.EOS_ID
 
-    def _get_normalized_probs(self, net_outputs):
+        maxlen = self._get_maxlen(srclen)
+
+        for model in self.models:
+            model.eval()
+
+        if timer is not None:
+            timer.start()
+
+        with common.maybe_no_grad():
+            encoder_outs = [
+                model.encode(input_['src_tokens'], input_['src_lengths'])
+                for model in self.models
+            ]
+
+            # buffers
+            scores = src_tokens.data.new(batch_size * beam, maxlen + 1).float().fill_(0)
+            scores_buf = scores.clone()
+            tokens = src_tokens.data.new(batch_size * beam, maxlen + 2).fill_(self.task.PAD_ID)
+            tokens_buf = tokens.clone()
+            tokens[:, 0] = start_symbol
+            attn = scores.new(batch_size * beam, src_tokens.size(1), maxlen + 2)
+            attn_buf = attn.clone()
+
+            # list of completed sentences
+            finalized = [[] for i in range(batch_size)]
+            finished = [False for i in range(batch_size)]
+            worst_finalized = [{'idx': None, 'score': -math.inf} for i in range(batch_size)]
+            num_remaining_sent = batch_size
+
+            # number of candidate hypos per step
+            cand_size = 2 * beam    # 2 x beam size in case half are EOS
+
+            # offset arrays for converting between different indexing schemes
+            bbsz_offsets = (th.arange(0, batch_size) * beam).unsqueeze(1).type_as(tokens)
+            cand_offsets = th.arange(0, cand_size).type_as(tokens)
+
+            # helper function for allocating buffers on the fly
+            buffers = {}
+
+            def buffer(name, type_of=tokens):
+                if name not in buffers:
+                    buffers[name] = type_of.new()
+                return buffers[name]
+
+            # TODO
+
+        if timer is not None:
+            timer.stop(batch_size)
+
+        # TODO: Just for test now
+        return sample['target'].data
+
+    def _get_normalized_probs(self, net_outputs, compute_attn=False):
         avg_probs = None
         avg_attn = None
         for model, (output, attn) in zip(self.models, net_outputs):
@@ -169,6 +239,9 @@ class ChildGenerator:
                 avg_probs = probs
             else:
                 avg_probs.add_(probs)
+
+            if not compute_attn:
+                continue
             if attn is not None:
                 if self.hparams.enc_dec_attn_type == 'fairseq':
                     attn = attn[:, -1, :].data
@@ -182,7 +255,8 @@ class ChildGenerator:
                     avg_attn.add_(attn)
         avg_probs.div_(len(self.models))
         avg_probs.log_()
-        if avg_attn is not None:
+
+        if compute_attn and avg_attn is not None:
             avg_attn.div_(len(self.models))
         return avg_probs, avg_attn
 
