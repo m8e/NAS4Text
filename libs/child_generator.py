@@ -77,7 +77,7 @@ class ChildGenerator:
             if beam is None or beam <= 1:
                 batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
             else:
-                batch_translated_tokens = self._beam_search_slow(sample, gen_timer, beam)
+                batch_translated_tokens = self._beam_search_slow(sample, beam, gen_timer)
             print('Batch {}:'.format(i))
             for id_, src_tokens, trg_tokens, translated_tokens in zip(
                     sample['id'], sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
@@ -288,4 +288,7 @@ def generate_main(hparams, datasets=None):
         generator.cuda()
         logging.info('Use CUDA, running on device {}'.format(th.cuda.current_device()))
 
-    generator.greedy_decoding()
+    if hparams.beam <= 0:
+        generator.greedy_decoding()
+    else:
+        generator.beam_search()

@@ -135,6 +135,13 @@ class NetCode:
     def __len__(self):
         return len(self.layers_code)
 
+    def __eq__(self, other):
+        cls = type(self)
+        if not isinstance(other, cls):
+            # Compatible with old net code.
+            other = cls(other)
+        return self.global_code == other.global_code and self.layers_code == other.layers_code
+
     def check_correctness(self):
         # TODO
         pass
