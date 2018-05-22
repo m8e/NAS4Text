@@ -80,6 +80,9 @@ def hparams_base():
 
         # About training
         lr='0.25',
+        momentum=0.99,
+        weight_decay=0.0,
+        clip_norm=25,
     )
 
 

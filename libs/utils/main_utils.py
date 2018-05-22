@@ -8,10 +8,22 @@ import pprint
 
 import torch as th
 
+from ..hparams import get_hparams
 from ..layers.net_code import get_net_code
 from ..utils.data_processing import LanguageDatasets
 
 __author__ = 'fyabc'
+
+
+def _set_default_hparams(hparams):
+    """Set default value of hparams."""
+    base_hparams = get_hparams(hparams.hparams_set)
+
+    for name, value in base_hparams.__dict__.items():
+        if getattr(hparams, name, None) is None:
+            setattr(hparams, name, value)
+
+    return hparams
 
 
 def main_entry(hparams, datasets=None, train=True, net_code=True):
@@ -38,24 +50,32 @@ def main_entry(hparams, datasets=None, train=True, net_code=True):
     logging.info('Start single node {}'.format(title))
     logging.info('Task: {}'.format(hparams.task))
     logging.info('HParams set: {}'.format(hparams.hparams_set))
+
+    # Get net code.
+    # [NOTE]: Must before hparams postprocessing because of the hparams priority.
+    if net_code:
+        code = get_net_code(hparams, modify_hparams=True)
+    else:
+        code = None
+
+    # Postprocess hparams.
+    _set_default_hparams(hparams)
+    if train:
+        hparams.lr = list(map(float, hparams.lr.split(',')))
+        if hparams.max_sentences_valid is None:
+            hparams.max_sentences_valid = hparams.max_sentences
+
     logging.info('Child {} hparams:\n{}'.format(title, pprint.pformat(hparams.__dict__)))
+    logging.info('Search space information:')
+    logging.info('LSTM search space: {}'.format(hparams.lstm_space))
+    logging.info('Convolutional search space: {}'.format(hparams.conv_space))
+    logging.info('Attention search space: {}'.format(hparams.attn_space))
 
     if train:
         if not th.cuda.is_available():
             raise RuntimeError('Want to training on GPU but CUDA is not available')
         th.cuda.set_device(hparams.device_id)
-
         th.manual_seed(hparams.seed)
-
-    # Get net code
-    if net_code:
-        code = get_net_code(hparams)
-        logging.info('Net code information:')
-        logging.info('LSTM search space: {}'.format(hparams.lstm_space))
-        logging.info('Convolutional search space: {}'.format(hparams.conv_space))
-        logging.info('Attention search space: {}'.format(hparams.attn_space))
-    else:
-        code = None
 
     # Load datasets
     datasets = LanguageDatasets(hparams.task) if datasets is None else datasets

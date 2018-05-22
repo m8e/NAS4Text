@@ -5,7 +5,7 @@ import argparse
 
 import torch
 
-from ..hparams import get_hparams, hparams_base
+from ..hparams import get_hparams
 from ..utils.search_space import LSTMSpaces, ConvolutionalSpaces, AttentionSpaces
 from ..optimizers import AllOptimizers
 from ..optimizers.lr_schedulers import AllLRSchedulers
@@ -61,6 +61,17 @@ def add_hparams_args(parser):
     group.add_argument('--attn-space', dest='attn_space', type=str, default=None,
                        choices=AttentionSpaces.keys(),
                        help='Attention search space: {}'.format(', '.join(AttentionSpaces.keys())))
+
+    # About training.
+    group.add_argument('--lr', '--learning-rate', default=None, metavar='LR_1,LR_2,...,LR_N',
+                       help='learning rate for the first N epochs; all epochs >N using LR_N'
+                            ' (note: this may be interpreted differently depending on --lr-scheduler)')
+    group.add_argument('--momentum', default=None, type=float, metavar='M',
+                       help='momentum factor')
+    group.add_argument('--weight-decay', '--wd', default=None, type=float, metavar='WD',
+                       help='weight decay')
+    group.add_argument('--clip-norm', default=None, type=float, metavar='NORM',
+                       help='clip threshold of gradients')
     return group
 
 
@@ -104,8 +115,6 @@ def add_train_args(parser):
                        help='force stop training at specified epoch, default is inf')
     group.add_argument('--max-update', '--mu', default=0, type=int, metavar='N',
                        help='force stop training at specified update, default is inf')
-    group.add_argument('--clip-norm', default=25, type=float, metavar='NORM',
-                       help='clip threshold of gradients')
     group.add_argument('--sentence-avg', action='store_true', default=False,
                        help='normalize gradients by the number of sentences in a batch'
                             ' (default is to normalize by number of tokens)')
@@ -114,14 +123,6 @@ def add_train_args(parser):
                        help='optimizer: {} (default: %(default)s)'.format(', '.join(AllOptimizers.keys())))
     for optimizer in AllOptimizers.values():
         optimizer.add_args(group)
-    # TODO: Move these into hparams args.
-    group.add_argument('--lr', '--learning-rate', default=None, metavar='LR_1,LR_2,...,LR_N',
-                       help='learning rate for the first N epochs; all epochs >N using LR_N'
-                            ' (note: this may be interpreted differently depending on --lr-scheduler)')
-    group.add_argument('--momentum', default=0.99, type=float, metavar='M',
-                       help='momentum factor')
-    group.add_argument('--weight-decay', '--wd', default=0.0, type=float, metavar='WD',
-                       help='weight decay')
 
     group.add_argument('--lr-scheduler', default='reduce_lr_on_plateau',
                        help='learning rate scheduler: {} (default: reduce_lr_on_plateau)'.format(
@@ -230,17 +231,6 @@ def add_generation_args(parser):
     return group
 
 
-def _set_default_hparams(parsed_args):
-    """Set default value of hparams."""
-    base_hparams = get_hparams(parsed_args.hparams_set)
-
-    for name, value in base_hparams.__dict__.items():
-        if getattr(parsed_args, name, None) is None:
-            setattr(parsed_args, name, value)
-
-    return parsed_args
-
-
 def get_args(args=None):
     parser = argparse.ArgumentParser(description='Training Script.')
 
@@ -252,13 +242,6 @@ def get_args(args=None):
     add_checkpoint_args(parser)
 
     parsed_args = parser.parse_args(args)
-
-    _set_default_hparams(parsed_args)
-
-    # Post process args.
-    parsed_args.lr = list(map(float, parsed_args.lr.split(',')))
-    if parsed_args.max_sentences_valid is None:
-        parsed_args.max_sentences_valid = parsed_args.max_sentences
 
     return parsed_args
 
@@ -273,7 +256,5 @@ def get_generator_args(args=None):
     # TODO: Add other args.
 
     parsed_args = parser.parse_args(args)
-
-    _set_default_hparams(parsed_args)
 
     return parsed_args

@@ -121,8 +121,22 @@ class NetCode:
         pass
 
     def modify_hparams(self, hparams):
-        # TODO
-        pass
+        """Modify the hparams with the global net code.
+
+        [NOTE]: The hparams priority:
+            (Low)   Values defined in ``get_hparams(hparams.hparams_set)``;
+                    Values defined in global net code;
+            (High)  Values defined in command line.
+
+        Args:
+            hparams:
+
+        Returns:
+
+        """
+        for name, value in self.global_code.items():
+            if getattr(hparams, name, None) is None:
+                setattr(hparams, name, value)
 
 
 def dump_json(net_code, fp):

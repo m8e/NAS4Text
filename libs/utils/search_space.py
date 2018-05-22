@@ -38,6 +38,13 @@ class PPPSpace:
             raise ValueError('Unknown code {}'.format(code))
 
 
+class LayerTypes:
+    """Layer types."""
+    LSTM = 0
+    Convolutional = 1
+    Attention = 2
+
+
 # LSTM.
 
 class LSTMSpaceBase:

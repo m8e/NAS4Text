@@ -26,8 +26,8 @@ import torch.nn.functional as F
 from .tasks import get_task
 from .utils.data_processing import LanguagePairDataset
 from .utils import common
+from .utils.search_space import LayerTypes
 from .layers.common import Linear, Embedding, PositionalEmbedding, FairseqAttention
-from .layers.net_code import NetCodeEnum
 from .layers.lstm import build_lstm, LSTMLayer
 from .layers.cnn import build_cnn
 from .layers.attention import build_attention
@@ -40,11 +40,11 @@ __author__ = 'fyabc'
 def _code2layer(layer_code, input_shape, hparams, in_encoder=True):
     layer_type = layer_code[0]
 
-    if layer_type == NetCodeEnum.LSTM:
+    if layer_type == LayerTypes.LSTM:
         return build_lstm(layer_code, input_shape, hparams, in_encoder)
-    elif layer_type == NetCodeEnum.Convolutional:
+    elif layer_type == LayerTypes.Convolutional:
         return build_cnn(layer_code, input_shape, hparams, in_encoder)
-    elif layer_type == NetCodeEnum.Attention:
+    elif layer_type == LayerTypes.Attention:
         return build_attention(layer_code, input_shape, hparams, in_encoder)
     else:
         raise ValueError('Unknown layer type {}'.format(layer_type))

@@ -262,11 +262,12 @@ class ChildGenerator:
 
 
 def generate_main(hparams, datasets=None):
+    components = main_entry(hparams, datasets, train=False)
+
     # Check generator hparams
     assert hparams.path is not None, '--path required for generation!'
     assert not hparams.sampling or hparams.nbest == hparams.beam, '--sampling requires --nbest to be equal to --beam'
 
-    components = main_entry(hparams, datasets, train=False)
     net_code = components['net_code']
     datasets = components['datasets']
 
