@@ -47,7 +47,7 @@ Example:
     code = [1, 2, 1, 0, 1, 0]
     code[0] == 1: 1 means 'Convolutional'
 
-    => Then see the layer code format and 'normal' convolutional search space: (in cnn.py)
+    => Then see the layer code format and 'normal' convolutional search space: (in search_space.py)
     ```python
     # Layer code:
     # [CNN, OutChannels, KernelSize, Stride, ..., Preprocessors, Postprocessors]
@@ -65,8 +65,8 @@ Example:
     code[1] == 2: 2 means OutChannels[2] -> 32
     code[2] == 1: 1 means KernelSizes[1] -> 3
     code[3] == 0: 0 means Stride[0] -> 1
-    code[4] == 1: 1 means Preprocessors[1] -> Dropout   (see in ppp.py)
-    code[5] == 0: 0 means Postprocessors[0] -> None     (see in ppp.py)
+    code[4] == 1: 1 means Preprocessors[1] -> Dropout   (see in search_space.py)
+    code[5] == 0: 0 means Postprocessors[0] -> None     (see in search_space.py)
 
     => So the result layer is (you can found it in net_code_examples/fairseq_d.json):
     (layer_0): EncoderConvLayer(
@@ -77,6 +77,8 @@ Example:
         )
         (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,))
     )
+
+# TODO: Add support of global net code (for hyperparameters).
 """
 
 import json
@@ -94,6 +96,35 @@ class NetCodeEnum:
     Attention = 2
 
 
+class NetCode:
+    """The net code class, which contains global code and layers code."""
+
+    def __init__(self, net_code):
+        if isinstance(net_code, list):
+            # Compatible with old net code.
+            self.global_code = {}
+            self.layers_code = net_code
+        else:
+            self.global_code = net_code.get('global', {})
+            self.layers_code = net_code.get('layers', [])
+
+        self.check_correctness()
+
+    def __getitem__(self, item):
+        return self.layers_code[item]
+
+    def __len__(self):
+        return len(self.layers_code)
+
+    def check_correctness(self):
+        # TODO
+        pass
+
+    def modify_hparams(self, hparams):
+        # TODO
+        pass
+
+
 def dump_json(net_code, fp):
     json.dump(net_code, fp)
 
@@ -107,12 +138,16 @@ def load_pickle(fp):
     return pickle.load(fp)
 
 
-def check_correctness(code):
-    pass
+def get_net_code(hparams, modify_hparams=True):
+    """Get net code from path given by hparams.
 
+    Args:
+        hparams:
+        modify_hparams: Modify the hparams with the given (global) net code.
 
-def get_net_code(hparams):
-    # TODO: Other format, correctness check, etc.
+    Returns:
+
+    """
     with open(hparams.net_code_file, 'r') as f:
         ext = os.path.splitext(f.name)[1]
         if ext == '.json':
@@ -122,5 +157,7 @@ def get_net_code(hparams):
         else:
             raise ValueError('Does not support this net code file format now')
 
-        check_correctness(code)
-        return code
+        result = NetCode(code)
+        if modify_hparams:
+            result.modify_hparams(hparams)
+        return result

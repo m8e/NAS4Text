@@ -1,11 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-"""Convolutional layer.
-
-Layer code:
-[CNN, OutChannels, KernelSize, Stride, ..., Preprocessors, Postprocessors]
-"""
+"""Convolutional layer."""
 
 import math
 
@@ -14,30 +10,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .base import ChildLayer
-from .ppp import PPPSpace, push_prepostprocessors
+from .ppp import push_prepostprocessors
+from ..utils.search_space import ConvolutionalSpaces
 
 __author__ = 'fyabc'
-
-
-class ConvSpaceBase:
-    """Search space of convolutional layers."""
-
-    OutChannels = [8, 16, 32, 64]
-    KernelSizes = [1, 3, 5, 7]
-    Strides = [1, 2, 3]
-
-    Preprocessors = PPPSpace.Preprocessors
-    Postprocessors = PPPSpace.Postprocessors
-
-
-class ConvSpaceLarge(ConvSpaceBase):
-    OutChannels = [64, 128, 256, 512]
-
-
-Spaces = {
-    'base': ConvSpaceBase,
-    'large': ConvSpaceLarge,
-}
 
 
 class ConvLayer(ChildLayer):
@@ -192,7 +168,7 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
     else:
         assert len(layer_code) == 6, 'Layer code must have length of 4 or 6, got {}'.format(len(layer_code))
 
-    space = Spaces[hparams.conv_space]
+    space = ConvolutionalSpaces[hparams.conv_space]
 
     batch_size, seq_length, in_channels = input_shape
     out_channels = space.OutChannels[layer_code[1]]

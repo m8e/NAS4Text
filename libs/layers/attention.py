@@ -1,37 +1,15 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-"""Attention layer.
-
-Layer code:
-[Attention, NumHeads, ..., Preprocessors, Postprocessors]
-
-# TODO: GlobalAttention?, WindowSize, ...
-"""
+"""Attention layer."""
 
 import torch as th
 
 from .multi_head_attention import SelfAttention
-from .ppp import PPPSpace, push_prepostprocessors
+from .ppp import push_prepostprocessors
+from ..utils.search_space import AttentionSpaces
 
 __author__ = 'fyabc'
-
-
-class AttentionSpaceBase:
-    # TODO: How to ensure the assertion "input_hidden_size % num_heads == 0" to be always True?
-    NumHeads = [2, 4, 8, 16]
-    Preprocessors = PPPSpace.Preprocessors
-    Postprocessors = PPPSpace.Postprocessors
-
-
-class AttentionSpaceLarge(AttentionSpaceBase):
-    pass
-
-
-Spaces = {
-    'base': AttentionSpaceBase,
-    'large': AttentionSpaceLarge,
-}
 
 
 def build_attention(layer_code, input_shape, hparams, in_encoder=True):
@@ -56,7 +34,7 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
     else:
         assert len(layer_code) == 4, 'Layer code must have length of 2 or 4, got {}'.format(len(layer_code))
 
-    space = Spaces[hparams.attn_space]
+    space = AttentionSpaces[hparams.attn_space]
 
     batch_size, seq_length, input_size = input_shape
     num_heads = space.NumHeads[layer_code[1]]

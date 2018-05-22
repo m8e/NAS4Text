@@ -17,6 +17,10 @@ See docstring of [`libs/layers/net_code.py`](libs/layers/net_code.py).
 
 User can put their net code files in `usr_net_code/`, which is ignored by git.
 
+## Search Space Definition
+
+See search spaces of [`libs/utils/search_space.py`](libs/utils/search_space.py).
+
 ## Train Child Model
 
 ```bash

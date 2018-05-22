@@ -5,37 +5,10 @@
 
 import torch as th
 import torch.nn as nn
-import torch.nn.functional as F
+
+from ..utils.search_space import PPPSpace
 
 __author__ = 'fyabc'
-
-
-class PPPSpace:
-    Dropout = 'dropout'
-    Norm = 'norm'
-
-    # None, Dropout, Norm, Dropout + Norm, Norm + Dropout
-    Preprocessors = [0, 1, 2, 3, 4]
-
-    # None, Dropout, Norm, Dropout + Norm, Norm + Dropout
-    Postprocessors = [0, 1, 2, 3, 4]
-
-    @classmethod
-    def get_ops(cls, code):
-        if code == 0:
-            return []
-        elif code == 1:
-            return [cls.Dropout]
-        elif code == 2:
-            return [cls.Norm]
-        elif code == 3:
-            return [cls.Dropout, cls.Norm]
-        elif code == 4:
-            return [cls.Norm, cls.Dropout]
-        elif code is None:
-            return []
-        else:
-            raise ValueError('Unknown code {}'.format(code))
 
 
 class NLCBatchNorm1d(nn.BatchNorm1d):

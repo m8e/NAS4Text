@@ -1,11 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-"""LSTM layer.
-
-Layer code:
-[LSTM, hidden_size, Bidirectional?, ..., Preprocessors, Postprocessors]
-"""
+"""LSTM layer."""
 
 import torch as th
 import torch.nn as nn
@@ -14,36 +10,13 @@ import torch.nn.functional as F
 
 from .common import Linear
 from .base import ChildLayer
-from .ppp import PPPSpace, push_prepostprocessors
+from .ppp import push_prepostprocessors
+from ..utils.search_space import LSTMSpaces
 
 __author__ = 'fyabc'
 
 
 ApplyMaskInLSTM = True
-
-
-class LSTMSpaceBase:
-    """Search space of LSTM.
-
-    Contains candidate values of hyperparameters.
-    """
-
-    HiddenSizes = [32, 64, 128, 256]
-    UseBidirectional = [False, True]
-    NumLayers = 1
-
-    Preprocessors = PPPSpace.Preprocessors
-    Postprocessors = PPPSpace.Postprocessors
-
-
-class LSTMSpaceLarge(LSTMSpaceBase):
-    HiddenSizes = [64, 128, 256, 512]
-
-
-Spaces = {
-    'base': LSTMSpaceBase,
-    'large': LSTMSpaceLarge,
-}
 
 
 class LSTMLayer(ChildLayer):
@@ -155,7 +128,7 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
     else:
         assert len(layer_code) == 5, 'Layer code must have length of 3 or 5, got {}'.format(len(layer_code))
 
-    space = Spaces[hparams.lstm_space]
+    space = LSTMSpaces[hparams.lstm_space]
 
     batch_size, seq_length, input_size = input_shape
     hidden_size = space.HiddenSizes[layer_code[1]]

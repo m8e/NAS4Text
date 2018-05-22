@@ -6,7 +6,7 @@ import argparse
 import torch
 
 from ..hparams import get_hparams, hparams_base
-from ..layers import lstm, cnn, attention
+from ..utils.search_space import LSTMSpaces, ConvolutionalSpaces, AttentionSpaces
 from ..optimizers import AllOptimizers
 from ..optimizers.lr_schedulers import AllLRSchedulers
 from ..criterions import AllCriterions
@@ -53,14 +53,14 @@ def add_hparams_args(parser):
     group.add_argument('--dropout', type=float, default=None, metavar='D',
                        help='dropout value')
     group.add_argument('--lstm-space', dest='lstm_space', type=str, default=None,
-                       choices=lstm.Spaces.keys(),
-                       help='LSTM search space: {}'.format(', '.join(lstm.Spaces.keys())))
+                       choices=LSTMSpaces.keys(),
+                       help='LSTM search space: {}'.format(', '.join(LSTMSpaces.keys())))
     group.add_argument('--conv-space', dest='conv_space', type=str, default=None,
-                       choices=cnn.Spaces.keys(),
-                       help='Convolutional search space: {}'.format(', '.join(cnn.Spaces.keys())))
+                       choices=ConvolutionalSpaces.keys(),
+                       help='Convolutional search space: {}'.format(', '.join(ConvolutionalSpaces.keys())))
     group.add_argument('--attn-space', dest='attn_space', type=str, default=None,
-                       choices=attention.Spaces.keys(),
-                       help='Attention search space: {}'.format(', '.join(attention.Spaces.keys())))
+                       choices=AttentionSpaces.keys(),
+                       help='Attention search space: {}'.format(', '.join(AttentionSpaces.keys())))
     return group
 
 
