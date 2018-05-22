@@ -42,7 +42,7 @@ class LayerNorm(nn.Module):
 def _push_processors(hparams, module_list: nn.ModuleList, ops, shape):
     for op in ops:
         if op == PPPSpace.Dropout:
-            module_list.append(nn.Dropout(p=hparams.dropout))
+            module_list.append(nn.Dropout(p=hparams.ppp_dropout))
         elif op == PPPSpace.Norm:
             norm_type = hparams.norm_type
             if norm_type == 'layer':

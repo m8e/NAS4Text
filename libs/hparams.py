@@ -61,7 +61,11 @@ def hparams_base():
         decoder_out_embedding_size=8,
         share_input_output_embedding=False,
         share_src_trg_embedding=False,
+
         dropout=0.1,
+        ppp_dropout=0.1,        # Dropout for layer pre-post-processing.
+        attention_dropout=0.1,
+        ffn_dropout=0.1,        # Dropout for FFN layer after each attention layer.
 
         # This define the search space of three layer types.
         lstm_space='base',
@@ -97,6 +101,8 @@ def hparams_normal():
     hparams.trg_embedding_size = 512
     hparams.decoder_out_embedding_size = 256
 
+    hparams.clip_norm = 2.5
+
     return hparams
 
 
@@ -123,6 +129,12 @@ def hparams_fairseq_de_en_iwslt():
     hparams.src_embedding_size = 256
     hparams.trg_embedding_size = 256
     hparams.decoder_out_embedding_size = 256
+
+    hparams.clip_norm = 0.1
+    hparams.dropout = 0.2
+    hparams.ppp_dropout = 0.2
+    hparams.attn_dropout = 0.2
+    hparams.ffn_dropout = 0.2
 
     return hparams
 

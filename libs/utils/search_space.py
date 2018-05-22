@@ -9,6 +9,16 @@ Layer code format can be seen in each base search space.
 __author__ = 'fyabc'
 
 
+class GlobalSpace:
+    """Global hyperparameters search space."""
+    Dropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    PPPDropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    AttentionDropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    FFNDropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+
+    ClipNorm = [0.1, 0.5, 1.0, 2.5, 10, 25]
+
+
 class PPPSpace:
     """Pre- and post- processors search space."""
     Dropout = 'dropout'

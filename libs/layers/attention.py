@@ -44,7 +44,8 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
         h=num_heads,
         d_model=input_size,
         d_ff=hparams.attn_d_ff,
-        dropout=hparams.dropout,
+        dropout=hparams.attention_dropout,
+        ffn_dropout=hparams.ffn_dropout,
         in_encoder=in_encoder,
     )
 

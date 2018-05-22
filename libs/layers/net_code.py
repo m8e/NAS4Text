@@ -4,32 +4,44 @@
 """Convert net code between different formats.
 
 Standard format:
-[   # Network
-    [   # Encoder
-        [   # Layer 0
-            LAYER_TYPE,
-            LAYER_HPARAMS1,
-            LAYER_HPARAMS2,
+{
+    "Global": {     # Global net code.
+        "Key 1": GLOBAL_HPARAMS1,
+        "Key 2": GLOBAL_HPARAMS2,
+        ...
+    },
+    "Layers": [     # Network
+        [   # Encoder
+            [   # Layer 0
+                LAYER_TYPE,
+                LAYER_HPARAMS1,
+                LAYER_HPARAMS2,
+                ...
+            ],
+            [   # Layer 1
+                ...
+            ],
             ...
         ],
-        [   # Layer 1
+        [   # Decoder, same as encoder
             ...
-        ],
-        ...
-    ],
-    [   # Decoder, same as encoder
-        ...
+        ]
     ]
-]
+}
 
-LAYER_TYPE and LAYER_HPARAMS are all integers.
-They are indices of candidate lists defined by hparams.
+GLOBAL_HPARAMS, LAYER_TYPE and LAYER_HPARAMS are all integers.
+They are **indices** of candidate lists defined by hparams.
 
 Meanings of LAYER_HPARAMS can be seen in lstm.py, cnn.py and attention.py.
 
 Example:
+{
+    "Global": {
+        "Dropout": 1,
+        "AttentionDropout": 1,
+    }
     # Assume that all search spaces are 'normal'.
-    [   # Network
+    "Layers": [     # Network
         [   # Encoder
             [1, 2, 1, 0, 1, 0], # Encoder layer 0
             [1, 2, 1, 0, 1, 0], # Encoder layer 1
@@ -42,6 +54,10 @@ Example:
             [1, 2, 1, 0, 1, 0]  # Decoder layer 2
         ]
     ]
+}
+    => For global: (in search_space.py)
+    Dropout candidates: [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    "Dropout" == 1: 1 means dropout set to 0.1
 
     => For encoder layer 0:
     code = [1, 2, 1, 0, 1, 0]
@@ -86,6 +102,9 @@ import os
 import pickle
 import re
 
+from ..utils.registry_utils import camel2snake
+from ..utils.search_space import GlobalSpace
+
 __author__ = 'fyabc'
 
 
@@ -105,8 +124,8 @@ class NetCode:
             self.global_code = {}
             self.layers_code = net_code
         else:
-            self.global_code = net_code.get('global', {})
-            self.layers_code = net_code.get('layers', [])
+            self.global_code = net_code.get('Global', {})
+            self.layers_code = net_code.get('Layers', [])
 
         self.check_correctness()
 
@@ -134,9 +153,10 @@ class NetCode:
         Returns:
 
         """
-        for name, value in self.global_code.items():
-            if getattr(hparams, name, None) is None:
-                setattr(hparams, name, value)
+        for name, index in self.global_code.items():
+            if getattr(hparams, camel2snake(name), None) is None:
+                value = getattr(GlobalSpace, name)[index]
+                setattr(hparams, camel2snake(name), value)
 
 
 def dump_json(net_code, fp):

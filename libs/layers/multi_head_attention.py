@@ -171,12 +171,12 @@ class SelfAttention(ChildLayer):
         - **output** (batch_size, length, d_model):
     """
 
-    def __init__(self, hparams, h, d_model, d_ff, dropout=0.1, in_encoder=True):
+    def __init__(self, hparams, h, d_model, d_ff, dropout=0.1, ffn_dropout=0.1, in_encoder=True):
         super().__init__(hparams)
 
         self.in_encoder = in_encoder
         self.attention = MultiHeadAttention(h, d_model, dropout=dropout)
-        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout=dropout)
+        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout=ffn_dropout)
 
     def forward(self, x, lengths=None, **kwargs):
         """
