@@ -353,9 +353,9 @@ class ChildGenerator:
                 probs = probs.unfold(0, 1, beam).squeeze(2).contiguous()
                 scores = scores.type_as(probs)
                 scores_buf = scores_buf.type_as(probs)
-            elif self.hparams.sampling:
+            elif not self.hparams.sampling:
                 # make probs contain cumulative scores for each hypothesis
-                probs.add_(scores[:, step - 1].view(-1, 1))
+                probs.add_(scores[:, step - 1].contiguous().view(-1, 1))
 
             probs[:, self.task.PAD_ID] = -math.inf  # never select pad
             probs[:, self.task.UNK_ID] -= self.hparams.unkpen  # apply unk penalty
