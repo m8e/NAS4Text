@@ -62,9 +62,10 @@ class ChildGenerator:
         return self
 
     def greedy_decoding(self):
-        return self.decoding(beam=None)
+        return self.decoding()
 
     def beam_search(self):
+        # TODO: Fix the problems in beam search.
         return self.decoding(beam=self.hparams.beam)
 
     def decoding(self, beam=None):
@@ -78,7 +79,7 @@ class ChildGenerator:
 
         translated_strings = [None for _ in range(gen_subset_len)]
         for i, sample in enumerate(itr):
-            if beam is None or beam <= 1:
+            if beam is None or beam <= 0:
                 batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
             else:
                 batch_translated_tokens = self._beam_search_slow(sample, beam, gen_timer)
@@ -214,7 +215,6 @@ class ChildGenerator:
         tokens = src_tokens.data.new(batch_size * beam, maxlen + 2).fill_(self.task.PAD_ID)
         tokens_buf = tokens.clone()
         tokens[:, 0] = start_symbol
-        tokens_var = common.make_variable(tokens, volatile=True, cuda=self.is_cuda)
         trg_lengths = common.make_variable(
             th.zeros(batch_size * beam).type_as(input_['src_lengths'].data),
             volatile=True, cuda=self.is_cuda)
