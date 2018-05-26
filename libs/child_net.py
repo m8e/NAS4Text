@@ -249,6 +249,7 @@ class ChildDecoder(nn.Module):
         Returns:
             Output: (batch_size, trg_seq_len, trg_vocab_size) of float32
             Attention scores: (batch_size, num_heads(8), trg_seq_len, src_seq_len) of float32
+                or (batch_size, trg_seq_len, src_seq_len) of float32 if ``enc_dec_attn_type == 'fairseq'``
         """
 
         encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)

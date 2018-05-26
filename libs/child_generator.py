@@ -36,9 +36,13 @@ class ChildGenerator:
         max_decoder_len -= 1  # we define maxlen not including the EOS marker
         self.maxlen = max_decoder_len if maxlen is None else min(maxlen, max_decoder_len)
 
+        self.stop_early = not hparams.no_early_stop
+        self.normalize_scores = not hparams.unnormalized
+
     def _get_input_iter(self):
         itr = self.datasets.eval_dataloader(
             self.hparams.gen_subset,
+            max_tokens=self.hparams.max_tokens,
             max_sentences=self.hparams.max_sentences,
             max_positions=min(model.max_encoder_positions() for model in self.models),
             skip_invalid_size_inputs_valid_test=self.hparams.skip_invalid_size_inputs_valid_test,
@@ -141,18 +145,11 @@ class ChildGenerator:
             trg_tokens = common.make_variable(
                 th.zeros(batch_size, 1).fill_(start_symbol).type_as(input_['src_tokens'].data),
                 volatile=True, cuda=self.is_cuda)
-            trg_lengths = common.make_variable(
-                th.zeros(batch_size).fill_(1).type_as(input_['src_lengths'].data),
-                volatile=True, cuda=self.is_cuda)
+            # trg_lengths = common.make_variable(
+            #     th.zeros(batch_size).fill_(1).type_as(input_['src_lengths'].data),
+            #     volatile=True, cuda=self.is_cuda)
             for i in range(maxlen - 1):
-                net_outputs = [
-                    model.decode(
-                        encoder_out, input_['src_lengths'],
-                        trg_tokens, trg_lengths)
-                    for encoder_out, model in zip(encoder_outs, self.models)
-                ]
-
-                avg_probs, _ = self._get_normalized_probs(net_outputs)
+                avg_probs, _ = self._decode(encoder_outs, input_['src_lengths'], trg_tokens, None)
 
                 if self.hparams.greedy_sample_temperature == 0.0:
                     _, next_word = avg_probs.max(dim=1)
@@ -161,7 +158,7 @@ class ChildGenerator:
                     next_word = th.multinomial(th.exp(avg_probs) / self.hparams.greedy_sample_temperature, 1)[:, 0]
 
                 trg_tokens.data = th.cat([trg_tokens.data, th.unsqueeze(next_word, dim=1)], dim=1)
-                trg_lengths += 1
+                # trg_lengths += 1
 
         if timer is not None:
             timer.stop(batch_size)
@@ -172,64 +169,335 @@ class ChildGenerator:
     def _beam_search_slow(self, sample, beam, timer=None):
         sample = common.make_variable(sample, volatile=True, cuda=self.is_cuda)
         batch_size = sample['id'].numel()
+        for model in self.models:
+            model.eval()
+        if timer is not None:
+            timer.start()
+        with common.maybe_no_grad():
+            finalized = self._beam_search_slow_internal(sample, beam)
+        if timer is not None:
+            timer.stop(batch_size)
+
+        # Postprocess beam search translations.
+        # [NOTE]: Only return the top hypnosis with highest score.
+        result = [hypos[0]['tokens'] for hypos in finalized]
+        return result
+
+    def _beam_search_slow_internal(self, sample, beam):
+        batch_size = sample['id'].numel()
         input_ = sample['net_input']
         src_tokens = input_['src_tokens']
         srclen = src_tokens.size(1)
         start_symbol = self.task.EOS_ID
+        vocab_size = self.task.get_vocab_size(is_src_lang=False)
 
         maxlen = self._get_maxlen(srclen)
+        minlen = 1
 
-        for model in self.models:
-            model.eval()
+        # Get prefix tokens.
+        if self.hparams.prefix_size > 0:
+            prefix_tokens = sample['target'].data[:, :self.hparams.prefix_size]
+        else:
+            prefix_tokens = None
 
-        if timer is not None:
-            timer.start()
+        # compute the encoder output for each beam
+        beam_src_tokens = input_['src_tokens'].repeat(1, beam).view(-1, srclen)
+        beam_src_lengths = input_['src_lengths'].repeat(beam)
+        encoder_outs = [
+            model.encode(beam_src_tokens, beam_src_lengths)
+            for model in self.models
+        ]
 
-        with common.maybe_no_grad():
-            encoder_outs = [
-                model.encode(input_['src_tokens'], input_['src_lengths'])
-                for model in self.models
-            ]
+        # buffers
+        scores = src_tokens.data.new(batch_size * beam, maxlen + 1).float().fill_(0)
+        scores_buf = scores.clone()
+        tokens = src_tokens.data.new(batch_size * beam, maxlen + 2).fill_(self.task.PAD_ID)
+        tokens_buf = tokens.clone()
+        tokens[:, 0] = start_symbol
+        tokens_var = common.make_variable(tokens, volatile=True, cuda=self.is_cuda)
+        attn = scores.new(batch_size * beam, src_tokens.size(1), maxlen + 2)
+        attn_buf = attn.clone()
 
-            # buffers
-            scores = src_tokens.data.new(batch_size * beam, maxlen + 1).float().fill_(0)
-            scores_buf = scores.clone()
-            tokens = src_tokens.data.new(batch_size * beam, maxlen + 2).fill_(self.task.PAD_ID)
-            tokens_buf = tokens.clone()
-            tokens[:, 0] = start_symbol
-            attn = scores.new(batch_size * beam, src_tokens.size(1), maxlen + 2)
-            attn_buf = attn.clone()
+        # list of completed sentences
+        finalized = [[] for _ in range(batch_size)]
+        finished = [False for _ in range(batch_size)]
+        worst_finalized = [{'idx': None, 'score': -math.inf} for _ in range(batch_size)]
+        num_remaining_sent = batch_size
 
-            # list of completed sentences
-            finalized = [[] for i in range(batch_size)]
-            finished = [False for i in range(batch_size)]
-            worst_finalized = [{'idx': None, 'score': -math.inf} for i in range(batch_size)]
-            num_remaining_sent = batch_size
+        # number of candidate hypos per step
+        cand_size = 2 * beam    # 2 x beam size in case half are EOS
 
-            # number of candidate hypos per step
-            cand_size = 2 * beam    # 2 x beam size in case half are EOS
+        # offset arrays for converting between different indexing schemes
+        bbsz_offsets = (th.arange(0, batch_size) * beam).unsqueeze(1).type_as(tokens)
+        cand_offsets = th.arange(0, cand_size).type_as(tokens)
 
-            # offset arrays for converting between different indexing schemes
-            bbsz_offsets = (th.arange(0, batch_size) * beam).unsqueeze(1).type_as(tokens)
-            cand_offsets = th.arange(0, cand_size).type_as(tokens)
+        # helper function for allocating buffers on the fly
+        buffers = {}
 
-            # helper function for allocating buffers on the fly
-            buffers = {}
+        def buffer(name, type_of=tokens):
+            if name not in buffers:
+                buffers[name] = type_of.new()
+            return buffers[name]
 
-            def buffer(name, type_of=tokens):
-                if name not in buffers:
-                    buffers[name] = type_of.new()
-                return buffers[name]
+        def is_finished(sent, step, unfinalized_scores=None):
+            """
+            Check whether we've finished generation for a given sentence, by
+            comparing the worst score among finalized hypotheses to the best
+            possible score among unfinalized hypotheses.
+            """
+            assert len(finalized[sent]) <= beam
+            if len(finalized[sent]) == beam:
+                if self.stop_early or step == maxlen or unfinalized_scores is None:
+                    return True
+                # stop if the best unfinalized score is worse than the worst
+                # finalized one
+                best_unfinalized_score = unfinalized_scores[sent].max()
+                if self.normalize_scores:
+                    best_unfinalized_score /= maxlen
+                if worst_finalized[sent]['score'] >= best_unfinalized_score:
+                    return True
+            return False
 
-            # TODO
+        def finalize_hypos(step, bbsz_idx, eos_scores, unfinalized_scores=None):
+            """
+            Finalize the given hypotheses at this step, while keeping the total
+            number of finalized hypotheses per sentence <= beam_size.
 
-        if timer is not None:
-            timer.stop(batch_size)
+            Note: the input must be in the desired finalization order, so that
+            hypotheses that appear earlier in the input are preferred to those
+            that appear later.
 
-        # TODO: Just for test now
-        return sample['target'].data
+            Args:
+                step: current time step
+                bbsz_idx: A vector of indices in the range [0, bsz*beam_size),
+                    indicating which hypotheses to finalize
+                eos_scores: A vector of the same size as bbsz_idx containing
+                    scores for each hypothesis
+                unfinalized_scores: A vector containing scores for all
+                    unfinalized hypotheses
+            """
+            assert bbsz_idx.numel() == eos_scores.numel()
 
-    def _get_normalized_probs(self, net_outputs, compute_attn=False):
+            # clone relevant token and attention tensors
+            tokens_clone = tokens.index_select(0, bbsz_idx)
+            tokens_clone = tokens_clone[:, 1:step + 2]  # skip the first index, which is EOS
+            tokens_clone[:, step] = self.task.EOS_ID
+            attn_clone = attn.index_select(0, bbsz_idx)[:, :, 1:step + 2]
+
+            # compute scores per token position
+            pos_scores = scores.index_select(0, bbsz_idx)[:, :step + 1]
+            pos_scores[:, step] = eos_scores
+            # convert from cumulative to per-position scores
+            pos_scores[:, 1:] = pos_scores[:, 1:] - pos_scores[:, :-1]
+
+            # normalize sentence-level scores
+            if self.normalize_scores:
+                eos_scores /= (step + 1) ** self.hparams.lenpen
+
+            sents_seen = set()
+            for i, (idx, score) in enumerate(zip(bbsz_idx.tolist(), eos_scores.tolist())):
+                sent = idx // beam
+                sents_seen.add(sent)
+
+                def get_hypo():
+                    _, alignment = attn_clone[i].max(dim=0)
+                    return {
+                        'tokens': tokens_clone[i],
+                        'score': score,
+                        'attention': attn_clone[i],  # src_len x tgt_len
+                        'alignment': alignment,
+                        'positional_scores': pos_scores[i],
+                    }
+
+                if len(finalized[sent]) < beam:
+                    finalized[sent].append(get_hypo())
+                elif not self.stop_early and score > worst_finalized[sent]['score']:
+                    # replace worst hypo for this sentence with new/better one
+                    worst_idx = worst_finalized[sent]['idx']
+                    if worst_idx is not None:
+                        finalized[sent][worst_idx] = get_hypo()
+
+                    # find new worst finalized hypo for this sentence
+                    idx, s = min(enumerate(finalized[sent]), key=lambda r: r[1]['score'])
+                    worst_finalized[sent] = {
+                        'score': s['score'],
+                        'idx': idx,
+                    }
+
+            # return number of hypotheses finished this step
+            num_finished = 0
+            for sent in sents_seen:
+                # check termination conditions for this sentence
+                if not finished[sent] and is_finished(sent, step, unfinalized_scores):
+                    finished[sent] = True
+                    num_finished += 1
+            return num_finished
+
+        for step in range(maxlen + 1):  # one extra step for EOS marker
+            # print('$', step, tokens_var.shape)
+            # [NOTE]: Omitted: reorder decoder internal states based on the prev choice of beams
+
+            # avg_probs: (batch_size * beam, vocab_size)
+            probs, attn_scores = self._decode(
+                encoder_outs, beam_src_lengths, tokens_var[:, :step + 1], None, compute_attn=True)
+
+            if step == 0:
+                # at the first step all hypotheses are equally likely, so use only the first beam
+                # [NOTE]: Use ``unfold`` to get the first beam, see docstring.
+                probs = probs.unfold(0, 1, beam).squeeze(2).contiguous()
+                scores = scores.type_as(probs)
+                scores_buf = scores_buf.type_as(probs)
+            elif self.hparams.sampling:
+                # make probs contain cumulative scores for each hypothesis
+                probs.add_(scores[:, step - 1].view(-1, 1))
+
+            probs[:, self.task.PAD_ID] = -math.inf  # never select pad
+            probs[:, self.task.UNK_ID] -= self.hparams.unkpen  # apply unk penalty
+
+            # Record attention scores
+            attn[:, :, step + 1].copy_(attn_scores)
+
+            # TODO: Select candidates
+            cand_scores = buffer('cand_scores', type_of=scores)
+            cand_indices = buffer('cand_indices')
+            cand_beams = buffer('cand_beams')
+            eos_bbsz_idx = buffer('eos_bbsz_idx')
+            eos_scores = buffer('eos_scores', type_of=scores)
+
+            if step < maxlen:
+                if prefix_tokens is not None and step < prefix_tokens.size(1):
+                    raise NotImplementedError('Prefix tokens not implemented')
+                elif self.hparams.sampling:
+                    raise NotImplementedError('Sampling not implemented')
+                else:
+                    # take the best 2 x beam_size predictions. We'll choose the first
+                    # beam_size of these which don't predict eos to continue with.
+                    th.topk(
+                        probs.view(batch_size, -1),
+                        k=min(cand_size, probs.view(batch_size, -1).size(1) - 1),   # -1 so we never select pad
+                        out=(cand_scores, cand_indices),
+                    )
+                    th.div(cand_indices, vocab_size, out=cand_beams)
+                    cand_indices.fmod_(vocab_size)
+            else:
+                # finalize all active hypotheses once we hit maxlen
+                # pick the hypothesis with the highest prob of EOS right now
+                th.sort(
+                    probs[:, self.task.EOS_ID],
+                    descending=True,
+                    out=(eos_scores, eos_bbsz_idx),
+                )
+                num_remaining_sent -= finalize_hypos(step, eos_bbsz_idx, eos_scores)
+                assert num_remaining_sent == 0
+                break
+
+            # cand_bbsz_idx contains beam indices for the top candidate
+            # hypotheses, with a range of values: [0, bsz*beam_size),
+            # and dimensions: [bsz, cand_size]
+            cand_bbsz_idx = cand_beams.add_(bbsz_offsets)
+
+            # finalize hypotheses that end in eos
+            eos_mask = cand_indices.eq(self.task.EOS_ID)
+            if step >= minlen:
+                # only consider eos when it's among the top beam_size indices
+                th.masked_select(
+                    cand_bbsz_idx[:, :beam],
+                    mask=eos_mask[:, :beam],
+                    out=eos_bbsz_idx,
+                )
+                if eos_bbsz_idx.numel() > 0:
+                    th.masked_select(
+                        cand_scores[:, :beam],
+                        mask=eos_mask[:, :beam],
+                        out=eos_scores,
+                    )
+                    num_remaining_sent -= finalize_hypos(step, eos_bbsz_idx, eos_scores, cand_scores)
+
+            assert num_remaining_sent >= 0
+            if num_remaining_sent == 0:
+                break
+            assert step < maxlen
+
+            # set active_mask so that values > cand_size indicate eos hypos
+            # and values < cand_size indicate candidate active hypos.
+            # After, the min values per row are the top candidate active hypos
+            active_mask = buffer('active_mask')
+            th.add(
+                eos_mask.type_as(cand_offsets) * cand_size,
+                cand_offsets[:eos_mask.size(1)],
+                out=active_mask,
+            )
+
+            # get the top beam_size active hypotheses, which are just the hypos
+            # with the smallest values in active_mask
+            active_hypos, _ignore = buffer('active_hypos'), buffer('_ignore')
+            th.topk(
+                active_mask, k=beam, dim=1, largest=False,
+                out=(_ignore, active_hypos)
+            )
+            active_bbsz_idx = buffer('active_bbsz_idx')
+            th.gather(
+                cand_bbsz_idx, dim=1, index=active_hypos,
+                out=active_bbsz_idx,
+            )
+            active_scores = th.gather(cand_scores, dim=1, index=active_hypos).view(-1)
+            scores[:, step] = active_scores
+            active_bbsz_idx = active_bbsz_idx.view(-1)
+
+            # copy tokens and scores for active hypotheses
+            th.index_select(
+                tokens[:, :step + 1], dim=0, index=active_bbsz_idx,
+                out=tokens_buf[:, :step + 1],
+            )
+            th.gather(
+                cand_indices, dim=1, index=active_hypos,
+                out=tokens_buf.view(batch_size, beam, -1)[:, :, step + 1],
+            )
+            if step > 0:
+                th.index_select(
+                    scores[:, :step], dim=0, index=active_bbsz_idx,
+                    out=scores_buf[:, :step],
+                )
+            th.gather(
+                cand_scores, dim=1, index=active_hypos,
+                out=scores_buf.view(batch_size, beam, -1)[:, :, step],
+            )
+
+            # copy attention for active hypotheses
+            th.index_select(
+                attn[:, :, :step + 2], dim=0, index=active_bbsz_idx,
+                out=attn_buf[:, :, :step + 2],
+            )
+
+            # swap buffers
+            old_tokens = tokens
+            tokens = tokens_buf
+            tokens_buf = old_tokens
+            old_scores = scores
+            scores = scores_buf
+            scores_buf = old_scores
+            old_attn = attn
+            attn = attn_buf
+            attn_buf = old_attn
+
+            # [NOTE]: Omitted: reorder incremental state in decoder
+
+        # sort by score descending
+        for sent in range(batch_size):
+            finalized[sent] = sorted(finalized[sent], key=lambda r: r['score'], reverse=True)
+
+        return finalized
+
+    def _decode(self, encoder_outs, src_lengths, trg_tokens, trg_lengths, compute_attn=False):
+        net_outputs = [
+            model.decode(
+                encoder_out, src_lengths,
+                trg_tokens, trg_lengths)
+            for encoder_out, model in zip(encoder_outs, self.models)
+        ]
+        return self._get_normalized_probs(net_outputs, compute_attn=compute_attn)
+
+    def _get_normalized_probs(self, net_outputs, compute_attn=False, average_heads=True):
         avg_probs = None
         avg_attn = None
         for model, (output, attn) in zip(self.models, net_outputs):
@@ -247,6 +515,8 @@ class ChildGenerator:
                     attn = attn[:, -1, :].data
                 elif self.hparams.enc_dec_attn_type == 'dot_product':
                     attn = attn[:, :, -1, :].data
+                    if average_heads:
+                        attn = attn.mean(dim=1)
                 else:
                     raise ValueError('Unknown encoder-decoder attention type {}'.format(self.hparams.enc_dec_attn_type))
                 if avg_attn is None:
