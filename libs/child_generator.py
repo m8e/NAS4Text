@@ -145,11 +145,11 @@ class ChildGenerator:
             trg_tokens = common.make_variable(
                 th.zeros(batch_size, 1).fill_(start_symbol).type_as(input_['src_tokens'].data),
                 volatile=True, cuda=self.is_cuda)
-            # trg_lengths = common.make_variable(
-            #     th.zeros(batch_size).fill_(1).type_as(input_['src_lengths'].data),
-            #     volatile=True, cuda=self.is_cuda)
+            trg_lengths = common.make_variable(
+                th.zeros(batch_size).fill_(1).type_as(input_['src_lengths'].data),
+                volatile=True, cuda=self.is_cuda)
             for i in range(maxlen - 1):
-                avg_probs, _ = self._decode(encoder_outs, input_['src_lengths'], trg_tokens, None)
+                avg_probs, _ = self._decode(encoder_outs, input_['src_lengths'], trg_tokens, trg_lengths)
 
                 if self.hparams.greedy_sample_temperature == 0.0:
                     _, next_word = avg_probs.max(dim=1)
@@ -158,7 +158,7 @@ class ChildGenerator:
                     next_word = th.multinomial(th.exp(avg_probs) / self.hparams.greedy_sample_temperature, 1)[:, 0]
 
                 trg_tokens.data = th.cat([trg_tokens.data, th.unsqueeze(next_word, dim=1)], dim=1)
-                # trg_lengths += 1
+                trg_lengths += 1
 
         if timer is not None:
             timer.stop(batch_size)
@@ -215,6 +215,9 @@ class ChildGenerator:
         tokens_buf = tokens.clone()
         tokens[:, 0] = start_symbol
         tokens_var = common.make_variable(tokens, volatile=True, cuda=self.is_cuda)
+        trg_lengths = common.make_variable(
+            th.zeros(batch_size * beam).type_as(input_['src_lengths'].data),
+            volatile=True, cuda=self.is_cuda)
         attn = scores.new(batch_size * beam, src_tokens.size(1), maxlen + 2)
         attn_buf = attn.clone()
 
@@ -337,9 +340,10 @@ class ChildGenerator:
             # print('$', step, tokens_var.shape)
             # [NOTE]: Omitted: reorder decoder internal states based on the prev choice of beams
 
+            trg_lengths[:] = step + 1
             # avg_probs: (batch_size * beam, vocab_size)
             probs, attn_scores = self._decode(
-                encoder_outs, beam_src_lengths, tokens_var[:, :step + 1], None, compute_attn=True)
+                encoder_outs, beam_src_lengths, tokens_var[:, :step + 1], trg_lengths, compute_attn=True)
 
             if step == 0:
                 # at the first step all hypotheses are equally likely, so use only the first beam
@@ -357,7 +361,6 @@ class ChildGenerator:
             # Record attention scores
             attn[:, :, step + 1].copy_(attn_scores)
 
-            # TODO: Select candidates
             cand_scores = buffer('cand_scores', type_of=scores)
             cand_indices = buffer('cand_indices')
             cand_beams = buffer('cand_beams')
