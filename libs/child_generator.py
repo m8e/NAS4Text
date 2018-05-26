@@ -343,7 +343,9 @@ class ChildGenerator:
             trg_lengths[:] = step + 1
             # avg_probs: (batch_size * beam, vocab_size)
             probs, attn_scores = self._decode(
-                encoder_outs, beam_src_lengths, tokens_var[:, :step + 1], trg_lengths, compute_attn=True)
+                encoder_outs, beam_src_lengths,
+                common.make_variable(tokens[:, :step + 1], volatile=True, cuda=self.is_cuda), trg_lengths,
+                compute_attn=True)
 
             if step == 0:
                 # at the first step all hypotheses are equally likely, so use only the first beam
