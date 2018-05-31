@@ -82,6 +82,11 @@ def hparams_base():
         norm_type='layer',
         norm_epsilon=1e-6,
 
+        # About initializer
+        # Candidates: original, uniform_init_scaling
+        initializer='uniform_unit_scaling',
+        initializer_gain=1.0,
+
         # About training
         lr='0.25',
         momentum=0.99,

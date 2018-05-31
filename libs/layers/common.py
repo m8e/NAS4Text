@@ -22,35 +22,80 @@ def clones(module, n):
     return nn.ModuleList([copy.deepcopy(module) for _ in range(n)])
 
 
-def Linear(in_features, out_features, dropout=0):
+def _compute_fans(shape):
+    if len(shape) < 1:  # Just to avoid errors for constants.
+        fan_in = fan_out = 1
+    elif len(shape) == 1:
+        fan_in = fan_out = shape[0]
+    elif len(shape) == 2:
+        fan_in = shape[0]
+        fan_out = shape[1]
+    else:
+        raise NotImplementedError('Shape >= 3 not implemented')
+    return fan_in, fan_out
+
+
+def uniform_unit_scaling_initializer(tensor, scale=1.0, mode='fan_avg'):
+    fan_in, fan_out = _compute_fans(tensor.shape)
+    if mode == 'fan_in':
+        scale /= max(1., fan_in)
+    elif mode == 'fan_out':
+        scale /= max(1., fan_out)
+    else:   # mode == 'fan_avg'
+        scale /= max(1., (fan_in + fan_out) / 2)
+    limit = math.sqrt(3.0 * scale)
+    nn.init.uniform(tensor, -limit, limit)
+
+
+def Linear(in_features, out_features, dropout=0, hparams=None):
     """Weight-normalized Linear layer (input: N x T x C)"""
     m = nn.Linear(in_features, out_features)
-    m.weight.data.normal_(mean=0, std=math.sqrt((1 - dropout) / in_features))
-    m.bias.data.zero_()
-    return nn.utils.weight_norm(m)
+
+    if hparams.initializer == 'original':
+        m.weight.data.normal_(mean=0, std=math.sqrt((1 - dropout) / in_features))
+        m.bias.data.zero_()
+        return nn.utils.weight_norm(m)
+    elif hparams.initializer == 'uniform_unit_scaling':
+        uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
+        m.bias.data.zero_()
+        return m
+    else:
+        raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
 
 
-def Embedding(num_embeddings, embedding_dim, padding_idx):
+def Embedding(num_embeddings, embedding_dim, padding_idx, hparams=None):
     """Weight-normalized Embedding layer"""
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    m.weight.data.normal_(0, 0.1)
+    if hparams.initializer == 'original':
+        m.weight.data.normal_(0, 0.1)
+    elif hparams.initializer == 'uniform_unit_scaling':
+        uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
+    else:
+        raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
     return m
 
 
-def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad):
+def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad, hparams=None):
     m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad)
-    m.weight.data.normal_(0, 0.1)
+    if hparams.initializer == 'original':
+        m.weight.data.normal_(0, 0.1)
+    elif hparams.initializer == 'uniform_unit_scaling':
+        uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
+    else:
+        raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
     return m
 
 
 class FairseqAttention(nn.Module):
-    def __init__(self, conv_channels, embed_dim, bmm=None):
+    def __init__(self, conv_channels, embed_dim, bmm=None, hparams=None):
         super().__init__()
 
+        self.hparams = hparams
+
         # projects from output of convolution to embedding dimension
-        self.in_projection = Linear(conv_channels, embed_dim)
+        self.in_projection = Linear(conv_channels, embed_dim, hparams=hparams)
         # projects from embedding dimension to convolution size
-        self.out_projection = Linear(embed_dim, conv_channels)
+        self.out_projection = Linear(embed_dim, conv_channels, hparams=hparams)
 
         self.bmm = bmm if bmm is not None else th.bmm
 

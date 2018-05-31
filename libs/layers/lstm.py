@@ -39,7 +39,7 @@ class LSTMLayer(ChildLayer):
 
         # [NOTE]: If in decoder, requires to initialize the init state with encoder output states.
         if not self.in_encoder:
-            self.fc_init_state = Linear(self.hparams.src_embedding_size, self.lstm.hidden_size)
+            self.fc_init_state = Linear(self.hparams.src_embedding_size, self.lstm.hidden_size, hparams=hparams)
         else:
             self.fc_init_state = None
 

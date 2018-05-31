@@ -62,6 +62,10 @@ def add_hparams_args(parser):
                        choices=AttentionSpaces.keys(),
                        help='Attention search space: {}'.format(', '.join(AttentionSpaces.keys())))
 
+    # About initializer.
+    group.add_argument('--initializer', type=str, default=None,
+                       help='Initializer type')
+
     # About training.
     group.add_argument('--lr', '--learning-rate', default=None, metavar='LR_1,LR_2,...,LR_N',
                        help='learning rate for the first N epochs; all epochs >N using LR_N'

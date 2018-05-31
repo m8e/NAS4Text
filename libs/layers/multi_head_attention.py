@@ -75,7 +75,7 @@ class MultiHeadAttention(nn.Module):
         - **output** (batch_size, length_q, d_model):
     """
 
-    def __init__(self, h, d_model, dropout=0.1, window=None):
+    def __init__(self, h, d_model, dropout=0.1, window=None, hparams=None):
         super().__init__()
 
         assert d_model % h == 0
@@ -89,7 +89,7 @@ class MultiHeadAttention(nn.Module):
             'Local attention window size must be None or an odd number'
 
         # 4 Weights matrices.
-        self.linears = nn.ModuleList([Linear(d_model, d_model) for _ in range(4)])
+        self.linears = nn.ModuleList([Linear(d_model, d_model, hparams=hparams) for _ in range(4)])
 
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
@@ -149,11 +149,11 @@ def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
 
 
 class PositionwiseFeedForward(nn.Module):
-    def __init__(self, d_model, d_ff, dropout=0.1):
+    def __init__(self, d_model, d_ff, dropout=0.1, hparams=None):
         super().__init__()
 
-        self.w_1 = Linear(d_model, d_ff)
-        self.w_2 = Linear(d_ff, d_model)
+        self.w_1 = Linear(d_model, d_ff, hparams=hparams)
+        self.w_2 = Linear(d_ff, d_model, hparams=hparams)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -175,8 +175,8 @@ class SelfAttention(ChildLayer):
         super().__init__(hparams)
 
         self.in_encoder = in_encoder
-        self.attention = MultiHeadAttention(h, d_model, dropout=dropout)
-        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout=ffn_dropout)
+        self.attention = MultiHeadAttention(h, d_model, dropout=dropout, hparams=hparams)
+        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout=ffn_dropout, hparams=hparams)
 
     def forward(self, x, lengths=None, **kwargs):
         """
@@ -207,7 +207,7 @@ class SelfAttention(ChildLayer):
 
 class EncDecAttention(nn.Module):
     """Encoder-decoder attention module, modified for different input sizes."""
-    def __init__(self, h, conv_channels, trg_emb_size, src_emb_size, dropout=0.1, in_encoder=True):
+    def __init__(self, h, conv_channels, trg_emb_size, src_emb_size, dropout=0.1, in_encoder=True, hparams=None):
         super().__init__()
 
         assert trg_emb_size % h == 0
@@ -221,15 +221,16 @@ class EncDecAttention(nn.Module):
 
         # 4 Weights matrices.
         self.linears = nn.ModuleList([
-            Linear(conv_channels, d_model),
-            Linear(src_emb_size, d_model),
-            Linear(src_emb_size, d_model),
-            Linear(d_model, conv_channels),
+            Linear(conv_channels, d_model, hparams=hparams),
+            Linear(src_emb_size, d_model, hparams=hparams),
+            Linear(src_emb_size, d_model, hparams=hparams),
+            Linear(d_model, conv_channels, hparams=hparams),
         ])
 
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
         self.in_encoder = in_encoder
+        self.hparams = hparams
 
     def forward(self, x, target_embedding, encoder_outs, src_lengths=None):
         """

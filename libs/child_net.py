@@ -65,12 +65,14 @@ class ChildEncoder(nn.Module):
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
         self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
 
-        self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID)
+        self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
+                                      hparams=hparams)
         self.embed_positions = PositionalEmbedding(
             hparams.max_src_positions,
             hparams.src_embedding_size,
             self.task.PAD_ID,
             left_pad=LanguagePairDataset.LEFT_PAD_SOURCE,
+            hparams=hparams,
         )
 
         # TODO: Need fc1 to project src_emb_size to in_channels here?
@@ -86,12 +88,13 @@ class ChildEncoder(nn.Module):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=True)
             setattr(self, 'layer_{}'.format(i), layer)
 
-            projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
+            projection = Linear(input_shape[2], output_shape[2], hparams=hparams) \
+                if input_shape != output_shape else None
             setattr(self, 'projection_{}'.format(i), projection)
             input_shape = output_shape
             self.num_layers += 1
 
-        self.fc2 = Linear(input_shape[2], hparams.src_embedding_size)
+        self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
 
         # Encoder output shape
         self.output_shape = th.Size([input_shape[0], input_shape[1], hparams.src_embedding_size])
@@ -188,12 +191,14 @@ class ChildDecoder(nn.Module):
                 self.task.TargetVocabSize, hparams.trg_embedding_size, padding_idx=self.task.PAD_ID)
             self.embed_tokens.weight = kwargs.pop('src_embedding').weight
         else:
-            self.embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID)
+            self.embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID,
+                                          hparams=hparams)
         self.embed_positions = PositionalEmbedding(
             hparams.max_trg_positions,
             hparams.trg_embedding_size,
             self.task.PAD_ID,
             left_pad=LanguagePairDataset.LEFT_PAD_TARGET,
+            hparams=hparams,
         )
 
         # The main decoder network.
@@ -204,14 +209,15 @@ class ChildDecoder(nn.Module):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=False)
             setattr(self, 'layer_{}'.format(i), layer)
 
-            projection = Linear(input_shape[2], output_shape[2]) if input_shape != output_shape else None
+            projection = Linear(input_shape[2], output_shape[2], hparams=hparams) \
+                if input_shape != output_shape else None
             setattr(self, 'projection_{}'.format(i), projection)
 
             if hparams.enc_dec_attn_type == 'dot_product':
                 attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
-                                            dropout=hparams.dropout, in_encoder=False)
+                                            dropout=hparams.dropout, in_encoder=False, hparams=hparams)
             elif hparams.enc_dec_attn_type == 'fairseq':
-                attention = FairseqAttention(output_shape[2], hparams.trg_embedding_size)
+                attention = FairseqAttention(output_shape[2], hparams.trg_embedding_size, hparams=hparams)
             else:
                 raise ValueError('Unknown encoder-decoder attention type {}'.format(hparams.enc_dec_attn_type))
             setattr(self, 'attention_{}'.format(i), attention)
@@ -222,7 +228,7 @@ class ChildDecoder(nn.Module):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
-        self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size)
+        self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
 
         if hparams.share_input_output_embedding:
             assert hparams.trg_embedding_size == hparams.decoder_out_embedding_size, \
@@ -232,7 +238,7 @@ class ChildDecoder(nn.Module):
             self.fc_last.weight = self.embed_tokens.weight
         else:
             self.fc_last = Linear(hparams.decoder_out_embedding_size,
-                                  self.task.TargetVocabSize, dropout=hparams.dropout)
+                                  self.task.TargetVocabSize, dropout=hparams.dropout, hparams=hparams)
 
     def forward(self, encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state=None):
         """
