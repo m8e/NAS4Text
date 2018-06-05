@@ -27,7 +27,7 @@ from .tasks import get_task
 from .utils.data_processing import LanguagePairDataset
 from .utils import common
 from .utils.search_space import LayerTypes
-from .layers.common import Linear, Embedding, PositionalEmbedding, FairseqAttention
+from .layers.common import *
 from .layers.lstm import build_lstm, LSTMLayer
 from .layers.cnn import build_cnn
 from .layers.attention import build_attention
@@ -88,9 +88,6 @@ class ChildEncoder(nn.Module):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=True)
             setattr(self, 'layer_{}'.format(i), layer)
 
-            projection = Linear(input_shape[2], output_shape[2], hparams=hparams) \
-                if input_shape != output_shape else None
-            setattr(self, 'projection_{}'.format(i), projection)
             input_shape = output_shape
             self.num_layers += 1
 
@@ -98,6 +95,8 @@ class ChildEncoder(nn.Module):
 
         # Encoder output shape
         self.output_shape = th.Size([input_shape[0], input_shape[1], hparams.src_embedding_size])
+
+        self.out_norm = LayerNorm(self.output_shape[2])
 
     def forward(self, src_tokens, src_lengths=None):
         """
@@ -122,20 +121,13 @@ class ChildEncoder(nn.Module):
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         for i in range(self.num_layers):
             layer = self.get_layer(i)
-            projection = self.get_projection(i)
-
-            residual = x if projection is None else projection(x)
 
             x = layer(x, src_lengths)
 
-            # Residual connection.
-            # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
-            # We cannot determine sequence length when building the module, so test them here.
-            if x.shape[1] != residual.shape[1]:
-                residual = layer.residual_conv(residual.transpose(1, 2)).transpose(1, 2)
-            x = (x + residual) * math.sqrt(0.5)
-
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(x.shape)))
+
+        # Output normalization
+        x = self.out_norm(x)
 
         # project back to size of embedding
         x = self.fc2(x)
@@ -160,12 +152,6 @@ class ChildEncoder(nn.Module):
 
     def get_layers(self):
         return [self.get_layer(i) for i in range(self.num_layers)]
-
-    def get_projection(self, i):
-        return getattr(self, 'projection_{}'.format(i))
-
-    def get_projections(self):
-        return [self.get_projection(i) for i in range(self.num_layers)]
 
 
 class ChildDecoder(nn.Module):
@@ -209,10 +195,6 @@ class ChildDecoder(nn.Module):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=False)
             setattr(self, 'layer_{}'.format(i), layer)
 
-            projection = Linear(input_shape[2], output_shape[2], hparams=hparams) \
-                if input_shape != output_shape else None
-            setattr(self, 'projection_{}'.format(i), projection)
-
             if hparams.enc_dec_attn_type == 'dot_product':
                 attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
                                             dropout=hparams.dropout, in_encoder=False, hparams=hparams)
@@ -229,6 +211,7 @@ class ChildDecoder(nn.Module):
         self.output_shape = input_shape
 
         self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
+        self.out_norm = LayerNorm(self.output_shape[2])
 
         if hparams.share_input_output_embedding:
             assert hparams.trg_embedding_size == hparams.decoder_out_embedding_size, \
@@ -275,10 +258,7 @@ class ChildDecoder(nn.Module):
         num_attn_layers = self.num_layers   # TODO: Explain why include layers without attention (None)?
         for i in range(self.num_layers):
             layer = self.get_layer(i)
-            projection = self.get_projection(i)
             attention = self.get_attention(i)
-
-            residual = x if projection is None else projection(x)
 
             x = layer(x, trg_lengths, encoder_state=encoder_state_mean)
 
@@ -290,14 +270,10 @@ class ChildDecoder(nn.Module):
             else:
                 avg_attn_scores.add_(attn_scores)
 
-            # Residual connection.
-            # If sequence length changed, add 1x1 convolution ([NOTE]: The layer must provide it).
-            # We cannot determine sequence length when building the module, so test them here.
-            if x.shape[1] != residual.shape[1]:
-                residual = layer.residual_conv(residual.transpose(1, 2)).transpose(1, 2)
-            x = (x + residual) * math.sqrt(0.5)
-
             logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
+
+        # Output normalization
+        x = self.out_norm(x)
 
         # Project back to size of vocabulary
         x = self.fc2(x)
@@ -373,12 +349,6 @@ class ChildDecoder(nn.Module):
 
     def get_layers(self):
         return [self.get_layer(i) for i in range(self.num_layers)]
-
-    def get_projection(self, i):
-        return getattr(self, 'projection_{}'.format(i))
-
-    def get_projections(self):
-        return [self.get_projection(i) for i in range(self.num_layers)]
 
     def get_attention(self, i):
         return getattr(self, 'attention_{}'.format(i))

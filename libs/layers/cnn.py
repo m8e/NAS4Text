@@ -24,6 +24,7 @@ class ConvLayer(ChildLayer):
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.stride = stride
+        self.residual_conv = self.build_residual_conv(out_channels, stride)
 
     def forward(self, *args):
         raise NotImplementedError
@@ -50,6 +51,12 @@ class ConvLayer(ChildLayer):
         conv.bias.data.zero_()
 
         return conv
+
+    def modify_input_before_postprocess(self, input_):
+        input_ = super().modify_input_before_postprocess(input_)
+        if self.stride > 1:
+            input_ = self.residual_conv(input_.transpose(1, 2)).transpose(1, 2)
+        return input_
 
 
 class EncoderConvLayer(ConvLayer):
@@ -82,9 +89,8 @@ class EncoderConvLayer(ConvLayer):
         )
         self.conv = self.conv_weight_norm(conv)
 
-        self.residual_conv = self.build_residual_conv(out_channels, stride)
-
     def forward(self, input_, lengths=None, **kwargs):
+        input_before = input_
         input_ = self.preprocess(input_)
 
         x = input_.transpose(1, 2)
@@ -101,7 +107,9 @@ class EncoderConvLayer(ConvLayer):
 
         result = x.transpose(1, 2)
 
-        return self.postprocess(result)
+        print('$', result.shape, input_before.shape)
+
+        return self.postprocess(result, input_before)
 
 
 class DecoderConvLayer(ConvLayer):
@@ -128,9 +136,8 @@ class DecoderConvLayer(ConvLayer):
         )
         self.conv = self.conv_weight_norm(conv)
 
-        self.residual_conv = self.build_residual_conv(out_channels, stride)
-
     def forward(self, input_, lengths=None, **kwargs):
+        input_before = input_
         input_ = self.preprocess(input_)
 
         x = input_.transpose(1, 2)
@@ -145,7 +152,7 @@ class DecoderConvLayer(ConvLayer):
 
         result = x.transpose(1, 2)
 
-        return self.postprocess(result)
+        return self.postprocess(result, input_before)
 
 
 def build_cnn(layer_code, input_shape, hparams, in_encoder=True):

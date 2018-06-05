@@ -134,10 +134,66 @@ class FairseqAttention(nn.Module):
         # TODO
 
 
+def residual(x, input_, res_type='default'):
+    if res_type == 'default':
+        return x + input_
+    elif res_type == 'original':
+        return (x + input_) * math.sqrt(0.5)
+    return x + input_
+
+
+class NLCBatchNorm1d(nn.BatchNorm1d):
+    """Batch normalization, applied on (N, L, C) input."""
+    # TODO: Discuss on it (BN on RNN?), need test
+    def forward(self, x, input_=None):
+        if x.data.ndimension() == 3:
+            return super().forward(x.transpose(1, 2)).transpose(1, 2)
+        return super().forward(x)
+
+
+class LayerNorm(nn.Module):
+    """A Simple implementation of layer normalization, applied on (N, L, C) input."""
+
+    def __init__(self, num_features, eps=1e-6):
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.gamma = nn.Parameter(th.ones(num_features))
+        self.beta = nn.Parameter(th.zeros(num_features))
+
+    def forward(self, x, input_=None):
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        return self.gamma * (x - mean) / (std + self.eps) + self.beta
+
+    def __repr__(self):
+        return '{name}({num_features}, eps={eps})'.format(name=self.__class__.__name__, **self.__dict__)
+
+
+class MyDropout(nn.Dropout):
+    """Same as dropout, used for postprocessors, that pass an extra argument to ``forward``."""
+    def forward(self, x, input_=None):
+        return super().forward(x)
+
+
+class Residual(nn.Module):
+    def __init__(self, res_type='default'):
+        super().__init__()
+
+        assert res_type in ('default', 'original'), 'Illegal residual type {!r}'.format(res_type)
+
+        self.res_type = res_type
+
+    def forward(self, x, input_):
+        return residual(x, input_, self.res_type)
+
+
 __all__ = [
     'clones',
     'Embedding',
     'Linear',
     'PositionalEmbedding',
     'FairseqAttention',
+    'residual',
+    'NLCBatchNorm1d', 'LayerNorm', 'MyDropout', 'Residual',
 ]

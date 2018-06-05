@@ -52,6 +52,7 @@ class LSTMLayer(ChildLayer):
                 nn.init.xavier_normal(param)
 
     def forward(self, input_, lengths=None, encoder_state=None, **kwargs):
+        input_before = input_
         input_ = self.preprocess(input_)
 
         init_h_c = self._get_init_state(input_, encoder_state)
@@ -84,7 +85,7 @@ class LSTMLayer(ChildLayer):
         if output.shape[1] < input_.shape[1]:
             output = F.pad(output, (0, 0, 0, input_.shape[1] - output.shape[1], 0, 0), value=0.0)
 
-        output = self.postprocess(output)
+        output = self.postprocess(output, input_before)
 
         return output
 

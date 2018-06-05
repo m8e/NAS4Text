@@ -193,14 +193,14 @@ class SelfAttention(ChildLayer):
             Each need to be preprocessed and postprocessed.
         """
 
-        x = self.preprocess(x)
-        mask = _mask_from_lengths(x, lengths, self, subsequent_mask=True)
-        attn_result = self.attention(x, x, x, mask=mask)
-        attn_result = self.postprocess(attn_result)
+        attn_input = self.preprocess(x)
+        mask = _mask_from_lengths(attn_input, lengths, self, subsequent_mask=True)
+        attn_result = self.attention(attn_input, attn_input, attn_input, mask=mask)
+        attn_result = self.postprocess(attn_result, x)
 
         ff_input = self.preprocess(attn_result)
         result = self.feed_forward(ff_input)
-        result = self.postprocess(result)
+        result = self.postprocess(result, attn_result)
 
         return result
 

@@ -23,12 +23,11 @@ class PPPSpace:
     """Pre- and post- processors search space."""
     Dropout = 'dropout'
     Norm = 'norm'
+    Residual = 'residual'
 
-    # None, Dropout, Norm, Dropout + Norm, Norm + Dropout
-    Preprocessors = [0, 1, 2, 3, 4]
-
-    # None, Dropout, Norm, Dropout + Norm, Norm + Dropout
-    Postprocessors = [0, 1, 2, 3, 4]
+    # None, Dropout, Norm, Dropout + Norm, Norm + Dropout, Residual, Dropout + Residual, TODO: Add more
+    Preprocessors = [0, 1, 2, 3, 4, 5, 6]
+    Postprocessors = [0, 1, 2, 3, 4, 5, 6]
 
     @classmethod
     def get_ops(cls, code):
@@ -42,6 +41,10 @@ class PPPSpace:
             return [cls.Dropout, cls.Norm]
         elif code == 4:
             return [cls.Norm, cls.Dropout]
+        elif code == 5:
+            return [cls.Residual]
+        elif code == 6:
+            return [cls.Dropout, cls.Residual]
         elif code is None:
             return []
         else:
