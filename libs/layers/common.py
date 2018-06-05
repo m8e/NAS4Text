@@ -47,17 +47,24 @@ def uniform_unit_scaling_initializer(tensor, scale=1.0, mode='fan_avg'):
     nn.init.uniform(tensor, -limit, limit)
 
 
-def Linear(in_features, out_features, dropout=0, hparams=None):
+def Linear(in_features, out_features, bias=True, dropout=0, hparams=None):
     """Weight-normalized Linear layer (input: N x T x C)"""
-    m = nn.Linear(in_features, out_features)
+    m = nn.Linear(in_features, out_features, bias=bias)
 
     if hparams.initializer == 'original':
         m.weight.data.normal_(mean=0, std=math.sqrt((1 - dropout) / in_features))
-        m.bias.data.zero_()
+        if bias:
+            m.bias.data.zero_()
         return nn.utils.weight_norm(m)
     elif hparams.initializer == 'uniform_unit_scaling':
         uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
-        m.bias.data.zero_()
+        if bias:
+            m.bias.data.zero_()
+        return m
+    elif hparams.initializer == 'kaitao':
+        m.weight.data.uniform_(-0.1, 0.1)
+        if bias:
+            m.bias.data.uniform_(-0.1, 0.1)
         return m
     else:
         raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
@@ -66,7 +73,7 @@ def Linear(in_features, out_features, dropout=0, hparams=None):
 def Embedding(num_embeddings, embedding_dim, padding_idx, hparams=None):
     """Weight-normalized Embedding layer"""
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    if hparams.initializer == 'original':
+    if hparams.initializer in ('original', 'kaitao'):
         m.weight.data.normal_(0, 0.1)
     elif hparams.initializer == 'uniform_unit_scaling':
         uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
@@ -77,7 +84,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx, hparams=None):
 
 def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad, hparams=None):
     m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad)
-    if hparams.initializer == 'original':
+    if hparams.initializer in ('original', 'kaitao'):
         m.weight.data.normal_(0, 0.1)
     elif hparams.initializer == 'uniform_unit_scaling':
         uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)

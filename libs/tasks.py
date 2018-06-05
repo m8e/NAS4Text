@@ -208,3 +208,31 @@ class DeEnIwsltBpe(TextTask):
             'test': 20.657037037037036,
         },
     }
+
+
+@register_task
+class DeEnIwsltBpe2(TextTask):
+    """De-En iwslt bpe dataset with larger vocabulary size (32898)."""
+    # TODO
+    SourceLang = Languages.DE
+    TargetLang = Languages.EN
+
+    UniqueFilename = 'iwslt-bpe2'
+
+    SourceVocabSize = 31295
+    TargetVocabSize = 31295
+
+    BPESymbol = '@@ '
+
+    LengthInfo = {
+        'src': {
+            'train': 19.68445664792664,
+            'dev': 19.74730951356005,
+            'test': 20.887703703703703,
+        },
+        'trg': {
+            'train': 19.674830100570027,
+            'dev': 19.74931841010188,
+            'test': 20.657037037037036,
+        },
+    }

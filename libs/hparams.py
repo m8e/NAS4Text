@@ -83,7 +83,7 @@ def hparams_base():
         norm_epsilon=1e-6,
 
         # About initializer
-        # Candidates: original, uniform_init_scaling
+        # Candidates: original, uniform_init_scaling, kaitao
         initializer='uniform_unit_scaling',
         initializer_gain=1.0,
 
@@ -208,5 +208,19 @@ def hparams_transformer_de_en_iwslt_share3():
     hparams = hparams_transformer_de_en_iwslt()
     hparams.share_input_output_embedding = True
     hparams.share_src_trg_embedding = True
+
+    return hparams
+
+
+@register_hparams('transformer_share3_kt')
+def hparams_transformer_de_en_iwslt_share3_kaitao():
+    hparams = hparams_transformer_de_en_iwslt_share3()
+
+    hparams.clip_norm = 0.1
+    hparams.dropout = 0.2
+    hparams.ppp_dropout = 0.2
+    hparams.attn_dropout = 0.2
+    hparams.ffn_dropout = 0.2
+    hparams.initializer = 'kaitao'
 
     return hparams
