@@ -502,7 +502,7 @@ class ChildGenerator:
         ]
         return self._get_normalized_probs(net_outputs, compute_attn=compute_attn)
 
-    def _get_normalized_probs(self, net_outputs, compute_attn=False, average_heads=True):
+    def _get_normalized_probs(self, net_outputs, compute_attn=False):
         avg_probs = None
         avg_attn = None
         for model, (output, attn) in zip(self.models, net_outputs):
@@ -516,14 +516,7 @@ class ChildGenerator:
             if not compute_attn:
                 continue
             if attn is not None:
-                if self.hparams.enc_dec_attn_type == 'fairseq':
-                    attn = attn[:, -1, :].data
-                elif self.hparams.enc_dec_attn_type == 'dot_product':
-                    attn = attn[:, :, -1, :].data
-                    if average_heads:
-                        attn = attn.mean(dim=1)
-                else:
-                    raise ValueError('Unknown encoder-decoder attention type {}'.format(self.hparams.enc_dec_attn_type))
+                attn = attn[:, -1, :].data
                 if avg_attn is None:
                     avg_attn = attn
                 else:

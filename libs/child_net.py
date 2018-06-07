@@ -237,8 +237,7 @@ class ChildDecoder(nn.Module):
 
         Returns:
             Output: (batch_size, trg_seq_len, trg_vocab_size) of float32
-            Attention scores: (batch_size, num_heads(8), trg_seq_len, src_seq_len) of float32
-                or (batch_size, trg_seq_len, src_seq_len) of float32 if ``enc_dec_attn_type == 'fairseq'``
+            Attention scores: (batch_size, trg_seq_len, src_seq_len) of float32
         """
 
         encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
@@ -263,7 +262,7 @@ class ChildDecoder(nn.Module):
             x = layer(x, trg_lengths, encoder_state=encoder_state_mean)
 
             # Attention layer.
-            x, attn_scores = attention(x, target_embedding, encoder_out, src_lengths)
+            x, attn_scores = attention(x, target_embedding=None, encoder_outs=encoder_out, src_lengths=src_lengths)
             attn_scores = attn_scores / num_attn_layers
             if avg_attn_scores is None:
                 avg_attn_scores = attn_scores
