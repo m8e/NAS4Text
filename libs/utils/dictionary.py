@@ -3,6 +3,9 @@
 
 """Dictionary: a simple wrapper of dict."""
 
+import logging
+import pickle
+
 import torch as th
 
 from ..tasks import get_task
@@ -11,14 +14,22 @@ __author__ = 'fyabc'
 
 
 class Dictionary:
-    def __init__(self, dict_, task, is_src_lang=True):
-        self._dict = dict_
-
-        self._idict = {v: k for k, v in dict_.items()}
-
+    def __init__(self, filename, task, is_src_lang=True, mode='pkl'):
         if isinstance(task, str):
             task = get_task(task)
         self.task = task
+
+        if mode == 'pkl':
+            with open(filename, 'rb') as f:
+                self._dict = pickle.load(f, encoding='utf-8')
+        elif mode == 'text':
+            with open(filename, 'r', encoding='utf-8') as f:
+                self._dict = self._parse_text_dict(f)
+        else:
+            raise ValueError('Unknown dictionary initialization mode {!r}'.format(mode))
+
+        self._idict = {v: k for k, v in self._dict.items()}
+
         self.is_src_lang = is_src_lang
 
         self._check_dict()
@@ -44,6 +55,38 @@ class Dictionary:
         if self.is_src_lang:
             return self.task.SourceLang
         return self.task.TargetLang
+
+    def _parse_text_dict(self, f):
+        """Parse the text dict.
+
+        [NOTE] Text dict format:
+        File: dict.xx.de-en.de
+        Content:
+        word1 count1
+        word2 count2
+        ...
+        word-n count-n
+
+        Args:
+            f: Text dict file.
+
+        Returns:
+            The dict.
+        """
+        # [NOTE]: Assume that the text dict does not contains special tokens.
+        result = {
+            self.task.PAD: self.task.PAD_ID,
+            self.task.EOS: self.task.EOS_ID,
+            self.task.UNK: self.task.UNK_ID,
+        }
+        for line in f:
+            words = line.strip().split()
+            word = words[0]
+            if word in result:
+                logging.warning('Word {!r} already in dict, omitted'.format(word))
+                continue
+            result[word] = len(result)
+        return result
 
     def _check_dict(self):
         assert len(self._dict) == self.task.get_vocab_size(self.is_src_lang), 'Incorrect vocabulary size'

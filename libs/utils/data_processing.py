@@ -30,7 +30,6 @@ Dict format: pickled dict
 
 import math
 import os
-import pickle
 import numbers
 
 import numpy as np
@@ -55,10 +54,12 @@ class LanguageDatasets:
         self.dataset_dir = os.path.join(DataDir, self.task.TaskName)
 
         # Load dictionary.
-        with open(os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=True)), 'rb') as f:
-            self.source_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task, is_src_lang=True)
-        with open(os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=False)), 'rb') as f:
-            self.target_dict = Dictionary(pickle.load(f, encoding='utf-8'), self.task, is_src_lang=False)
+        self.source_dict = Dictionary(
+            os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=True)),
+            self.task, is_src_lang=True, mode=self.task.SourceDictType)
+        self.target_dict = Dictionary(
+            os.path.join(self.dataset_dir, self.task.get_filename('dict', is_src_lang=False)),
+            self.task, is_src_lang=False, mode=self.task.TargetDictType)
 
     def train_dataloader(self, split, max_tokens=None,
                          max_sentences=None, max_positions=(1024, 1024),

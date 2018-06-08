@@ -224,3 +224,18 @@ def hparams_transformer_de_en_iwslt_share3_kaitao():
     hparams.initializer = 'kaitao'
 
     return hparams
+
+
+@register_hparams('bpe2_transformer_share3_kt')
+def hparams_transformer_de_en_iwslt_bpe2_share3_kaitao():
+    hparams = hparams_transformer_de_en_iwslt_share3()
+
+    hparams.clip_norm = 0.1
+    hparams.dropout = 0.2
+    hparams.ppp_dropout = 0.2
+    hparams.attn_dropout = 0.2
+    hparams.ffn_dropout = 0.2
+    hparams.initializer = 'kaitao'
+    hparams.share_src_trg_embedding = False
+
+    return hparams
