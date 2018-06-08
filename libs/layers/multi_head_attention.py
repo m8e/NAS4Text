@@ -98,12 +98,9 @@ class MultiHeadAttention(nn.Module):
         num_batches = query.size(0)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
-        # [NOTE]: ``self.d_k ** -0.5``: Copied from Kaitao code [fairseq/models/transformer.py:265].
-        query = self.linears[0](query) * self.d_k ** -0.5
-
-        query = query.view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
-        key = self.linears[1](key).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
-        value = self.linears[2](value).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
+        query, key, value = [
+            l(x).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
+            for l, x in zip(self.linears, (query, key, value))]
 
         # print('$d_k: {}, h: {}'.format(self.d_k, self.h))
         # print('#Q: {}, K: {}, V: {}, M: {}'.format(query.shape, key.shape, value.shape, mask.shape))
@@ -210,25 +207,13 @@ class SelfAttention(ChildLayer):
 
 class EncDecAttention(nn.Module):
     """Encoder-decoder attention module, modified for different input sizes."""
-    def __init__(self, h, conv_channels, d_model, src_emb_size, dropout=0.1, in_encoder=True, hparams=None):
-        """
-
-        Args:
-            h:
-            conv_channels:
-            d_model: Number of hidden units, same as key depth and value depth.
-                [NOTE]: If call forward with ``target_embedding `` not None,
-                    ``d_model`` must be the target embedding size.
-            src_emb_size:
-            dropout:
-            in_encoder:
-            hparams:
-        """
+    def __init__(self, h, conv_channels, trg_emb_size, src_emb_size, dropout=0.1, in_encoder=True, hparams=None):
         super().__init__()
 
-        assert d_model % h == 0
+        assert trg_emb_size % h == 0
 
         self.h = h
+        d_model = trg_emb_size
 
         # [NOTE]: We assume that d_v always == d_k.
         self.d_k = d_model // h
@@ -236,10 +221,10 @@ class EncDecAttention(nn.Module):
 
         # 4 Weights matrices.
         self.linears = nn.ModuleList([
-            Linear(conv_channels, d_model, bias=False, hparams=hparams),
-            Linear(src_emb_size, d_model, bias=False, hparams=hparams),
-            Linear(src_emb_size, d_model, bias=False, hparams=hparams),
-            Linear(d_model, conv_channels, bias=False, hparams=hparams),
+            Linear(conv_channels, d_model, hparams=hparams),
+            Linear(src_emb_size, d_model, hparams=hparams),
+            Linear(src_emb_size, d_model, hparams=hparams),
+            Linear(d_model, conv_channels, hparams=hparams),
         ])
 
         self.attn = None
@@ -260,22 +245,17 @@ class EncDecAttention(nn.Module):
 
         Returns:
             output: (batch_size, trg_seq_len, conv_channels) of float32
-            attn_score: (batch_size, trg_seq_len, src_seq_len) of float32
+            attn_score: (batch_size, num_heads, trg_seq_len, src_seq_len) of float32
         """
         # Mask: (batch_size, 1, src_seq_len)
         mask = _mask_from_lengths(x, src_lengths, self, subsequent_mask=False, maxlen=encoder_outs[0].size(1))
         num_batches = x.size(0)
 
+        residual = x
+
         # 1) Do all the linear projections in batch from d_model => h x d_k
         # conv_channel -> trg_emb_size (+ target_embedding)
-
-        x = self.linears[0](x)
-        if target_embedding is not None:
-            x = (x + target_embedding) * math.sqrt(0.5)
-
-        # [NOTE]: ``self.d_k ** -0.5``: Copied from Kaitao code [fairseq/models/transformer.py:265].
-        x *= self.d_k ** -0.5
-
+        x = (self.linears[0](x) + target_embedding) * math.sqrt(0.5)
         query = x.view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
         key = self.linears[1](encoder_outs[0]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
         value = self.linears[2](encoder_outs[1]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
@@ -283,13 +263,11 @@ class EncDecAttention(nn.Module):
         # 2) Apply attention on all the projected vectors in batch.
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
 
-        # Average across heads.
-        self.attn = self.attn.mean(dim=1)
-
         # 3) "Concat" using a view and apply a final linear.
         x = x.transpose(1, 2).contiguous().view(num_batches, -1, self.h * self.d_k)
 
-        x = self.linears[-1](x)
+        # [NOTE]: Residual connection, from fairseq-py
+        x = (self.linears[-1](x) + residual) * math.sqrt(0.5)
 
         return x, self.attn
 
