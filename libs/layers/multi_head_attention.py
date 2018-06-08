@@ -245,7 +245,7 @@ class EncDecAttention(nn.Module):
 
         Returns:
             output: (batch_size, trg_seq_len, conv_channels) of float32
-            attn_score: (batch_size, num_heads, trg_seq_len, src_seq_len) of float32
+            attn_score: (batch_size, trg_seq_len, src_seq_len) of float32
         """
         # Mask: (batch_size, 1, src_seq_len)
         mask = _mask_from_lengths(x, src_lengths, self, subsequent_mask=False, maxlen=encoder_outs[0].size(1))
