@@ -19,12 +19,15 @@ class Dictionary:
             task = get_task(task)
         self.task = task
 
+        self.mode = mode
         if mode == 'pkl':
             with open(filename, 'rb') as f:
                 self._dict = pickle.load(f, encoding='utf-8')
         elif mode == 'text':
             with open(filename, 'r', encoding='utf-8') as f:
                 self._dict = self._parse_text_dict(f)
+        elif mode == 'empty':
+            self._dict = self._default_symbols()
         else:
             raise ValueError('Unknown dictionary initialization mode {!r}'.format(mode))
 
@@ -56,6 +59,13 @@ class Dictionary:
             return self.task.SourceLang
         return self.task.TargetLang
 
+    def _default_symbols(self):
+        return {
+            self.task.PAD: self.task.PAD_ID,
+            self.task.EOS: self.task.EOS_ID,
+            self.task.UNK: self.task.UNK_ID,
+        }
+
     def _parse_text_dict(self, f):
         """Parse the text dict.
 
@@ -74,11 +84,8 @@ class Dictionary:
             The dict.
         """
         # [NOTE]: Assume that the text dict does not contains special tokens.
-        result = {
-            self.task.PAD: self.task.PAD_ID,
-            self.task.EOS: self.task.EOS_ID,
-            self.task.UNK: self.task.UNK_ID,
-        }
+        result = self._default_symbols()
+
         for line in f:
             words = line.strip().split()
             word = words[0]
@@ -89,14 +96,15 @@ class Dictionary:
         return result
 
     def _check_dict(self):
-        assert len(self._dict) == self.task.get_vocab_size(self.is_src_lang), 'Incorrect vocabulary size'
+        if self.mode != 'empty':
+            assert len(self._dict) == self.task.get_vocab_size(self.is_src_lang), 'Incorrect vocabulary size'
 
         assert self._dict.get(self.task.PAD, None) == self.task.PAD_ID, 'Incorrect PAD id'
         assert self._dict.get(self.task.EOS, None) == self.task.EOS_ID, 'Incorrect EOS id'
         assert self._dict.get(self.task.UNK, None) == self.task.UNK_ID, 'Incorrect UNK id'
 
     def __eq__(self, other):
-        return self.task == other.dict and self._dict == other.dict
+        return self.task == other.task and self._dict == other.dict
 
     def __len__(self):
         return len(self._dict)

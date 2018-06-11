@@ -154,6 +154,11 @@ class TextTask:
 # Some common used tasks.
 
 @register_task
+class Default(TextTask):
+    pass
+
+
+@register_task
 class Test(TextTask):
     """A tiny task for test."""
     SourceLang = Languages.EN
