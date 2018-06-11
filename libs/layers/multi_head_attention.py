@@ -178,6 +178,16 @@ class SelfAttention(ChildLayer):
         self.attention = MultiHeadAttention(h, d_model, dropout=dropout, hparams=hparams)
         self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout=ffn_dropout, hparams=hparams)
 
+        # [NOTE]: The encoder-decoder attention layer may be inside this attention layer.
+        # Used in decoder.
+        self.encdec_attention = None
+        self.attn_scores = None
+
+    def add_encdec_attention(self, layer, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        self.encdec_attention = lambda x: layer(x, *args, **kwargs)
+
     def forward(self, x, lengths=None, **kwargs):
         """
 
@@ -197,6 +207,11 @@ class SelfAttention(ChildLayer):
         mask = _mask_from_lengths(attn_input, lengths, self, subsequent_mask=True)
         attn_result = self.attention(attn_input, attn_input, attn_input, mask=mask)
         attn_result = self.postprocess(attn_result, x)
+
+        if self.encdec_attention is not None:
+            encdec_input = self.preprocess(attn_result)
+            encdec_result, self.attn_scores = self.encdec_attention(encdec_input)
+            attn_result = self.postprocess(encdec_result, attn_result)
 
         ff_input = self.preprocess(attn_result)
         result = self.feed_forward(ff_input)
@@ -251,8 +266,6 @@ class EncDecAttention(nn.Module):
         mask = _mask_from_lengths(x, src_lengths, self, subsequent_mask=False, maxlen=encoder_outs[0].size(1))
         num_batches = x.size(0)
 
-        residual = x
-
         # 1) Do all the linear projections in batch from d_model => h x d_k
         # conv_channel -> trg_emb_size (+ target_embedding)
         x = (self.linears[0](x) + target_embedding) * math.sqrt(0.5)
@@ -268,8 +281,7 @@ class EncDecAttention(nn.Module):
         # 3) "Concat" using a view and apply a final linear.
         x = x.transpose(1, 2).contiguous().view(num_batches, -1, self.h * self.d_k)
 
-        # [NOTE]: Residual connection, from fairseq-py
-        x = (self.linears[-1](x) + residual) * math.sqrt(0.5)
+        x = self.linears[-1](x)
 
         return x, self.attn
 

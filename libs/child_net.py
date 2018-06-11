@@ -259,11 +259,25 @@ class ChildDecoder(nn.Module):
             layer = self.get_layer(i)
             attention = self.get_attention(i)
 
+            encdec_attention_inside = hasattr(layer, 'add_encdec_attention')
+
+            encdec_attention_kwargs = {
+                'target_embedding': target_embedding,
+                'encoder_outs': encoder_out,
+                'src_lengths': src_lengths,
+            }
+            if encdec_attention_inside:
+                layer.add_encdec_attention(attention, kwargs=encdec_attention_kwargs)
+
             x = layer(x, trg_lengths, encoder_state=encoder_state_mean)
 
-            # Attention layer.
-            x, attn_scores = attention(
-                x, target_embedding=target_embedding, encoder_outs=encoder_out, src_lengths=src_lengths)
+            if encdec_attention_inside:
+                # Attention layer (inside): get computed attention scores.
+                attn_scores = layer.attn_scores
+            else:
+                # Attention layer (outside).
+                x, attn_scores = attention(x, **encdec_attention_kwargs)
+
             attn_scores = attn_scores / num_attn_layers
             if avg_attn_scores is None:
                 avg_attn_scores = attn_scores
