@@ -4,6 +4,8 @@
 import argparse
 import os
 
+import torch
+
 from libs.utils import tokenizer, dictionary
 from libs.tasks import get_task
 
@@ -46,8 +48,8 @@ def main():
         with open(args.ref) as fdref:
             scorer = fy_bleu.Scorer(dict_.pad_id, dict_.eos_id, dict_.unk_id)
             for sys_tok, ref_tok in zip(readlines(fdsys), readlines(fdref)):
-                sys_tok = tokenizer.Tokenizer.tokenize(sys_tok, dict_)
-                ref_tok = tokenizer.Tokenizer.tokenize(ref_tok, dict_)
+                sys_tok = tokenizer.Tokenizer.tokenize(sys_tok, dict_, tensor_type=torch.IntTensor)
+                ref_tok = tokenizer.Tokenizer.tokenize(ref_tok, dict_, tensor_type=torch.IntTensor)
                 scorer.add(ref_tok, sys_tok)
             print(scorer.result_string(args.order))
 
