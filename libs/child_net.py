@@ -50,6 +50,14 @@ def _code2layer(layer_code, input_shape, hparams, in_encoder=True):
         raise ValueError('Unknown layer type {}'.format(layer_type))
 
 
+class Opt:
+    """Network structure options."""
+
+    ApplyGradMul = False
+    ConnectSrcEmb = True
+    ConnectTrgEmb = False
+
+
 class ChildEncoder(nn.Module):
     def __init__(self, code, hparams):
         super().__init__()
@@ -132,11 +140,15 @@ class ChildEncoder(nn.Module):
         # project back to size of embedding
         x = self.fc2(x)
 
-        # scale gradients (this only affects backward, not forward)
-        x = GradMultiply.apply(x, 1.0 / (2.0 * self.num_attention_layers))
+        if Opt.ApplyGradMul:
+            # scale gradients (this only affects backward, not forward)
+            x = GradMultiply.apply(x, 1.0 / (2.0 * self.num_attention_layers))
 
-        # add output to input embedding for attention
-        y = (x + source_embedding) * math.sqrt(0.5)
+        if Opt.ConnectSrcEmb:
+            # add output to input embedding for attention
+            y = (x + source_embedding) * math.sqrt(0.5)
+        else:
+            y = x
 
         logging.debug('Encoder output shape: {} & {}'.format(list(x.shape), list(y.shape)))
         return x, y
@@ -155,8 +167,6 @@ class ChildEncoder(nn.Module):
 
 
 class ChildDecoder(nn.Module):
-    ConnectTrgAttention = False
-
     def __init__(self, code, hparams, **kwargs):
         super().__init__()
 
@@ -264,7 +274,7 @@ class ChildDecoder(nn.Module):
             encdec_attention_inside = hasattr(layer, 'add_encdec_attention')
 
             encdec_attention_kwargs = {
-                'target_embedding': target_embedding if self.ConnectTrgAttention else None,
+                'target_embedding': target_embedding if Opt.ConnectTrgEmb else None,
                 'encoder_outs': encoder_out,
                 'src_lengths': src_lengths,
             }
