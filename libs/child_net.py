@@ -155,6 +155,8 @@ class ChildEncoder(nn.Module):
 
 
 class ChildDecoder(nn.Module):
+    ConnectTrgAttention = False
+
     def __init__(self, code, hparams, **kwargs):
         super().__init__()
 
@@ -262,7 +264,7 @@ class ChildDecoder(nn.Module):
             encdec_attention_inside = hasattr(layer, 'add_encdec_attention')
 
             encdec_attention_kwargs = {
-                'target_embedding': target_embedding,
+                'target_embedding': target_embedding if self.ConnectTrgAttention else None,
                 'encoder_outs': encoder_out,
                 'src_lengths': src_lengths,
             }

@@ -268,7 +268,9 @@ class EncDecAttention(nn.Module):
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
         # conv_channel -> trg_emb_size (+ target_embedding)
-        x = (self.linears[0](x) + target_embedding) * math.sqrt(0.5)
+        x = self.linears[0](x)
+        if target_embedding is not None:
+            x = (x + target_embedding) * math.sqrt(0.5)
         query = x.view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
         key = self.linears[1](encoder_outs[0]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
         value = self.linears[2](encoder_outs[1]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)

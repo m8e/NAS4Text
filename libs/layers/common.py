@@ -60,12 +60,12 @@ def Linear(in_features, out_features, bias=True, dropout=0, hparams=None):
         uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
         if bias:
             m.bias.data.zero_()
-        return m
+        return nn.utils.weight_norm(m)
     elif hparams.initializer == 'kaitao':
         m.weight.data.uniform_(-0.1, 0.1)
         if bias:
             m.bias.data.uniform_(-0.1, 0.1)
-        return m
+        return nn.utils.weight_norm(m)
     else:
         raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
 
