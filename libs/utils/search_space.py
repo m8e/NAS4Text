@@ -9,6 +9,16 @@ Layer code format can be seen in each base search space.
 __author__ = 'fyabc'
 
 
+class Opt:
+    """Network structure options."""
+
+    ApplyGradMul = True
+    ConnectSrcEmb = True
+    ConnectTrgEmb = False
+    OutputFC = True
+    AttnLinearBias = True
+
+
 class GlobalSpace:
     """Global hyperparameters search space."""
     Dropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]

@@ -7,7 +7,7 @@ import torch as th
 
 from .multi_head_attention import SelfAttention
 from .ppp import push_prepostprocessors
-from ..utils.search_space import AttentionSpaces
+from ..utils.search_space import AttentionSpaces, Opt
 
 __author__ = 'fyabc'
 
@@ -47,6 +47,7 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
         dropout=hparams.attention_dropout,
         ffn_dropout=hparams.ffn_dropout,
         in_encoder=in_encoder,
+        linear_bias=Opt.AttnLinearBias,
     )
 
     output_shape = th.Size([batch_size, seq_length, input_size])

@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from .tasks import get_task
 from .utils.data_processing import LanguagePairDataset
 from .utils import common
-from .utils.search_space import LayerTypes
+from .utils.search_space import LayerTypes, Opt
 from .layers.common import *
 from .layers.lstm import build_lstm, LSTMLayer
 from .layers.cnn import build_cnn
@@ -48,14 +48,6 @@ def _code2layer(layer_code, input_shape, hparams, in_encoder=True):
         return build_attention(layer_code, input_shape, hparams, in_encoder)
     else:
         raise ValueError('Unknown layer type {}'.format(layer_type))
-
-
-class Opt:
-    """Network structure options."""
-
-    ApplyGradMul = False
-    ConnectSrcEmb = True
-    ConnectTrgEmb = False
 
 
 class ChildEncoder(nn.Module):
@@ -99,7 +91,10 @@ class ChildEncoder(nn.Module):
             input_shape = output_shape
             self.num_layers += 1
 
-        self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
+        if Opt.OutputFC or input_shape[2] != hparams.src_embedding_size:
+            self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
+        else:
+            self.fc2 = None
 
         # Encoder output shape
         self.output_shape = th.Size([input_shape[0], input_shape[1], hparams.src_embedding_size])
@@ -138,7 +133,8 @@ class ChildEncoder(nn.Module):
         x = self.out_norm(x)
 
         # project back to size of embedding
-        x = self.fc2(x)
+        if self.fc2 is not None:
+            x = self.fc2(x)
 
         if Opt.ApplyGradMul:
             # scale gradients (this only affects backward, not forward)
@@ -209,7 +205,8 @@ class ChildDecoder(nn.Module):
 
             if hparams.enc_dec_attn_type == 'dot_product':
                 attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
-                                            dropout=hparams.dropout, in_encoder=False, hparams=hparams)
+                                            dropout=hparams.dropout, in_encoder=False, hparams=hparams,
+                                            linear_bias=Opt.AttnLinearBias)
             elif hparams.enc_dec_attn_type == 'fairseq':
                 attention = FairseqAttention(output_shape[2], hparams.trg_embedding_size, hparams=hparams)
             else:
@@ -222,7 +219,10 @@ class ChildDecoder(nn.Module):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
-        self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
+        if Opt.OutputFC or self.output_shape[2] or hparams.decoder_out_embedding_size:
+            self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
+        else:
+            self.fc2 = None
         self.out_norm = LayerNorm(self.output_shape[2])
 
         if hparams.share_input_output_embedding:
@@ -302,8 +302,10 @@ class ChildDecoder(nn.Module):
         x = self.out_norm(x)
 
         # Project back to size of vocabulary
-        x = self.fc2(x)
-        x = F.dropout(x, p=self.hparams.dropout, training=self.training)
+        if self.fc2 is not None:
+            x = self.fc2(x)
+            x = F.dropout(x, p=self.hparams.dropout, training=self.training)
+
         x = self.fc_last(x)
 
         logging.debug('Decoder output shape: {} & {}'.format(list(x.shape), list(avg_attn_scores.shape)))
