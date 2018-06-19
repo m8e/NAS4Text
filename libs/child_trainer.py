@@ -150,12 +150,12 @@ class ChildTrainer:
         oom = 0
         if sample is not None:
             try:
-                with common.maybe_no_grad(eval):
+                with common.maybe_no_grad(eval_):
                     # calculate loss and sample size
                     loss, sample_size, logging_output_ = self.criterion(self.model, sample)
                     logging_output.update(logging_output_)
             except RuntimeError as e:
-                if not eval and 'out of memory' in str(e):
+                if not eval_ and 'out of memory' in str(e):
                     logging.warning('Ran out of memory, skipping batch')
                     oom = 1
                     loss = None
