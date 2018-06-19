@@ -123,7 +123,8 @@ class Dictionary:
             return '\n'.join(self.string(t) for t in tensor)
 
         def yield_string(t):
-            for i in t:
+            for elem in t:
+                i = int(elem)   # Compatibility for PyTorch 0.3.1 and 0.4.0 (scalar tensor)
                 if i == self.unk_id:
                     yield self.unk_string(escape_unk)
                 elif i == self.pad_id:
