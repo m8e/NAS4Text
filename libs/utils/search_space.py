@@ -12,11 +12,11 @@ __author__ = 'fyabc'
 class Opt:
     """Network structure options."""
 
-    ApplyGradMul = True
-    ConnectSrcEmb = True
+    ApplyGradMul = False
+    ConnectSrcEmb = False
     ConnectTrgEmb = False
-    OutputFC = True
-    AttnLinearBias = True
+    OutputFC = False
+    AttnLinearBias = False
 
 
 class GlobalSpace:

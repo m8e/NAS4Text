@@ -231,11 +231,12 @@ def hparams_transformer_de_en_iwslt_bpe2_share3_kaitao():
     hparams = hparams_transformer_de_en_iwslt_share3()
 
     hparams.clip_norm = 0.1
-    hparams.dropout = 0.2
-    hparams.ppp_dropout = 0.2
-    hparams.attn_dropout = 0.2
-    hparams.ffn_dropout = 0.2
+    hparams.dropout = 0.1
+    hparams.ppp_dropout = 0.1
+    hparams.attn_dropout = 0.1
+    hparams.ffn_dropout = 0.1
     hparams.initializer = 'kaitao'
     hparams.share_src_trg_embedding = False
+    hparams.share_input_output_embedding = False
 
     return hparams
