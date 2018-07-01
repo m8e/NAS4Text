@@ -91,8 +91,9 @@ class MultiHeadAttention(nn.Module):
             'Local attention window size must be None or an odd number'
 
         # 4 Weights matrices.
+        linear_bias = kwargs.pop('linear_bias', True)
         self.linears = nn.ModuleList([
-            Linear(d_model, d_model, hparams=hparams, bias=kwargs.pop('linear_bias', True))
+            Linear(d_model, d_model, hparams=hparams, bias=linear_bias)
             for _ in range(4)])
 
         self.attn = None
