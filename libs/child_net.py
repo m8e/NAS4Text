@@ -219,7 +219,7 @@ class ChildDecoder(nn.Module):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
-        if Opt.OutputFC or self.output_shape[2] or hparams.decoder_out_embedding_size:
+        if Opt.OutputFC or self.output_shape[2] != hparams.decoder_out_embedding_size:
             self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
         else:
             self.fc2 = None
