@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from .tasks import get_task
 from .utils.data_processing import LanguagePairDataset
 from .utils import common
-from .utils.search_space import LayerTypes, Opt
+from .utils.search_space import LayerTypes
 from .layers.common import *
 from .layers.lstm import build_lstm, LSTMLayer
 from .layers.cnn import build_cnn
@@ -91,7 +91,7 @@ class ChildEncoder(nn.Module):
             input_shape = output_shape
             self.num_layers += 1
 
-        if Opt.OutputFC or input_shape[2] != hparams.src_embedding_size:
+        if hparams.enc_output_fc or input_shape[2] != hparams.src_embedding_size:
             self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
         else:
             self.fc2 = None
@@ -136,11 +136,11 @@ class ChildEncoder(nn.Module):
         if self.fc2 is not None:
             x = self.fc2(x)
 
-        if Opt.ApplyGradMul:
+        if self.hparams.apply_grad_mul:
             # scale gradients (this only affects backward, not forward)
             x = GradMultiply.apply(x, 1.0 / (2.0 * self.num_attention_layers))
 
-        if Opt.ConnectSrcEmb:
+        if self.hparams.connect_src_emb:
             # add output to input embedding for attention
             y = (x + source_embedding) * math.sqrt(0.5)
         else:
@@ -206,7 +206,7 @@ class ChildDecoder(nn.Module):
             if hparams.enc_dec_attn_type == 'dot_product':
                 attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
                                             dropout=hparams.dropout, in_encoder=False, hparams=hparams,
-                                            linear_bias=Opt.AttnLinearBias)
+                                            linear_bias=hparams.attn_linear_bias)
             elif hparams.enc_dec_attn_type == 'fairseq':
                 attention = FairseqAttention(output_shape[2], hparams.trg_embedding_size, hparams=hparams)
             else:
@@ -219,7 +219,7 @@ class ChildDecoder(nn.Module):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
-        if Opt.OutputFC or self.output_shape[2] != hparams.decoder_out_embedding_size:
+        if hparams.dec_output_fc or self.output_shape[2] != hparams.decoder_out_embedding_size:
             self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
         else:
             self.fc2 = None
@@ -274,7 +274,7 @@ class ChildDecoder(nn.Module):
             encdec_attention_inside = hasattr(layer, 'add_encdec_attention')
 
             encdec_attention_kwargs = {
-                'target_embedding': target_embedding if Opt.ConnectTrgEmb else None,
+                'target_embedding': target_embedding if self.hparams.connect_trg_emb else None,
                 'encoder_outs': encoder_out,
                 'src_lengths': src_lengths,
             }
