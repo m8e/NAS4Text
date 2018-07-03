@@ -280,6 +280,4 @@ def get_generator_args(args=None):
 
     parsed_args = parser.parse_args(args)
 
-    _parse_extra_options(parsed_args)
-
     return parsed_args
