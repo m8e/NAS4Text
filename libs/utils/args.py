@@ -80,6 +80,11 @@ def add_hparams_args(parser):
                        help='weight decay')
     group.add_argument('--clip-norm', default=None, type=float, metavar='NORM',
                        help='clip threshold of gradients')
+
+    # Arbitrary extra options.
+    group.add_argument('--extra-options', default="", type=str, metavar='OPT_STR',
+                       help='String to represent extra options, format: comma-separated list of `name=value`')
+
     return group
 
 
@@ -239,6 +244,14 @@ def add_generation_args(parser):
     return group
 
 
+def _parse_extra_options(parsed_args):
+    _extra_dict = eval('dict({})'.format(parsed_args.extra_options))
+    for name, value in _extra_dict.items():
+        setattr(parsed_args, name, value)
+
+    return parsed_args
+
+
 def get_args(args=None):
     parser = argparse.ArgumentParser(description='Training Script.')
 
@@ -250,6 +263,8 @@ def get_args(args=None):
     add_checkpoint_args(parser)
 
     parsed_args = parser.parse_args(args)
+
+    _parse_extra_options(parsed_args)
 
     return parsed_args
 
@@ -264,5 +279,7 @@ def get_generator_args(args=None):
     # TODO: Add other args.
 
     parsed_args = parser.parse_args(args)
+
+    _parse_extra_options(parsed_args)
 
     return parsed_args
