@@ -65,6 +65,7 @@ class ChildEncoder(nn.Module):
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
         self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
 
+        # Embeddings.
         self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
                                       hparams=hparams)
         self.embed_positions = PositionalEmbedding(
