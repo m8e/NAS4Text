@@ -7,7 +7,7 @@ import torch.nn as nn
 from .utils.data_processing import LanguagePairDataset
 from .tasks import get_task
 from .layers.common import *
-from .build_block import build_block
+from .layers.build_block import build_block
 
 __author__ = 'fyabc'
 
