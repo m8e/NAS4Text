@@ -17,13 +17,6 @@ from ..utils.search_space import GlobalSpace
 __author__ = 'fyabc'
 
 
-class NetCodeEnum:
-    # Layer types.
-    LSTM = 0
-    Convolutional = 1
-    Attention = 2
-
-
 class NetCode:
     """The net code class, which contains global code and layers code."""
 
@@ -32,11 +25,13 @@ class NetCode:
     Cell = 'cell'
 
     def __init__(self, net_code):
+        self.original_code = net_code
+
         if isinstance(net_code, list):
             # Compatible with old net code.
             self.global_code = {}
             self.layers_code = net_code
-            self.type = 'default'
+            self.type = self.Default
         else:
             self.global_code = net_code.get('Global', {})
             self.layers_code = net_code.get('Layers', [])
@@ -55,7 +50,9 @@ class NetCode:
         if not isinstance(other, cls):
             # Compatible with old net code.
             other = cls(other)
-        return self.global_code == other.global_code and self.layers_code == other.layers_code
+        return self.global_code == other.global_code and \
+            self.layers_code == other.layers_code and \
+            self.type == other.type
 
     def check_correctness(self):
         # TODO

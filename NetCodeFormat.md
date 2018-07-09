@@ -105,26 +105,28 @@ class ConvSpaceBase:
 ```python
 {
     "Type": "cell", # Set type as cell, not default
+
     "Global": {     # Same as default.
         ...
     },
     "Layers": [     # Network, same as default.
         [   # Encoder
             [   # Layer 0
-                [       # Node 0
-                    null,   # Input 0 id (null if this is an input node)
-                    null,   # Input 1 id (null if this is an input node)
-                    null,   # Op 0 id (null if this is an input node)
-                    null,   # Op 1 id (null if this is an input node)
-                    null    # Combine op id (null if this is an input node)
+                [               # Node 0
+                    None,       # Input 0 id (null if this is an input node)
+                    None,       # Input 1 id (null if this is an input node)
+                    None,       # Op 0 id (null if this is an input node)
+                    None,       # Op 1 id (null if this is an input node)
+                    None        # Combine op id (null if this is an input node)
                 ],
-                [ ... ],     # Node 1
-                [       # Node 2
-                    0,      # Input 0 id (null if this is an input node)
-                    1,      # Input 1 id (null if this is an input node)
-                    null,   # Op 0 id (null if this is an input node)
-                    null,   # Op 1 id (null if this is an input node)
-                    null    # Combine op id (null if this is an input node)
+                [ ... ],        # Node 1
+                [               # Node 2
+                    0,          # Input 0 id (null if this is an input node)
+                    1,          # Input 1 id (null if this is an input node)
+                    # TODO: Change CELL_OP to CELL_OP_LIST (contains extra arguments)?
+                    CELL_OP,    # Op 0 id (null if this is an input node)
+                    CELL_OP,    # Op 1 id (null if this is an input node)
+                    COMBINE_OP  # Combine op id (null if this is an input node)
                 ],
                 ...
             ],

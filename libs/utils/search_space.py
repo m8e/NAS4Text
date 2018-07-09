@@ -138,3 +138,11 @@ AttentionSpaces = {
     'base': AttentionSpaceBase,
     'large': AttentionSpaceLarge,
 }
+
+
+# Block cell.
+
+class CellSpace:
+    CellOps = [LSTM, R2L_LSTM, CNN, SelfAttention, GroupedCNN, FFN, Identity, GroupedLSTM] = list(range(8))
+
+    CombineOps = [Add, Concat] = list(range(2))

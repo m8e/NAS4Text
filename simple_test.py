@@ -12,7 +12,7 @@ import torch.optim as optim
 
 from libs.utils.args import get_args
 from libs.child_net import ChildNet
-from libs.layers.net_code import NetCodeEnum
+from libs.utils.search_space import LayerTypes
 
 __author__ = 'fyabc'
 
@@ -52,12 +52,12 @@ def main(args=None):
 
     net_code = [
         [
-            [NetCodeEnum.LSTM, 0, 1],
-            [NetCodeEnum.Convolutional, 2, 1, 0],
-            [NetCodeEnum.Attention, 0],
+            [LayerTypes.LSTM, 0, 1],
+            [LayerTypes.Convolutional, 2, 1, 0],
+            [LayerTypes.Attention, 0],
         ],
         [
-            [NetCodeEnum.LSTM, 1, 0],
+            [LayerTypes.LSTM, 1, 0],
         ]
     ]
 
