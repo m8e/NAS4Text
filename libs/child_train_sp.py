@@ -13,9 +13,10 @@ import torch as th
 
 from .utils.main_utils import main_entry
 from .utils.data_processing import LanguageDatasets
-from .child_net import ChildNet, ParalleledChildNet
+from .models.child_net_base import ParalleledChildNet
 from .criterions import build_criterion
 from .child_trainer import ChildTrainer
+from .utils.common import get_net_type
 from .utils.paths import get_model_path
 from .utils.meters import StopwatchMeter, AverageMeter
 from .utils.progress_bar import build_progress_bar
@@ -43,7 +44,7 @@ def single_process_main(hparams, datasets=None):
     datasets = components['datasets']
 
     # Build model and criterion
-    model = ChildNet(net_code, hparams)
+    model = get_net_type(net_code)(net_code, hparams)
     model = ParalleledChildNet(model, output_device=hparams.device_id)
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
     logging.info('Model structure:\n{}'.format(model))

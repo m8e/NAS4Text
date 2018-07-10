@@ -10,11 +10,16 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 import torch.optim as optim
 
+from libs.layers.net_code import NetCode
 from libs.utils.args import get_args
-from libs.child_net import ChildNet
+from libs.utils.common import get_net_type
 from libs.utils.search_space import LayerTypes
+from libs.utils.main_utils import main_entry
 
 __author__ = 'fyabc'
+
+
+Cuda = False
 
 
 def get_sample_dataset(hparams):
@@ -26,16 +31,26 @@ def get_sample_dataset(hparams):
     result = []
     for _ in range(10):
         bs = [4, 6][np.random.choice(2, 1)[0]]
-        src_tokens = Variable(th.from_numpy(np.random.randint(
+
+        src_tokens_data = th.from_numpy(np.random.randint(
             1, task.SourceVocabSize,
             size=(bs, np.random.randint(1, hparams.max_src_positions)),
-            dtype='int64')).cuda())
-        src_lengths = Variable(th.LongTensor(bs).fill_(src_tokens.size()[1]).cuda())
-        trg_tokens = Variable(th.from_numpy(np.random.randint(
+            dtype='int64'))
+        src_lengths_data = th.LongTensor(bs).fill_(src_tokens_data.size()[1])
+        trg_tokens_data = th.from_numpy(np.random.randint(
             1, task.TargetVocabSize,
             size=(bs, np.random.randint(1, hparams.max_trg_positions)),
-            dtype='int64')).cuda())
-        trg_lengths = Variable(th.LongTensor(bs).fill_(trg_tokens.size()[1]).cuda())
+            dtype='int64'))
+        trg_lengths_data = th.LongTensor(bs).fill_(trg_tokens_data.size()[1])
+
+        if Cuda:
+            src_tokens_data, src_lengths_data, trg_tokens_data, trg_lengths_data = \
+                src_tokens_data.cuda(), src_lengths_data.cuda(), trg_tokens_data.cuda(), trg_lengths_data.cuda()
+
+        src_tokens = Variable(src_tokens_data)
+        src_lengths = Variable(src_lengths_data)
+        trg_tokens = Variable(trg_tokens_data)
+        trg_lengths = Variable(trg_lengths_data)
         result.append(Batch(src_tokens, src_lengths, trg_tokens, trg_lengths))
 
     return result
@@ -50,19 +65,26 @@ def main(args=None):
 
     hparams = get_args(args)
 
-    net_code = [
-        [
-            [LayerTypes.LSTM, 0, 1],
-            [LayerTypes.Convolutional, 2, 1, 0],
-            [LayerTypes.Attention, 0],
-        ],
-        [
-            [LayerTypes.LSTM, 1, 0],
-        ]
-    ]
+    main_entry(hparams, net_code=False, train=False, load_datasets=False)
 
-    net = ChildNet(net_code, hparams=hparams)
-    net = net.cuda()
+    net_code = NetCode({
+        "Type": "BlockChildNet",
+        "Global": {},
+        "Layers": [
+            [
+                [LayerTypes.LSTM, 0, 1],
+                [LayerTypes.Convolutional, 2, 1, 0],
+                [LayerTypes.Attention, 0],
+            ],
+            [
+                [LayerTypes.LSTM, 1, 0],
+            ],
+        ],
+    })
+
+    net = get_net_type(net_code)(net_code, hparams=hparams)
+    if Cuda:
+        net = net.cuda()
 
     print('Network:', net)
     print()
@@ -95,4 +117,4 @@ def main(args=None):
 
 
 if __name__ == '__main__':
-    main()
+    main(['-H', 'bpe2_transformer_kt_bias'])

@@ -26,14 +26,16 @@ def _set_default_hparams(hparams):
     return hparams
 
 
-def main_entry(hparams, datasets=None, train=True, net_code=True):
+def main_entry(hparams, **kwargs):
     """General code of main entries.
 
     Args:
         hparams:
-        datasets (LanguageDatasets): Preload datasets or None.
-        train (bool): In training or generation.
-        net_code (bool): Get net code or not.
+        kwargs: Other keywords.
+            :key load_dataset (bool): Load dataset or not. (True)
+            :key datasets (LanguageDatasets): Preload datasets or None. (None)
+            :key train (bool): In training or generation. (True)
+            :key net_code (bool): Get net code or not. (True)
 
     Returns:
         dict: Contains several components.
@@ -45,6 +47,7 @@ def main_entry(hparams, datasets=None, train=True, net_code=True):
         style='{',
     )
 
+    train = kwargs.pop('train', True)
     title = 'training' if train else 'generation'
 
     logging.info('Start single node {}'.format(title))
@@ -53,7 +56,7 @@ def main_entry(hparams, datasets=None, train=True, net_code=True):
 
     # Get net code.
     # [NOTE]: Must before hparams postprocessing because of the hparams priority.
-    if net_code:
+    if kwargs.pop('net_code', True):
         code = get_net_code(hparams, modify_hparams=True)
     else:
         code = None
@@ -78,17 +81,21 @@ def main_entry(hparams, datasets=None, train=True, net_code=True):
         th.manual_seed(hparams.seed)
 
     # Load datasets
-    datasets = LanguageDatasets(hparams.task) if datasets is None else datasets
-    logging.info('Dataset information:')
-    _d_src = datasets.source_dict
-    logging.info('Source dictionary [{}]: len = {}'.format(_d_src.language, len(_d_src)))
-    _d_trg = datasets.target_dict
-    logging.info('Source dictionary [{}]: len = {}'.format(_d_trg.language, len(_d_trg)))
+    if kwargs.pop('load_datasets', True):
+        datasets = kwargs.pop('datasets', None)
+        datasets = LanguageDatasets(hparams.task) if datasets is None else datasets
+        logging.info('Dataset information:')
+        _d_src = datasets.source_dict
+        logging.info('Source dictionary [{}]: len = {}'.format(_d_src.language, len(_d_src)))
+        _d_trg = datasets.target_dict
+        logging.info('Source dictionary [{}]: len = {}'.format(_d_trg.language, len(_d_trg)))
 
-    splits = ['train', 'dev'] if train else [hparams.gen_subset]
-    datasets.load_splits(splits)
-    for split in splits:
-        logging.info('Split {}: len = {}'.format(split, len(datasets.splits[split])))
+        splits = ['train', 'dev'] if train else [hparams.gen_subset]
+        datasets.load_splits(splits)
+        for split in splits:
+            logging.info('Split {}: len = {}'.format(split, len(datasets.splits[split])))
+    else:
+        datasets = None
 
     return {
         'net_code': code,

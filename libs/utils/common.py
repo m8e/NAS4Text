@@ -127,6 +127,13 @@ def _hparams_back_compat(hparams):
     return hparams
 
 
+def get_net_type(net_code):
+    from ..models.child_net_base import ChildNetBase
+    result = ChildNetBase.get_net(net_code.type)
+    assert issubclass(result, ChildNetBase)
+    return result
+
+
 def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=None):
     """Load an ensemble of models for inference.
 
@@ -134,7 +141,6 @@ def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=No
     {'arg_name': arg} -- to override model hparams that were used during model
     training
     """
-    from ..child_net import ChildNet
 
     # load model architectures and weights
     states = []
@@ -162,7 +168,8 @@ def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=No
             if net_code is not None and net_code_from_pt != net_code:
                 raise RuntimeError('Net code from checkpoint is different from that in argument')
             final_net_code = net_code_from_pt
-        model = ChildNet(final_net_code, hparams)
+        net_type = get_net_type(final_net_code)
+        model = net_type(final_net_code, hparams)
         model.load_state_dict(state['model'])
         ensemble.append(model)
     return ensemble, hparams

@@ -44,7 +44,6 @@ class LSTMLayer(ChildLayer):
             self.fc_init_state = None
 
     def _init_lstm_params(self):
-        # TODO: Need test here.
         for name, param in self.lstm.named_parameters():
             if 'bias' in name:
                 nn.init.constant(param, 0.0)
@@ -60,7 +59,6 @@ class LSTMLayer(ChildLayer):
         if not ApplyMaskInLSTM:
             return self.lstm(input_, init_h_c)[0]
 
-        # TODO: Need test (correctness).
         if lengths is None:
             return self.lstm(input_)[0]
 

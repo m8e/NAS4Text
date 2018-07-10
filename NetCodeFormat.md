@@ -101,10 +101,10 @@ class ConvSpaceBase:
         (conv): Conv1d (256, 512, kernel_size=(3,), stride=(1,))
     )
 
-2.  Cell-based format:
+2.  Block-based format:
 ```python
 {
-    "Type": "cell", # Set type as cell, not default
+    "Type": "BlockChildNet",    # Set child net type
 
     "Global": {     # Same as default.
         ...

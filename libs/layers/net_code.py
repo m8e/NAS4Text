@@ -21,8 +21,7 @@ class NetCode:
     """The net code class, which contains global code and layers code."""
 
     # Net code types.
-    Default = 'default'
-    Cell = 'cell'
+    Default = 'ChildNet'
 
     def __init__(self, net_code):
         self.original_code = net_code

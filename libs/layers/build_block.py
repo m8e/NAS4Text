@@ -43,8 +43,11 @@ class Node(nn.Module):
             # [op_code, op_arg1, op_arg2, ...]
             op_code, *op_args = op_code
         else:
-            assert isinstance(op_code, int)
             op_args = tuple()
+
+        if isinstance(op_code, str):
+            op_code = getattr(CellSpace, op_code)
+        assert isinstance(op_code, int)
 
         if op_code == CellSpace.LSTM:
             raise NotImplementedError()
@@ -74,6 +77,7 @@ class Node(nn.Module):
             raise RuntimeError('Unknown combine op code {}'.format(op_code))
 
     def forward(self, in1, in2, lengths=None, encoder_state=None):
+        # TODO: Process the situation that in2 is None.
         if self.in_encoder:
             return self.combine_op(self.op1(in1), self.op2(in2))
         else:
@@ -157,6 +161,17 @@ class BlockLayer(ChildLayer):
 
 
 def build_block(layer_code, input_shape, hparams, in_encoder=True):
+    """
+
+    Args:
+        layer_code:
+        input_shape:
+        hparams:
+        in_encoder:
+
+    Returns:
+        tuple
+    """
     block = BlockLayer(hparams, in_encoder)
     output_shape = block.build(layer_code, input_shape)
 
