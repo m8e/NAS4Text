@@ -93,6 +93,7 @@ class ChildEncoder(nn.Module):
             input_shape = output_shape
             self.num_layers += 1
 
+        self.out_norm = LayerNorm(input_shape[2])
         if hparams.enc_output_fc or input_shape[2] != hparams.src_embedding_size:
             self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
         else:
@@ -100,8 +101,6 @@ class ChildEncoder(nn.Module):
 
         # Encoder output shape
         self.output_shape = th.Size([input_shape[0], input_shape[1], hparams.src_embedding_size])
-
-        self.out_norm = LayerNorm(self.output_shape[2])
 
     def forward(self, src_tokens, src_lengths=None):
         """
@@ -198,11 +197,11 @@ class ChildDecoder(ChildDecoderBase):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
+        self.out_norm = LayerNorm(self.output_shape[2])
         if hparams.dec_output_fc or self.output_shape[2] != hparams.decoder_out_embedding_size:
             self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
         else:
             self.fc2 = None
-        self.out_norm = LayerNorm(self.output_shape[2])
 
         self._build_fc_last()
 

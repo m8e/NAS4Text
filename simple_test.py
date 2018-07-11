@@ -19,7 +19,7 @@ from libs.utils.main_utils import main_entry
 __author__ = 'fyabc'
 
 
-Cuda = False
+Cuda = True
 
 
 def get_sample_dataset(hparams):
@@ -56,19 +56,8 @@ def get_sample_dataset(hparams):
     return result
 
 
-def main(args=None):
-    logging.basicConfig(
-        format='{levelname}:{message}',
-        level=logging.INFO,
-        style='{',
-    )
-
-    hparams = get_args(args)
-
-    main_entry(hparams, net_code=False, train=False, load_datasets=False)
-
-    net_code = NetCode({
-        "Type": "BlockChildNet",
+AllNetCode = {
+    'default': NetCode({
         "Global": {},
         "Layers": [
             [
@@ -80,7 +69,34 @@ def main(args=None):
                 [LayerTypes.LSTM, 1, 0],
             ],
         ],
+    }),
+    'block': NetCode({
+        "Type": "BlockChildNet",
+        "Global": {},
+        "Layers": [
+            [
+                # TODO
+            ],
+            [
+
+            ],
+        ],
     })
+}
+
+
+def main(args=None, net_code_key='default'):
+    logging.basicConfig(
+        format='{levelname}:{message}',
+        level=logging.INFO,
+        style='{',
+    )
+
+    hparams = get_args(args)
+
+    main_entry(hparams, net_code=False, train=False, load_datasets=False)
+
+    net_code = AllNetCode.get(net_code_key, AllNetCode['default'])
 
     net = get_net_type(net_code)(net_code, hparams=hparams)
     if Cuda:
@@ -97,11 +113,12 @@ def main(args=None):
         for batch in dataset:
             optimizer.zero_grad()
 
-            pred_trg_probs = net(*batch)
+            net_output = net(*batch)
+            pred_trg_probs = net.get_normalized_probs(net_output, log_probs=True)
             logging.debug('')
 
             target = batch.trg_tokens
-            loss = F.cross_entropy(
+            loss = F.nll_loss(
                 pred_trg_probs.view(-1, pred_trg_probs.size(-1)),
                 target.view(-1),
                 size_average=False,
@@ -117,4 +134,4 @@ def main(args=None):
 
 
 if __name__ == '__main__':
-    main(['-H', 'bpe2_transformer_kt_bias'])
+    main(['-H', 'bpe2_transformer_kt_bias'], net_code_key='default')
