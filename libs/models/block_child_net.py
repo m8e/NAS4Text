@@ -180,6 +180,18 @@ class BlockChildDecoder(ChildDecoderBase):
             Attention scores: (batch_size, trg_seq_len, src_seq_len) of float32
         """
 
+        # split and (transpose) encoder outputs
+        encoder_out = self._split_encoder_out(encoder_out, incremental_state)
+
+        x = trg_tokens
+        logging.debug('Decoder input shape: {}'.format(list(x.shape)))
+
+        x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
+        x = F.dropout(x, p=self.hparams.dropout, training=self.training)
+        target_embedding = x
+
+        logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
+
         # TODO
 
 
