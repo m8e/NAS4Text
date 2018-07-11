@@ -156,10 +156,12 @@ def load_ensemble_for_inference(filenames, net_code=None, model_arg_overrides=No
     if model_arg_overrides is not None:
         hparams = _override_model_hparams(hparams, model_arg_overrides)
 
+    from ..layers.net_code import NetCode
+
     # build ensemble
     ensemble = []
     for state in states:
-        net_code_from_pt = state.get('net_code', None)
+        net_code_from_pt = NetCode.convert_old(state.get('net_code', None))
         if net_code_from_pt is None:
             if net_code is None:
                 raise ValueError('Must provide net code from checkpoint or argument')

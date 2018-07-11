@@ -31,10 +31,12 @@ class NetCode:
             self.global_code = {}
             self.layers_code = net_code
             self.type = self.Default
-        else:
+        elif isinstance(net_code, dict):
             self.global_code = net_code.get('Global', {})
             self.layers_code = net_code.get('Layers', [])
             self.type = net_code.get('Type', self.Default)
+        else:
+            raise TypeError('Incorrect net code type {}'.format(type(net_code)))
 
         self.check_correctness()
 
@@ -47,8 +49,8 @@ class NetCode:
     def __eq__(self, other):
         cls = type(self)
         if not isinstance(other, cls):
-            # Compatible with old net code.
-            other = cls(other)
+            if isinstance(other, (list, dict)):
+                other = cls(other)
         return self.global_code == other.global_code and \
             self.layers_code == other.layers_code and \
             self.type == other.type
@@ -75,6 +77,20 @@ class NetCode:
             if getattr(hparams, camel2snake(name), None) is None:
                 value = getattr(GlobalSpace, name)[index]
                 setattr(hparams, camel2snake(name), value)
+
+    @classmethod
+    def convert_old(cls, old_code):
+        if old_code is None:
+            return None
+
+        if isinstance(old_code, (list, dict)):
+            return cls(old_code)
+
+        if not hasattr(old_code, 'global_code'):
+            setattr(old_code, 'global_code', {})
+        if not hasattr(old_code, 'type'):
+            setattr(old_code, 'type', cls.Default)
+        return old_code
 
 
 def dump_json(net_code, fp):
