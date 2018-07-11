@@ -141,3 +141,44 @@ class ConvSpaceBase:
     ]
 }
 ```
+
+3. Block-based format with shared blocks:
+```python
+{
+    "Type": "BlockChildNet",    # Set child net type
+
+    "Global": {     # Same as default.
+        ...
+    },
+    "Blocks": {     # Shared block structures.
+        "enc1": [
+            [None, None, None, None, None],
+            [None, None, None, None, None],
+            [0, 1, CELL_OP, CELL_OP, COMBINE_OP]
+        ],
+        "enc2": [
+            [None, None, None, None, None],
+            [None, None, None, None, None],
+            [0, 1, CELL_OP2, CELL_OP2, COMBINE_OP3]
+        ],
+        "dec1": [
+            [None, None, None, None, None],
+            [None, None, None, None, None],
+            [0, 1, CELL_OP3, CELL_OP3, COMBINE_OP3]
+        ]
+    }
+    "Layers": [     # Network, same as default.
+        [   # Encoder
+            "enc1", # Layer 0
+            "enc2", # Layer 1
+            "enc1", # Layer 2
+            ...
+        ],
+        [   # Decoder, same as encoder
+            "dec1", # Layer 0
+            "dec1", # Layer 1
+            ...
+        ]
+    ]
+}
+```

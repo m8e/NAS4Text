@@ -202,7 +202,7 @@ class ChildTrainer:
 
         # clip grads
         if self.hparams.clip_norm > 0:
-            grad_norm = common.item(nn.utils.clip_grad_norm(self.model.parameters(), self.hparams.clip_norm))
+            grad_norm = common.item(nn.utils.clip_grad_norm_(self.model.parameters(), self.hparams.clip_norm))
         else:
             grad_norm = math.sqrt(sum(p.grad.data.norm() ** 2 for p in self.model.parameters()))
 

@@ -143,6 +143,10 @@ AttentionSpaces = {
 # Block cell.
 
 class CellSpace:
-    CellOps = [LSTM, R2L_LSTM, CNN, SelfAttention, GroupedCNN, FFN, Identity, GroupedLSTM] = list(range(8))
+    CellOps = [
+        LSTM, R2L_LSTM, CNN, SelfAttention,
+        GroupedCNN, FFN, Identity, GroupedLSTM,
+        EncoderAttention,
+    ] = list(range(9))
 
     CombineOps = [Add, Concat] = list(range(2))

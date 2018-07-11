@@ -69,14 +69,14 @@ class BlockChildEncoder(nn.Module):
     def forward(self, src_tokens, src_lengths=None):
         """
 
-                Args:
-                    src_tokens: (batch_size, src_seq_len) of int32
-                    src_lengths: (batch_size,) of long
+        Args:
+            src_tokens: (batch_size, src_seq_len) of int32
+            src_lengths: (batch_size,) of long
 
-                Returns:
-                    Output: (batch_size, src_seq_len, src_emb_size) of float32
-                    Output with embedding: (batch_size, src_seq_len, src_emb_size) of float32
-                """
+        Returns:
+            Output: (batch_size, src_seq_len, src_emb_size) of float32
+            Output with embedding: (batch_size, src_seq_len, src_emb_size) of float32
+        """
         x = src_tokens
         logging.debug('Encoder input shape: {}'.format(list(x.shape)))
 
@@ -89,11 +89,12 @@ class BlockChildEncoder(nn.Module):
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         input_list = [None, x]
         for i in range(self.num_layers):
-            layer = self.get_layer(i)
+            layer = self.layers[i]
             output = layer(input_list[-1], input_list[-2], lengths=src_lengths)
             input_list.append(output)
 
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(output.shape)))
+        x = input_list[-1]
 
         # Output normalization
         x = self.out_norm(x)
@@ -120,12 +121,6 @@ class BlockChildEncoder(nn.Module):
 
     def max_positions(self):
         return self.embed_positions.max_positions()
-
-    def get_layer(self, i):
-        return getattr(self, 'layer_{}'.format(i))
-
-    def get_layers(self):
-        return [self.get_layer(i) for i in range(self.num_layers)]
 
 
 class BlockChildDecoder(ChildDecoderBase):
@@ -188,11 +183,30 @@ class BlockChildDecoder(ChildDecoderBase):
 
         x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-        target_embedding = x
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
+        input_list = [None, x]
+        for i in range(self.num_layers):
+            layer = self.layers[i]
 
-        # TODO
+            output = layer(input_list[-1], input_list[-2], lengths=src_lengths, encoder_state=encoder_out)
+            input_list.append(output)
+
+            logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
+        x = input_list[-1]
+
+        # Output normalization
+        x = self.out_norm(x)
+
+        # Project back to size of vocabulary
+        if self.fc2 is not None:
+            x = self.fc2(x)
+            x = F.dropout(x, p=self.hparams.dropout, training=self.training)
+
+        x = self.fc_last(x)
+
+        logging.debug('Decoder output shape: {} & None'.format(list(x.shape)))
+        return x, None
 
 
 @ChildNetBase.register_child_net

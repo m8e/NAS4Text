@@ -75,10 +75,18 @@ AllNetCode = {
         "Global": {},
         "Layers": [
             [
-                # TODO
+                [   # Encoder layer 0
+                    [None, None, None, None, None],
+                    [None, None, None, None, None],
+                    [0, 1, "Identity", "FFN", "Add"],
+                ],
             ],
             [
-
+                [   # Decoder layer 0
+                    [None, None, None, None, None],
+                    [None, None, None, None, None],
+                    [0, 1, "Identity", "FFN", "Add"],
+                ],
             ],
         ],
     })
@@ -134,4 +142,4 @@ def main(args=None, net_code_key='default'):
 
 
 if __name__ == '__main__':
-    main(['-H', 'bpe2_transformer_kt_bias'], net_code_key='default')
+    main(['-H', 'bpe2_transformer_kt_bias'], net_code_key='block')

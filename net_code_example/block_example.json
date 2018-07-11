@@ -1,0 +1,20 @@
+{
+    "Type": "BlockChildNet",
+    "Global": {},
+    "Layers": [
+        [
+            [
+                [null, null, null, null, null],
+                [null, null, null, null, null],
+                [0, 1, "Identity", "FFN", "Add"]
+            ]
+        ],
+        [
+            [
+                [null, null, null, null, null],
+                [null, null, null, null, null],
+                [0, 1, "EncoderAttention", "FFN", "Add"]
+            ]
+        ]
+    ]
+}

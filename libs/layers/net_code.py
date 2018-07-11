@@ -20,8 +20,11 @@ __author__ = 'fyabc'
 class NetCode:
     """The net code class, which contains global code and layers code."""
 
+    # TODO: Support format of same (shared) block layer code, and add to doc
+
     # Net code types.
     Default = 'ChildNet'
+    BlockChildNet = 'BlockChildNet'
 
     def __init__(self, net_code):
         self.original_code = net_code
@@ -37,6 +40,18 @@ class NetCode:
             self.type = net_code.get('Type', self.Default)
         else:
             raise TypeError('Incorrect net code type {}'.format(type(net_code)))
+
+        if self.type == self.BlockChildNet:
+            self.blocks = net_code.get('Blocks', {})
+            for layers_code_ed in self.layers_code:
+                for i in range(len(layers_code_ed)):
+                    layer_code = layers_code_ed[i]
+                    # Retrieve blocks.
+                    if isinstance(layer_code, str):
+                        try:
+                            layers_code_ed[i] = self.blocks[layer_code]
+                        except KeyError as e:
+                            raise RuntimeError('Unknown block name {!r}'.format(layer_code)) from e
 
         self.check_correctness()
 
