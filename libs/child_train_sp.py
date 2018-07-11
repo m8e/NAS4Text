@@ -39,7 +39,7 @@ def single_process_main(hparams, datasets=None):
 
     # TODO: Like fairseq-py, add multiprocessing and distributed training.
 
-    components = main_entry(hparams, datasets, train=True)
+    components = main_entry(hparams, datasets=datasets, train=True)
     net_code = components['net_code']
     datasets = components['datasets']
 
