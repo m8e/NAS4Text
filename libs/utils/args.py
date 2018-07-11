@@ -47,9 +47,13 @@ def add_hparams_args(parser):
     group.add_argument('--share-input-output-embed', dest='share_input_output_embedding', action='store_true',
                        default=None, help='share input and output embeddings (requires --decoder-out-embed-size'
                                           ' and --trg-emb-size to be equal)')
+    group.add_argument('--no-share-input-output-embed', dest='share_input_output_embedding', action='store_false',
+                       default=None, help='Do not share input and output embeddings (see --share-src-trg-embed)')
     group.add_argument('--share-src-trg-embed', dest='share_src_trg_embedding', action='store_true',
                        default=None, help='share source and target embeddings (requires source and target vocabulary '
                                           'size to be equal and --src-emb-size and --trg-emb-size to be equal)')
+    group.add_argument('--no-share-src-trg-embed', dest='share_src_trg_embedding', action='store_false',
+                       default=None, help='Do not share source and target embeddings (see --share-src-trg-embed)')
     group.add_argument('--dropout', type=float, default=None, metavar='D',
                        help='dropout value')
     group.add_argument('--lstm-space', dest='lstm_space', type=str, default=None,
@@ -76,6 +80,11 @@ def add_hparams_args(parser):
                        help='weight decay')
     group.add_argument('--clip-norm', default=None, type=float, metavar='NORM',
                        help='clip threshold of gradients')
+
+    # Arbitrary extra options.
+    group.add_argument('--extra-options', default="", type=str, metavar='OPT_STR',
+                       help='String to represent extra options, format: comma-separated list of `name=value`')
+
     return group
 
 
@@ -235,6 +244,14 @@ def add_generation_args(parser):
     return group
 
 
+def _parse_extra_options(parsed_args):
+    _extra_dict = eval('dict({})'.format(parsed_args.extra_options))
+    for name, value in _extra_dict.items():
+        setattr(parsed_args, name, value)
+
+    return parsed_args
+
+
 def get_args(args=None):
     parser = argparse.ArgumentParser(description='Training Script.')
 
@@ -246,6 +263,8 @@ def get_args(args=None):
     add_checkpoint_args(parser)
 
     parsed_args = parser.parse_args(args)
+
+    _parse_extra_options(parsed_args)
 
     return parsed_args
 

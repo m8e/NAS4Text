@@ -8,7 +8,6 @@ import math
 import torch as th
 import torch.nn as nn
 
-from .child_net import ChildNet
 from .optimizers import build_optimizer
 from .optimizers.lr_schedulers import build_lr_scheduler
 from .utils import common, distributed_utils, UseFairseqParallel
@@ -29,7 +28,7 @@ class ChildTrainer:
 
         Args:
             hparams:
-            model (ChildNet):
+            model:
             criterion:
         """
         if not th.cuda.is_available():

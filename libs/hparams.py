@@ -67,6 +67,14 @@ def hparams_base():
         attention_dropout=0.1,
         ffn_dropout=0.1,        # Dropout for FFN layer after each attention layer.
 
+        # Model structure options.
+        apply_grad_mul=False,
+        connect_src_emb=False,
+        connect_trg_emb=False,
+        enc_output_fc=False,
+        dec_output_fc=False,
+        attn_linear_bias=False,
+
         # This define the search space of three layer types.
         lstm_space='base',
         conv_space='base',
@@ -171,8 +179,8 @@ def hparams_transformer_de_en_iwslt():
 
     hparams = hparams_normal()
 
-    hparams.max_src_positions = 256
-    hparams.max_trg_positions = 256
+    hparams.max_src_positions = 1024
+    hparams.max_trg_positions = 1024
     hparams.src_embedding_size = 256
     hparams.trg_embedding_size = 256
     hparams.decoder_out_embedding_size = 256
@@ -231,11 +239,22 @@ def hparams_transformer_de_en_iwslt_bpe2_share3_kaitao():
     hparams = hparams_transformer_de_en_iwslt_share3()
 
     hparams.clip_norm = 0.1
-    hparams.dropout = 0.2
-    hparams.ppp_dropout = 0.2
-    hparams.attn_dropout = 0.2
-    hparams.ffn_dropout = 0.2
+    hparams.dropout = 0.1
+    hparams.ppp_dropout = 0.1
+    hparams.attn_dropout = 0.1
+    hparams.ffn_dropout = 0.1
     hparams.initializer = 'kaitao'
     hparams.share_src_trg_embedding = False
+    hparams.share_input_output_embedding = False
+
+    return hparams
+
+
+@register_hparams('bpe2_transformer_kt_bias')
+def hparams_transformer_de_en_iwslt_bpe2_kaitao_bias():
+    hparams = hparams_transformer_de_en_iwslt_bpe2_share3_kaitao()
+
+    hparams.initializer = 'kaitao_wn'
+    hparams.attn_linear_bias = True
 
     return hparams

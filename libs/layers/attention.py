@@ -47,6 +47,7 @@ def build_attention(layer_code, input_shape, hparams, in_encoder=True):
         dropout=hparams.attention_dropout,
         ffn_dropout=hparams.ffn_dropout,
         in_encoder=in_encoder,
+        linear_bias=hparams.attn_linear_bias,
     )
 
     output_shape = th.Size([batch_size, seq_length, input_size])

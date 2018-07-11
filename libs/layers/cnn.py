@@ -107,8 +107,6 @@ class EncoderConvLayer(ConvLayer):
 
         result = x.transpose(1, 2)
 
-        print('$', result.shape, input_before.shape)
-
         return self.postprocess(result, input_before)
 
 

@@ -75,24 +75,29 @@ class MultiHeadAttention(nn.Module):
         - **output** (batch_size, length_q, d_model):
     """
 
-    def __init__(self, h, d_model, dropout=0.1, window=None, hparams=None):
+    def __init__(self, h, d_model, **kwargs):
         super().__init__()
+
+        hparams = kwargs.pop('hparams', None)
 
         assert d_model % h == 0
 
         # [NOTE]: We assume that d_v always == d_k.
         self.d_k = d_model // h
         self.h = h
-        self.window = window
+        self.window = window = kwargs.pop('window', None)
 
         assert window is None or (isinstance(window, int) and window % 2 == 1), \
             'Local attention window size must be None or an odd number'
 
         # 4 Weights matrices.
-        self.linears = nn.ModuleList([Linear(d_model, d_model, hparams=hparams) for _ in range(4)])
+        linear_bias = kwargs.pop('linear_bias', True)
+        self.linears = nn.ModuleList([
+            Linear(d_model, d_model, hparams=hparams, bias=linear_bias)
+            for _ in range(4)])
 
         self.attn = None
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=kwargs.pop('dropout', 0.1))
 
     def forward(self, query, key, value, mask=None):
         num_batches = query.size(0)
@@ -149,12 +154,15 @@ def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
 
 
 class PositionwiseFeedForward(nn.Module):
-    def __init__(self, d_model, d_ff, dropout=0.1, hparams=None):
+    def __init__(self, d_model, d_ff, **kwargs):
         super().__init__()
 
-        self.w_1 = Linear(d_model, d_ff, hparams=hparams)
-        self.w_2 = Linear(d_ff, d_model, hparams=hparams)
-        self.dropout = nn.Dropout(dropout)
+        hparams = kwargs.pop('hparams', None)
+        linear_bias = kwargs.pop('linear_bias', True)
+
+        self.w_1 = Linear(d_model, d_ff, hparams=hparams, bias=linear_bias)
+        self.w_2 = Linear(d_ff, d_model, hparams=hparams, bias=linear_bias)
+        self.dropout = nn.Dropout(kwargs.pop('dropout', 0.1))
 
     def forward(self, x):
         return self.w_2(self.dropout(F.relu(self.w_1(x))))
@@ -171,12 +179,26 @@ class SelfAttention(ChildLayer):
         - **output** (batch_size, length, d_model):
     """
 
-    def __init__(self, hparams, h, d_model, d_ff, dropout=0.1, ffn_dropout=0.1, in_encoder=True):
+    def __init__(self, hparams, h, d_model, d_ff, **kwargs):
         super().__init__(hparams)
 
-        self.in_encoder = in_encoder
-        self.attention = MultiHeadAttention(h, d_model, dropout=dropout, hparams=hparams)
-        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout=ffn_dropout, hparams=hparams)
+        linear_bias = kwargs.pop('linear_bias', True)
+
+        self.in_encoder = kwargs.pop('in_encoder', True)
+        self.attention = MultiHeadAttention(
+            h, d_model, dropout=kwargs.pop('dropout', 0.1), hparams=hparams, linear_bias=linear_bias)
+        self.feed_forward = PositionwiseFeedForward(
+            d_model, d_ff, dropout=kwargs.pop('ffn_dropout', 0.1), hparams=hparams, linear_bias=linear_bias)
+
+        # [NOTE]: The encoder-decoder attention layer may be inside this attention layer.
+        # Used in decoder.
+        self.encdec_attention = None
+        self.attn_scores = None
+
+    def add_encdec_attention(self, layer, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        self.encdec_attention = lambda x: layer(x, *args, **kwargs)
 
     def forward(self, x, lengths=None, **kwargs):
         """
@@ -198,6 +220,11 @@ class SelfAttention(ChildLayer):
         attn_result = self.attention(attn_input, attn_input, attn_input, mask=mask)
         attn_result = self.postprocess(attn_result, x)
 
+        if self.encdec_attention is not None:
+            encdec_input = self.preprocess(attn_result)
+            encdec_result, self.attn_scores = self.encdec_attention(encdec_input)
+            attn_result = self.postprocess(encdec_result, attn_result)
+
         ff_input = self.preprocess(attn_result)
         result = self.feed_forward(ff_input)
         result = self.postprocess(result, attn_result)
@@ -207,8 +234,12 @@ class SelfAttention(ChildLayer):
 
 class EncDecAttention(nn.Module):
     """Encoder-decoder attention module, modified for different input sizes."""
-    def __init__(self, h, conv_channels, trg_emb_size, src_emb_size, dropout=0.1, in_encoder=True, hparams=None):
+    def __init__(self, h, conv_channels, trg_emb_size, src_emb_size,
+                 **kwargs):
         super().__init__()
+
+        hparams = kwargs.pop('hparams', None)
+        linear_bias = kwargs.pop('linear_bias', True)
 
         assert trg_emb_size % h == 0
 
@@ -221,15 +252,15 @@ class EncDecAttention(nn.Module):
 
         # 4 Weights matrices.
         self.linears = nn.ModuleList([
-            Linear(conv_channels, d_model, hparams=hparams),
-            Linear(src_emb_size, d_model, hparams=hparams),
-            Linear(src_emb_size, d_model, hparams=hparams),
-            Linear(d_model, conv_channels, hparams=hparams),
+            Linear(conv_channels, d_model, hparams=hparams, bias=linear_bias),
+            Linear(src_emb_size, d_model, hparams=hparams, bias=linear_bias),
+            Linear(src_emb_size, d_model, hparams=hparams, bias=linear_bias),
+            Linear(d_model, conv_channels, hparams=hparams, bias=linear_bias),
         ])
 
         self.attn = None
-        self.dropout = nn.Dropout(p=dropout)
-        self.in_encoder = in_encoder
+        self.dropout = nn.Dropout(p=kwargs.pop('dropout', 0.1))
+        self.in_encoder = kwargs.pop('in_encoder', True)
         self.hparams = hparams
 
     def forward(self, x, target_embedding, encoder_outs, src_lengths=None):
@@ -251,11 +282,11 @@ class EncDecAttention(nn.Module):
         mask = _mask_from_lengths(x, src_lengths, self, subsequent_mask=False, maxlen=encoder_outs[0].size(1))
         num_batches = x.size(0)
 
-        residual = x
-
         # 1) Do all the linear projections in batch from d_model => h x d_k
         # conv_channel -> trg_emb_size (+ target_embedding)
-        x = (self.linears[0](x) + target_embedding) * math.sqrt(0.5)
+        x = self.linears[0](x)
+        if target_embedding is not None:
+            x = (x + target_embedding) * math.sqrt(0.5)
         query = x.view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
         key = self.linears[1](encoder_outs[0]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
         value = self.linears[2](encoder_outs[1]).view(num_batches, -1, self.h, self.d_k).transpose(1, 2)
@@ -268,8 +299,7 @@ class EncDecAttention(nn.Module):
         # 3) "Concat" using a view and apply a final linear.
         x = x.transpose(1, 2).contiguous().view(num_batches, -1, self.h * self.d_k)
 
-        # [NOTE]: Residual connection, from fairseq-py
-        x = (self.linears[-1](x) + residual) * math.sqrt(0.5)
+        x = self.linears[-1](x)
 
         return x, self.attn
 
