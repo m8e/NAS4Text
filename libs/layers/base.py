@@ -28,11 +28,15 @@ class ChildLayer(nn.Module):
             if input_shape != output_shape else None
 
     def preprocess(self, x):
+        if self.preprocessors is None:
+            return x
         for m in self.preprocessors:
             x = m(x)
         return x
 
     def postprocess(self, x, input_):
+        if self.postprocessors is None:
+            return x
         input_ = self.modify_input_before_postprocess(input_)
         for m in self.postprocessors:
             x = m(x, input_)
@@ -42,3 +46,8 @@ class ChildLayer(nn.Module):
         if self.residual_projection is not None:
             input_ = self.residual_projection(input_)
         return input_
+
+    def simplify(self):
+        self.preprocessors = None
+        self.postprocessors = None
+        return self

@@ -153,6 +153,16 @@ def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
     return mask
 
 
+class MHAttentionWrapper(MultiHeadAttention):
+    def __init__(self, h, d_model, **kwargs):
+        super().__init__(h, d_model, **kwargs)
+        self.in_encoder = kwargs.pop('in_encoder', True)
+
+    def forward(self, x, lengths=None, **kwargs):
+        mask = _mask_from_lengths(x, lengths, self, subsequent_mask=True)
+        return super().forward(x, x, x, mask=mask)
+
+
 class PositionwiseFeedForward(nn.Module):
     def __init__(self, d_model, d_ff, **kwargs):
         super().__init__()
@@ -306,6 +316,7 @@ class EncDecAttention(nn.Module):
 
 __all__ = [
     'MultiHeadAttention',
+    'MHAttentionWrapper',
     'SelfAttention',
     'EncDecAttention',
 ]

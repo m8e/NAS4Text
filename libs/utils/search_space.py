@@ -145,8 +145,20 @@ AttentionSpaces = {
 class CellSpace:
     CellOps = [
         LSTM, R2L_LSTM, CNN, SelfAttention,
-        GroupedCNN, FFN, Identity, GroupedLSTM,
+        GroupedCNN, FFN, PFFN, Identity, GroupedLSTM,
         EncoderAttention,
-    ] = list(range(9))
+    ] = list(range(10))
+
+    class ActivationSpace:
+        [identity, tanh, relu, sigmoid] = list(range(4))
+
+    # Search space of hidden sizes. (Useless or not?)
+    HiddenSizes = [32, 64, 128, 256, 512, 1024]
 
     CombineOps = [Add, Concat] = list(range(2))
+
+
+def space_str2int(space, value):
+    if isinstance(value, str):
+        value = getattr(space, value)
+    return value

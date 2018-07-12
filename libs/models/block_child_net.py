@@ -137,7 +137,7 @@ class BlockChildDecoder(ChildDecoderBase):
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
-            # TODO: Add attention shape info in ``build_block``.
+            # TODO: Add attention shape info in ``build_block``?
             layer, output_shape = build_block(layer_code, input_shape, self.hparams, in_encoder=False)
             self.layers.append(layer)
 

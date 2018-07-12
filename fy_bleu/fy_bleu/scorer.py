@@ -11,7 +11,7 @@ try:
 except ImportError as e:
     import sys
     sys.stderr.write('ERROR: missing libbleu.so. run `python setup.py install` in fy_bleu directory\n')
-    raise e
+    raise
 
 __author__ = 'fyabc'
 

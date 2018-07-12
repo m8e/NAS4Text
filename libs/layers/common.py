@@ -98,6 +98,11 @@ def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad, hp
     return m
 
 
+class Identity(nn.Module):
+    def forward(self, x):
+        return x
+
+
 class FairseqAttention(nn.Module):
     def __init__(self, conv_channels, embed_dim, bmm=None, hparams=None):
         super().__init__()
@@ -198,6 +203,7 @@ __all__ = [
     'Embedding',
     'Linear',
     'PositionalEmbedding',
+    'Identity',
     'FairseqAttention',
     'residual',
     'NLCBatchNorm1d', 'LayerNorm', 'MyDropout', 'Residual',

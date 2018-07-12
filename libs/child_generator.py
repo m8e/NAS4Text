@@ -361,7 +361,8 @@ class ChildGenerator:
             probs[:, self.task.UNK_ID] -= self.hparams.unkpen  # apply unk penalty
 
             # Record attention scores
-            attn[:, :, step + 1].copy_(attn_scores)
+            if attn_scores is not None:
+                attn[:, :, step + 1].copy_(attn_scores)
 
             cand_scores = buffer('cand_scores', type_of=scores)
             cand_indices = buffer('cand_indices')
