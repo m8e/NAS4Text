@@ -189,7 +189,9 @@ class BlockChildDecoder(ChildDecoderBase):
         for i in range(self.num_layers):
             layer = self.layers[i]
 
-            output = layer(input_list[-1], input_list[-2], lengths=src_lengths, encoder_state=encoder_out)
+            output = layer(
+                input_list[-1], input_list[-2],
+                lengths=trg_lengths, encoder_state=encoder_out, src_lengths=src_lengths)
             input_list.append(output)
 
             logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))

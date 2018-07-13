@@ -31,7 +31,11 @@ class InputNode(nn.Module):
         :param encoder_state:
         :return:
         """
-        return (in1, in2)[self.input_index]
+        result = (in1, in2)[self.input_index]
+        if result is None:
+            assert self.input_index == 1
+            result = in1
+        return result
 
 
 class Node(nn.Module):
@@ -72,24 +76,22 @@ class Node(nn.Module):
         op_code, op_args = self._normalize_op_code(op_code)
         return BlockCombineNodeOp.create(op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams)
 
-    def forward(self, in1, in2, lengths=None, encoder_state=None):
+    def forward(self, in1, in2, lengths=None, encoder_state=None, **kwargs):
         in1, in2 = self._process_inputs(in1, in2)
         return self.combine_op(
-            self.op1(in1, lengths=lengths, encoder_state=encoder_state),
-            self.op2(in2, lengths=lengths, encoder_state=encoder_state),
+            self.op1(in1, lengths=lengths, encoder_state=encoder_state, **kwargs),
+            self.op2(in2, lengths=lengths, encoder_state=encoder_state, **kwargs),
             lengths=lengths,
             encoder_state=encoder_state,
         )
 
     def _process_inputs(self, in1, in2):
         # TODO: More processing.
-        if in2 is None:
-            in2 = in1
         return in1, in2
 
-    def forward_in_block(self, node_output_list, lengths=None, encoder_state=None):
+    def forward_in_block(self, node_output_list, lengths=None, encoder_state=None, **kwargs):
         return self(node_output_list[self.in1_index], node_output_list[self.in2_index],
-                    lengths=lengths, encoder_state=encoder_state)
+                    lengths=lengths, encoder_state=encoder_state, **kwargs)
 
 
 class CombineNode(nn.Module):
@@ -134,7 +136,7 @@ class BlockLayer(ChildLayer):
                 len(self.input_node_indices)))
         return input_shape
 
-    def forward(self, input_, prev_input, lengths=None, encoder_state=None):
+    def forward(self, input_, prev_input, lengths=None, encoder_state=None, **kwargs):
         """
 
         :param input_:
@@ -152,7 +154,7 @@ class BlockLayer(ChildLayer):
             else:
                 assert isinstance(node, Node)
                 node_output_list[i] = node.forward_in_block(
-                    node_output_list, lengths=lengths, encoder_state=encoder_state)
+                    node_output_list, lengths=lengths, encoder_state=encoder_state, **kwargs)
 
         return self.combine_node(node_output_list)
 

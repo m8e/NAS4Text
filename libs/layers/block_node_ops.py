@@ -34,7 +34,7 @@ class BlockNodeOp(nn.Module):
         self.hparams = kwargs.pop('hparams', None)
         self.in_encoder = kwargs.pop('in_encoder', True)
 
-    def forward(self, x, lengths=None, encoder_state=None):
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         raise NotImplementedError()
 
     @staticmethod
@@ -92,7 +92,7 @@ class IdentityOp(BlockNodeOp):
     """
     op_args: []
     """
-    def forward(self, x, lengths=None, encoder_state=None):
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return x
 
 
@@ -122,7 +122,7 @@ class FFNOp(BlockNodeOp):
 
         self.linear = Linear(input_size, output_size, bias=bias, hparams=self.hparams)
 
-    def forward(self, x, lengths=None, encoder_state=None):
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.activation(self.linear(x))
 
 
@@ -144,7 +144,7 @@ class PFFNOp(BlockNodeOp):
             linear_bias=self.hparams.attn_linear_bias,
         )
 
-    def forward(self, x, lengths=None, encoder_state=None):
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.pffn(x)
 
 
@@ -164,7 +164,7 @@ class ConvolutionOp(BlockNodeOp):
         self.conv = EncoderConvLayer(self.hparams, in_channels=input_size, out_channels=input_size,
                                      kernel_size=kernel_size, stride=stride).simplify()
 
-    def forward(self, x, lengths=None, encoder_state=None):
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.conv(x, lengths=lengths, encoder_state=encoder_state)
 
 
@@ -188,7 +188,7 @@ class SelfAttentionOp(BlockNodeOp):
             dropout=self.hparams.attention_dropout,
         )
 
-    def forward(self, x, lengths=None, encoder_state=None):
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.attention(x, lengths=lengths, encoder_state=encoder_state)
 
 
@@ -216,7 +216,7 @@ class EncoderAttentionOp(BlockNodeOp):
 
         self.attn_scores = None
 
-    def forward(self, x, lengths=None, encoder_state=None):
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         """
         Args:
             x: (batch_size, trg_seq_len, conv_channels) of float32
@@ -232,7 +232,7 @@ class EncoderAttentionOp(BlockNodeOp):
         # assert encoder_state is not None
 
         result, self.attn_scores = self.attention(
-            x, target_embedding=None, encoder_outs=encoder_state, src_lengths=lengths)
+            x, target_embedding=None, encoder_outs=encoder_state, src_lengths=kwargs.get('src_lengths', None))
         return result
 
 
