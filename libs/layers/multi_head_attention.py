@@ -317,6 +317,7 @@ class EncDecAttention(nn.Module):
 __all__ = [
     'MultiHeadAttention',
     'MHAttentionWrapper',
+    'PositionwiseFeedForward',
     'SelfAttention',
     'EncDecAttention',
 ]

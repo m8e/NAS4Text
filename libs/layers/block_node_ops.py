@@ -7,7 +7,7 @@ import torch as th
 import torch.nn as nn
 
 from .common import *
-from .cnn import EncoderConvLayer
+from .cnn import EncoderConvLayer, DecoderConvLayer
 from .multi_head_attention import EncDecAttention, MHAttentionWrapper, PositionwiseFeedForward
 from ..utils import search_space as ss
 
@@ -161,8 +161,13 @@ class ConvolutionOp(BlockNodeOp):
         kernel_size = _get_op_arg(self, 1, 3, space=space.KernelSizes)
         stride = _get_op_arg(self, 2, 1, space=space.Strides)
 
-        self.conv = EncoderConvLayer(self.hparams, in_channels=input_size, out_channels=input_size,
-                                     kernel_size=kernel_size, stride=stride).simplify()
+        if self.in_encoder:
+            conv_type = EncoderConvLayer
+        else:
+            conv_type = DecoderConvLayer
+
+        self.conv = conv_type(self.hparams, in_channels=input_size, out_channels=input_size,
+                              kernel_size=kernel_size, stride=stride).simplify()
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.conv(x, lengths=lengths, encoder_state=encoder_state)
@@ -232,7 +237,9 @@ class EncoderAttentionOp(BlockNodeOp):
         # assert encoder_state is not None
 
         result, self.attn_scores = self.attention(
-            x, target_embedding=None, encoder_outs=encoder_state, src_lengths=kwargs.get('src_lengths', None))
+            x, target_embedding=kwargs.pop('target_embedding', None),
+            encoder_outs=encoder_state, src_lengths=kwargs.get('src_lengths', None),
+        )
         return result
 
 

@@ -11,7 +11,8 @@
         "dec1": [
             [null, null, null, null, null],
             [null, null, null, null, null],
-            [0, 1, "EncoderAttention", ["FFN", "relu"], "Add"]
+            [0, 1, "EncoderAttention", ["FFN", "relu"], "Add"],
+            [0, 2, "CNN", "SelfAttention", "Add"]
         ]
     },
     "Layers": [

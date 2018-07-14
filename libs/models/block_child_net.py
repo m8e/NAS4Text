@@ -183,6 +183,7 @@ class BlockChildDecoder(ChildDecoderBase):
 
         x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
+        target_embedding = x
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         input_list = [None, x]
@@ -191,7 +192,9 @@ class BlockChildDecoder(ChildDecoderBase):
 
             output = layer(
                 input_list[-1], input_list[-2],
-                lengths=trg_lengths, encoder_state=encoder_out, src_lengths=src_lengths)
+                lengths=trg_lengths, encoder_state=encoder_out, src_lengths=src_lengths,
+                target_embedding=target_embedding,
+            )
             input_list.append(output)
 
             logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
