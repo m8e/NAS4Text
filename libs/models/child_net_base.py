@@ -1,6 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -189,6 +190,21 @@ class ChildDecoderBase(nn.Module):
         if incremental_state is not None:
             common.set_incremental_state(self, incremental_state, 'encoder_out', result)
         return result
+
+    def _contains_lstm(self):
+        """Test if the decoder contains LSTM layers."""
+        return False
+
+    def _get_encoder_state_mean(self, encoder_out, src_lengths):
+        if not self._contains_lstm():
+            return None
+
+        enc_hidden = encoder_out[0]
+
+        src_mask = common.mask_from_lengths(src_lengths, left_pad=False, max_length=enc_hidden.size(1), cuda=True)
+
+        return (th.sum(enc_hidden * src_mask.unsqueeze(dim=2).type_as(enc_hidden), dim=1) /
+                src_lengths.unsqueeze(dim=1).type_as(enc_hidden))
 
     @staticmethod
     def get_normalized_probs(net_output, log_probs=False):

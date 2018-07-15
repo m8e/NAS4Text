@@ -26,7 +26,6 @@ import torch.nn.functional as F
 from .child_net_base import ChildNetBase, EncDecChildNet, ChildDecoderBase
 from ..tasks import get_task
 from ..utils.data_processing import LanguagePairDataset
-from ..utils import common
 from ..utils.search_space import LayerTypes
 from ..layers.common import *
 from ..layers.lstm import build_lstm, LSTMLayer
@@ -282,19 +281,7 @@ class ChildDecoder(ChildDecoderBase):
         return x, avg_attn_scores
 
     def _contains_lstm(self):
-        """Test if the decoder contains LSTM layers."""
         return any(isinstance(l, LSTMLayer) for l in self.get_layers())
-
-    def _get_encoder_state_mean(self, encoder_out, src_lengths):
-        if not self._contains_lstm():
-            return None
-
-        enc_hidden = encoder_out[0]
-
-        src_mask = common.mask_from_lengths(src_lengths, left_pad=False, max_length=enc_hidden.size(1), cuda=True)
-
-        return (th.sum(enc_hidden * src_mask.unsqueeze(dim=2).type_as(enc_hidden), dim=1) /
-                src_lengths.unsqueeze(dim=1).type_as(enc_hidden))
 
     @property
     def num_attention_layers(self):

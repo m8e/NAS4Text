@@ -37,6 +37,9 @@ class InputNode(nn.Module):
             result = in1
         return result
 
+    def contains_lstm(self):
+        return False
+
 
 class Node(nn.Module):
     """Block node.
@@ -92,6 +95,10 @@ class Node(nn.Module):
     def forward_in_block(self, node_output_list, lengths=None, encoder_state=None, **kwargs):
         return self(node_output_list[self.in1_index], node_output_list[self.in2_index],
                     lengths=lengths, encoder_state=encoder_state, **kwargs)
+
+    def contains_lstm(self):
+        from .block_node_ops import LSTMOp
+        return isinstance(self.op1, LSTMOp) or isinstance(self.op2, LSTMOp)
 
 
 class CombineNode(nn.Module):
@@ -177,6 +184,9 @@ class BlockLayer(ChildLayer):
                     else:
                         new_remain_nodes.append(i)
             remain_nodes = new_remain_nodes
+
+    def contains_lstm(self):
+        return any(n.contains_lstm() for n in self.nodes)
 
 
 def build_block(layer_code, input_shape, hparams, in_encoder=True):

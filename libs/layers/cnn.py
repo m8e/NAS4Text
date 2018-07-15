@@ -18,12 +18,13 @@ __author__ = 'fyabc'
 
 class ConvLayer(ChildLayer):
     """Abstract base class of 1D convolutional layer."""
-    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
+    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride, groups=1):
         super().__init__(hparams)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.stride = stride
+        self.groups = groups
         self.residual_conv = self.build_residual_conv(out_channels, stride)
 
     def forward(self, *args):
@@ -77,8 +78,8 @@ class EncoderConvLayer(ConvLayer):
     # [NOTE]: Since CNN may change the sequence length, how to modify the mask?
     # Current solution: assume that "stride == 1".
 
-    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
-        super().__init__(hparams, in_channels, out_channels, kernel_size, stride)
+    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride, groups=1):
+        super().__init__(hparams, in_channels, out_channels, kernel_size, stride, groups=groups)
 
         conv = nn.Conv1d(
             in_channels=in_channels,
@@ -86,6 +87,7 @@ class EncoderConvLayer(ConvLayer):
             kernel_size=kernel_size,
             stride=stride,
             padding=0,
+            groups=groups,
         )
         self.conv = self.conv_weight_norm(conv)
 
@@ -122,8 +124,8 @@ class DecoderConvLayer(ConvLayer):
         Incremental state:
     """
 
-    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride):
-        super().__init__(hparams, in_channels, out_channels, kernel_size, stride)
+    def __init__(self, hparams, in_channels, out_channels, kernel_size, stride, groups=1):
+        super().__init__(hparams, in_channels, out_channels, kernel_size, stride, groups=groups)
 
         conv = nn.Conv1d(
             in_channels=in_channels,
@@ -131,6 +133,7 @@ class DecoderConvLayer(ConvLayer):
             kernel_size=kernel_size,
             stride=stride,
             padding=(kernel_size - 1),
+            groups=groups,
         )
         self.conv = self.conv_weight_norm(conv)
 
@@ -187,6 +190,7 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
+            groups=1,
         )
     else:
         layer = DecoderConvLayer(
@@ -195,6 +199,7 @@ def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
+            groups=1,
         )
 
     output_shape = th.Size([batch_size, seq_length, out_channels])

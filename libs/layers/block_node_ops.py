@@ -7,6 +7,7 @@ import torch as th
 import torch.nn as nn
 
 from .common import *
+from .lstm import LSTMLayer
 from .cnn import EncoderConvLayer, DecoderConvLayer
 from .multi_head_attention import EncDecAttention, MHAttentionWrapper, PositionwiseFeedForward
 from ..utils import search_space as ss
@@ -40,15 +41,13 @@ class BlockNodeOp(nn.Module):
     @staticmethod
     def create(op_code, op_args, input_shape, in_encoder=True, hparams=None):
         if op_code == ss.CellSpace.LSTM:
-            raise NotImplementedError()
+            op_type = LSTMOp
         elif op_code == ss.CellSpace.R2L_LSTM:
             raise NotImplementedError()
         elif op_code == ss.CellSpace.CNN:
             op_type = ConvolutionOp
         elif op_code == ss.CellSpace.SelfAttention:
             op_type = SelfAttentionOp
-        elif op_code == ss.CellSpace.GroupedCNN:
-            raise NotImplementedError()
         elif op_code == ss.CellSpace.FFN:
             op_type = FFNOp
         elif op_code == ss.CellSpace.PFFN:
@@ -148,9 +147,44 @@ class PFFNOp(BlockNodeOp):
         return self.pffn(x)
 
 
+class LSTMOp(BlockNodeOp):
+    """
+    op_args: [hidden_size(?)]
+
+    [NOTE]: Unlike default network:
+        The LSTM op is left-to-right (bidirectional = False).
+        The LSTM op only contains 1 layer (num_layers = 1).
+        The hidden size is same as input size now.
+        The parameter of encoder state mean (used to initialize the hidden states)
+            is passed as "encoder_state_mean", not "encoder_state".
+    """
+
+    def __init__(self, op_args, input_shape, **kwargs):
+        super().__init__(op_args, input_shape, **kwargs)
+        input_size = input_shape[-1]
+
+        self.lstm = LSTMLayer(
+            hparams=self.hparams,
+            input_size=input_size,
+            hidden_size=input_size,
+            num_layers=1,
+            bias=True,
+            batch_first=True,
+            dropout=self.hparams.dropout,
+            bidirectional=False,
+            in_encoder=self.in_encoder,
+        ).simplify()
+
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
+        return self.lstm(x, lengths=lengths, encoder_state=kwargs.get('encoder_state_mean', None))
+
+
 class ConvolutionOp(BlockNodeOp):
     """
-    op_args: [out_channels(?), kernel_size: index = 3, stride: index = 1]
+    op_args: [out_channels(?), kernel_size: index = 3, stride: index = 1, groups: index = 1]
+
+    [NOTE]: Unlike default network:
+        The hidden size is same as input size now.
     """
     def __init__(self, op_args, input_shape, **kwargs):
         super().__init__(op_args, input_shape, **kwargs)
@@ -160,6 +194,7 @@ class ConvolutionOp(BlockNodeOp):
         space = ss.ConvolutionalSpaces[self.hparams.conv_space]
         kernel_size = _get_op_arg(self, 1, 3, space=space.KernelSizes)
         stride = _get_op_arg(self, 2, 1, space=space.Strides)
+        groups = _get_op_arg(self, 3, 1, space=space.Groups)
 
         if self.in_encoder:
             conv_type = EncoderConvLayer
@@ -167,7 +202,7 @@ class ConvolutionOp(BlockNodeOp):
             conv_type = DecoderConvLayer
 
         self.conv = conv_type(self.hparams, in_channels=input_size, out_channels=input_size,
-                              kernel_size=kernel_size, stride=stride).simplify()
+                              kernel_size=kernel_size, stride=stride, groups=groups).simplify()
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.conv(x, lengths=lengths, encoder_state=encoder_state)

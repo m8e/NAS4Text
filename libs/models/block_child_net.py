@@ -137,7 +137,6 @@ class BlockChildDecoder(ChildDecoderBase):
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
-            # TODO: Add attention shape info in ``build_block``?
             layer, output_shape = build_block(layer_code, input_shape, self.hparams, in_encoder=False)
             self.layers.append(layer)
 
@@ -175,6 +174,8 @@ class BlockChildDecoder(ChildDecoderBase):
             Attention scores: (batch_size, trg_seq_len, src_seq_len) of float32
         """
 
+        encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
+
         # split and (transpose) encoder outputs
         encoder_out = self._split_encoder_out(encoder_out, incremental_state)
 
@@ -193,7 +194,7 @@ class BlockChildDecoder(ChildDecoderBase):
             output = layer(
                 input_list[-1], input_list[-2],
                 lengths=trg_lengths, encoder_state=encoder_out, src_lengths=src_lengths,
-                target_embedding=target_embedding,
+                target_embedding=target_embedding, encoder_state_mean=encoder_state_mean,
             )
             input_list.append(output)
 
@@ -212,6 +213,9 @@ class BlockChildDecoder(ChildDecoderBase):
 
         logging.debug('Decoder output shape: {} & None'.format(list(x.shape)))
         return x, None
+
+    def _contains_lstm(self):
+        return any(l.contains_lstm() for l in self.layers)
 
 
 @ChildNetBase.register_child_net
