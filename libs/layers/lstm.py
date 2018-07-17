@@ -12,6 +12,7 @@ from .common import Linear
 from .base import ChildLayer
 from .ppp import push_prepostprocessors
 from ..utils.search_space import LSTMSpaces
+from ..utils.common import get_reversed_index, batched_index_select
 
 __author__ = 'fyabc'
 
@@ -115,8 +116,11 @@ class LSTMLayer(ChildLayer):
         if not self.reversed:
             return data
 
-        # TODO: Implement reversed LSTM.
-        # Use th.arange and th.index_select to implement it.
+        max_length = data.size(1)
+        if lengths is None:
+            lengths = th.full([th.size(0)], max_length, dtype=th.int64)
+
+        return batched_index_select(data, get_reversed_index(lengths, max_length))
 
 
 def build_lstm(layer_code, input_shape, hparams, in_encoder=True):

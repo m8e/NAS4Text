@@ -349,3 +349,27 @@ def item(tensor):
     if hasattr(tensor, '__getitem__'):
         return tensor[0]
     return tensor
+
+
+def get_reversed_index(lengths, max_length):
+    return th.stack([
+        th.cat([
+            th.arange(l - 1, -1, -1, dtype=th.int64),
+            th.arange(l, max_length, 1, dtype=th.int64),
+        ])
+        for l in lengths])
+
+
+def batched_index_select(input_, index):
+    """Batched version of ``torch.index_select``.
+
+    Args:
+        input_ (Tensor): B x T x D1 x ... x Dn
+        index (LongTensor): B x T
+
+    Returns:
+        Tensor
+        Same shape as input
+    """
+
+    return th.stack([th.index_select(a, 0, i) for a, i in zip(input_, index)])

@@ -149,7 +149,7 @@ class PFFNOp(BlockNodeOp):
 
 class LSTMOp(BlockNodeOp):
     """
-    op_args: [hidden_size(?)]
+    op_args: [hidden_size(?), reversed: bool = False]
 
     [NOTE]: Unlike default network:
         The LSTM op is left-to-right (bidirectional = False).
@@ -163,6 +163,8 @@ class LSTMOp(BlockNodeOp):
         super().__init__(op_args, input_shape, **kwargs)
         input_size = input_shape[-1]
 
+        reversed_ = _get_op_arg(self, 1, False)
+
         self.lstm = LSTMLayer(
             hparams=self.hparams,
             input_size=input_size,
@@ -173,6 +175,7 @@ class LSTMOp(BlockNodeOp):
             dropout=self.hparams.dropout,
             bidirectional=False,
             in_encoder=self.in_encoder,
+            reversed=reversed_,
         ).simplify()
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
