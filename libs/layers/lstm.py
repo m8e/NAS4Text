@@ -26,6 +26,8 @@ class LSTMLayer(ChildLayer):
         Handle variable length inputs with masks
             See <https://zhuanlan.zhihu.com/p/28472545> for details
         Discard output states (h & c)
+
+    [NOTE]: This layer assume that the data is left-padding.
     """
 
     # TODO: Add weight normalization?
@@ -33,6 +35,7 @@ class LSTMLayer(ChildLayer):
     def __init__(self, hparams, *args, **kwargs):
         super().__init__(hparams)
         self.in_encoder = kwargs.pop('in_encoder')
+        self.reversed = kwargs.pop('reversed', False)
 
         self.lstm = nn.LSTM(*args, **kwargs)
         self._init_lstm_params()
@@ -51,6 +54,8 @@ class LSTMLayer(ChildLayer):
                 nn.init.xavier_normal(param)
 
     def forward(self, input_, lengths=None, encoder_state=None, **kwargs):
+        input_ = self._reverse_io(input_, lengths=lengths)
+
         input_before = input_
         input_ = self.preprocess(input_)
 
@@ -85,6 +90,8 @@ class LSTMLayer(ChildLayer):
 
         output = self.postprocess(output, input_before)
 
+        output = self._reverse_io(output, lengths)
+
         return output
 
     def _get_init_state(self, input_, encoder_state):
@@ -103,6 +110,13 @@ class LSTMLayer(ChildLayer):
                        requires_grad=False)
 
         return h_0, c_0
+
+    def _reverse_io(self, data, lengths):
+        if not self.reversed:
+            return data
+
+        # TODO: Implement reversed LSTM.
+        # Use th.arange and th.index_select to implement it.
 
 
 def build_lstm(layer_code, input_shape, hparams, in_encoder=True):

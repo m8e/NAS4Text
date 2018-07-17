@@ -83,7 +83,7 @@ def main_entry(hparams, **kwargs):
     # Load datasets
     if kwargs.pop('load_datasets', True):
         datasets = kwargs.pop('datasets', None)
-        datasets = LanguageDatasets(hparams.task) if datasets is None else datasets
+        datasets = LanguageDatasets(hparams) if datasets is None else datasets
         logging.info('Dataset information:')
         _d_src = datasets.source_dict
         logging.info('Source dictionary [{}]: len = {}'.format(_d_src.language, len(_d_src)))

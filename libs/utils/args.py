@@ -90,6 +90,8 @@ def add_hparams_args(parser):
 
 def add_dataset_args(parser, train=False, gen=False):
     group = parser.add_argument_group('Dataset Options:')
+    group.add_argument('--data-dir', default=None, type=str, metavar='DIR',
+                       help='Data save directory, default is "$PROJECT/data/"')
     group.add_argument('-b', '--max-sentences', '--batch-size', dest='max_sentences', type=int, metavar='N',
                        help='maximum number of sentences in a batch')
     group.add_argument('--max-tokens', default=6000, type=int, metavar='N',
@@ -181,6 +183,8 @@ def add_distributed_args(parser):
 
 def add_checkpoint_args(parser, gen=False):
     group = parser.add_argument_group('Checkpoint Options')
+    group.add_argument('--model-dir', default=None, type=str, metavar='DIR',
+                       help='Model save directory, default is "$PROJECT/models/"')
     group.add_argument('--restore-file', default='checkpoint_last.pt',
                        help='Filename in model directory from which to load checkpoint, '
                             'default is %(default)s')
@@ -239,8 +243,10 @@ def add_generation_args(parser):
                        help='initialize generation by target prefix of given length')
     group.add_argument('--sampling', action='store_true',
                        help='sample hypotheses instead of using beam search')
+    group.add_argument('--output-dir', default=None, type=str, metavar='DIR',
+                       help='Translation output directory, default is "$PROJECT/translated/"')
     group.add_argument('--output-file', default=None, type=str, metavar='FILE',
-                       help='Translation output file, default stored in ')
+                       help='Translation output filename, default is None (does not output)')
     return group
 
 

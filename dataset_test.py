@@ -18,7 +18,7 @@ def main(args=None):
 
     hparams = get_args(args)
 
-    datasets = LanguageDatasets(hparams.task)
+    datasets = LanguageDatasets(hparams)
 
     print(len(datasets.source_dict))
     print(len(datasets.target_dict))

@@ -36,7 +36,7 @@ import numpy as np
 import torch as th
 from torch.utils.data import Dataset, DataLoader
 
-from .paths import DataDir
+from .paths import get_data_path
 from .dictionary import Dictionary
 from ..tasks import get_task
 from .tokenizer import Tokenizer
@@ -47,11 +47,11 @@ __author__ = 'fyabc'
 
 class LanguageDatasets:
     """Container of all dataset splits of the task."""
-    def __init__(self, task_name):
-        self.task = get_task(task_name)
+    def __init__(self, hparams):
+        self.task = get_task(hparams.task)
         self.splits = {}
 
-        self.dataset_dir = os.path.join(DataDir, self.task.TaskName)
+        self.dataset_dir = get_data_path(hparams)
 
         # Load dictionary.
         self.source_dict = Dictionary(

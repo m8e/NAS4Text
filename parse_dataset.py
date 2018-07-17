@@ -4,7 +4,7 @@
 import argparse
 import os
 
-from libs.utils.paths import DataDir
+from libs.utils.paths import get_data_path
 from libs.tasks import get_task
 
 __author__ = 'fyabc'
@@ -30,7 +30,7 @@ def main(args=None):
 
     task = get_task(hparams.task)
 
-    dataset_dir = os.path.join(DataDir, task.TaskName)
+    dataset_dir = get_data_path(hparams)
 
     for split in ('train', 'dev', 'test'):
         for is_src in (True, False):
