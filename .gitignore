@@ -109,6 +109,9 @@ ENV/
 # Models
 /models/
 
+# Net code images
+/net_code_example/images/
+
 # User net code
 /usr_net_code/
 

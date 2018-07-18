@@ -163,7 +163,8 @@ class BlockLayer(ChildLayer):
                 node_output_list[i] = node.forward_in_block(
                     node_output_list, lengths=lengths, encoder_state=encoder_state, **kwargs)
 
-        return self.combine_node(node_output_list)
+        # Combine all intermediate nodes, does not combine input nodes.
+        return self.combine_node([o for i, o in enumerate(node_output_list) if i not in self.input_node_indices])
 
     def _get_topological_order(self, layer_code):
         self.topological_order = []
