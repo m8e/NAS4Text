@@ -101,6 +101,7 @@ def main(args=None):
     g_global.name = 'G'
 
     for name, block in blocks.items():
+        # [NOTE]: Add 'cluster_' prefix to add border of this subgraph.
         g = gv.Digraph(name='cluster_' + name)
         g.graph_attr.update({
             'label': name,

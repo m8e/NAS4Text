@@ -9,6 +9,7 @@ import torch.nn as nn
 from .base import ChildLayer
 from .block_node_ops import BlockNodeOp, BlockCombineNodeOp
 from ..utils.search_space import CellSpace
+from ..layers.common import Linear
 
 __author__ = 'fyabc'
 
@@ -104,13 +105,26 @@ class Node(nn.Module):
 class CombineNode(nn.Module):
     """Combine node."""
 
-    def __init__(self, in_encoder=True):
+    def __init__(self, in_encoder=True, hparams=None):
         super().__init__()
         self.in_encoder = in_encoder
+        self.hparams = hparams
+        self.op = hparams.block_combine_op.lower()
+        assert self.op in ('add', 'concat'), 'Unknown block combine op {!r}'.format(self.op)
+
+        self.linear = None
+
+    def set_concat_linear(self, hidden_size, n):
+        if self.op == 'concat':
+            self.linear = Linear(
+                hidden_size * n, hidden_size, bias=True, dropout=self.hparams.dropout, hparams=self.hparams)
 
     def forward(self, node_output_list):
-        # TODO: Combine outputs (more methods)
-        return th.stack([t for t in node_output_list if t is not None]).mean(dim=0)
+        if self.op == 'add':
+            return th.stack([t for t in node_output_list if t is not None]).mean(dim=0)
+        else:
+            assert self.op == 'concat'
+            return self.linear(th.cat([t for t in node_output_list if t is not None], dim=-1))
 
 
 class BlockLayer(ChildLayer):
@@ -121,7 +135,7 @@ class BlockLayer(ChildLayer):
         self.in_encoder = in_encoder
         self.input_node_indices = []
         self.nodes = nn.ModuleList()
-        self.combine_node = CombineNode()
+        self.combine_node = CombineNode(in_encoder=in_encoder, hparams=hparams)
         self.topological_order = []
 
     def build(self, layer_code, input_shape):
@@ -141,6 +155,7 @@ class BlockLayer(ChildLayer):
         if len(self.input_node_indices) != 2:
             raise RuntimeError('The block layer must have exactly two input nodes, but got {}'.format(
                 len(self.input_node_indices)))
+        self.combine_node.set_concat_linear(input_shape, n=len(self.nodes) - len(self.input_node_indices))
         return input_shape
 
     def forward(self, input_, prev_input, lengths=None, encoder_state=None, **kwargs):

@@ -100,6 +100,9 @@ def hparams_base():
         momentum=0.99,
         weight_decay=0.0,
         clip_norm=25,
+
+        # About block child net.
+        block_combine_op='concat',
     )
 
 
