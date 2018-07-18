@@ -58,7 +58,7 @@ class Node(nn.Module):
         self.combine_op = self._parse_combine_op(combine_op, input_shape)
 
     @staticmethod
-    def _normalize_op_code(op_code):
+    def _normalize_op_code(op_code, space=CellSpace.CellOps):
         if isinstance(op_code, Sequence) and not isinstance(op_code, str):
             # [op_code, op_arg1, op_arg2, ...]
             op_code, *op_args = op_code
@@ -66,7 +66,7 @@ class Node(nn.Module):
             op_args = tuple()
 
         if isinstance(op_code, str):
-            op_code = getattr(CellSpace, op_code)
+            op_code = space[op_code]
         assert isinstance(op_code, int)
 
         return op_code, op_args
@@ -76,7 +76,7 @@ class Node(nn.Module):
         return BlockNodeOp.create(op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams)
 
     def _parse_combine_op(self, op_code, input_shape):
-        op_code, op_args = self._normalize_op_code(op_code)
+        op_code, op_args = self._normalize_op_code(op_code, space=CellSpace.CombineOps)
         return BlockCombineNodeOp.create(op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams)
 
     def forward(self, in1, in2, lengths=None, encoder_state=None, **kwargs):

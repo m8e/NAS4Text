@@ -78,14 +78,14 @@ AllNetCode = {
                 [   # Encoder layer 0
                     [None, None, None, None, None],
                     [None, None, None, None, None],
-                    [0, 1, "Identity", "FFN", "Add"],
+                    [0, 1, "Identity", ["FFN", "relu"], "Add"],
                 ],
             ],
             [
                 [   # Decoder layer 0
                     [None, None, None, None, None],
                     [None, None, None, None, None],
-                    [0, 1, "Identity", "FFN", "Add"],
+                    [0, 1, "LSTM", "FFN", "Add"],
                 ],
             ],
         ],

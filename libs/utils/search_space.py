@@ -6,6 +6,8 @@
 Layer code format can be seen in each base search space.
 """
 
+from operator import getitem
+
 __author__ = 'fyabc'
 
 
@@ -144,22 +146,18 @@ AttentionSpaces = {
 # Block cell.
 
 class CellSpace:
-    CellOps = [
-        LSTM, R2L_LSTM, CNN, SelfAttention,
-        GroupedCNN, FFN, PFFN, Identity, GroupedLSTM,
-        EncoderAttention,
-    ] = list(range(10))
+    CellOps = {
+        k: i for i, k in enumerate(
+            ['LSTM', 'CNN', 'SelfAttention', 'FFN', 'PFFN', 'Identity', 'GroupedLSTM', 'EncoderAttention'])
+    }
 
-    class ActivationSpace:
-        [identity, tanh, relu, sigmoid] = list(range(4))
+    Activations = {
+        k: i for i, k in enumerate(['identity', 'tanh', 'relu', 'sigmoid'])
+    }
 
     # Search space of hidden sizes. (Useless or not?)
     HiddenSizes = [32, 64, 128, 256, 512, 1024]
 
-    CombineOps = [Add, Concat] = list(range(2))
-
-
-def space_str2int(space, value):
-    if isinstance(value, str):
-        value = getattr(space, value)
-    return value
+    CombineOps = {
+        k: i for i, k in enumerate(['Add', 'Concat'])
+    }

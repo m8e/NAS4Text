@@ -40,23 +40,21 @@ class BlockNodeOp(nn.Module):
 
     @staticmethod
     def create(op_code, op_args, input_shape, in_encoder=True, hparams=None):
-        if op_code == ss.CellSpace.LSTM:
+        if op_code == ss.CellSpace.CellOps['LSTM']:
             op_type = LSTMOp
-        elif op_code == ss.CellSpace.R2L_LSTM:
-            raise NotImplementedError()
-        elif op_code == ss.CellSpace.CNN:
+        elif op_code == ss.CellSpace.CellOps['CNN']:
             op_type = ConvolutionOp
-        elif op_code == ss.CellSpace.SelfAttention:
+        elif op_code == ss.CellSpace.CellOps['SelfAttention']:
             op_type = SelfAttentionOp
-        elif op_code == ss.CellSpace.FFN:
+        elif op_code == ss.CellSpace.CellOps['FFN']:
             op_type = FFNOp
-        elif op_code == ss.CellSpace.PFFN:
+        elif op_code == ss.CellSpace.CellOps['PFFN']:
             op_type = PFFNOp
-        elif op_code == ss.CellSpace.Identity:
+        elif op_code == ss.CellSpace.CellOps['Identity']:
             op_type = IdentityOp
-        elif op_code == ss.CellSpace.GroupedLSTM:
+        elif op_code == ss.CellSpace.CellOps['GroupedLSTM']:
             raise NotImplementedError()
-        elif op_code == ss.CellSpace.EncoderAttention:
+        elif op_code == ss.CellSpace.CellOps['EncoderAttention']:
             if in_encoder:
                 raise RuntimeError('Encoder attention only available in decoder')
             op_type = EncoderAttentionOp
@@ -78,9 +76,9 @@ class BlockCombineNodeOp(nn.Module):
 
     @staticmethod
     def create(op_code, op_args, input_shape, in_encoder=True, hparams=None):
-        if op_code == ss.CellSpace.Add:
+        if op_code == ss.CellSpace.CombineOps['Add']:
             op_type = AddOp
-        elif op_code == ss.CellSpace.Concat:
+        elif op_code == ss.CellSpace.CombineOps['Concat']:
             raise NotImplementedError()
         else:
             raise RuntimeError('Unknown combine op code {}'.format(op_code))
@@ -103,16 +101,17 @@ class FFNOp(BlockNodeOp):
         super().__init__(op_args, input_shape, **kwargs)
         input_size = input_shape[-1]
 
-        space = ss.CellSpace.ActivationSpace
-        activation = _get_op_arg(self, 0, space.identity)
-        activation = ss.space_str2int(space, activation)
-        if activation == space.identity:
+        space = ss.CellSpace.Activations
+        activation = _get_op_arg(self, 0, space['identity'])
+        if isinstance(activation, str):
+            activation = space[activation]
+        if activation == space['identity']:
             self.activation = Identity()
-        elif activation == space.tanh:
+        elif activation == space['tanh']:
             self.activation = nn.Tanh()
-        elif activation == space.relu:
+        elif activation == space['relu']:
             self.activation = nn.ReLU()
-        elif activation == space.sigmoid:
+        elif activation == space['sigmoid']:
             self.activation = nn.Sigmoid()
         else:
             raise RuntimeError('Unknown activation type {}'.format(activation))

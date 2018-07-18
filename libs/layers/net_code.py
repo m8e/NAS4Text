@@ -121,6 +121,19 @@ def load_pickle(fp):
     return pickle.load(fp)
 
 
+def load_net_code_from_file(filename):
+    with open(filename, 'r') as f:
+        ext = os.path.splitext(f.name)[1]
+        if ext == '.json':
+            code = load_json(f)
+        elif ext == '.pkl':
+            code = load_pickle(f)
+        else:
+            raise ValueError('Does not support this net code file format now')
+
+        return NetCode(code)
+
+
 def get_net_code(hparams, modify_hparams=True):
     """Get net code from path given by hparams.
 
@@ -131,16 +144,7 @@ def get_net_code(hparams, modify_hparams=True):
     Returns:
 
     """
-    with open(hparams.net_code_file, 'r') as f:
-        ext = os.path.splitext(f.name)[1]
-        if ext == '.json':
-            code = load_json(f)
-        elif ext == '.pkl':
-            code = load_pickle(f)
-        else:
-            raise ValueError('Does not support this net code file format now')
-
-        result = NetCode(code)
-        if modify_hparams:
-            result.modify_hparams(hparams)
-        return result
+    result = load_net_code_from_file(hparams.net_code_file)
+    if modify_hparams:
+        result.modify_hparams(hparams)
+    return result
