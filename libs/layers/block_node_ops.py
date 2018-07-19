@@ -289,3 +289,18 @@ class AddOp(BlockCombineNodeOp):
     """
     def forward(self, in1, in2, lengths=None, encoder_state=None):
         return in1 + in2
+
+
+class ConcatOp(BlockCombineNodeOp):
+    """
+    op_args: []
+    """
+
+    def __init__(self, op_args, input_shape, **kwargs):
+        super().__init__(op_args, input_shape, **kwargs)
+        input_size = input_shape[-1]
+
+        self.linear = Linear(2 * input_size, input_size, bias=True, dropout=self.hparams.dropout, hparams=self.hparams)
+
+    def forward(self, in1, in2, lengths=None, encoder_state=None):
+        return self.linear(th.cat([in1, in2], dim=-1))

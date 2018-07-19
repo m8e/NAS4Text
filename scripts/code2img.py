@@ -5,6 +5,7 @@
 
 import argparse
 from collections import Sequence
+import json
 import os
 import sys
 
@@ -13,7 +14,8 @@ import graphviz as gv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from libs.layers.net_code import load_net_code_from_file, NetCode
-from libs.utils.search_space import CellSpace
+import libs.utils.search_space as ss
+from libs.hparams import get_hparams
 
 
 def _name(block_name, i, s=None):
@@ -22,7 +24,7 @@ def _name(block_name, i, s=None):
     return '{}.{}.{}'.format(block_name, i, s)
 
 
-def _int2str(i, space=CellSpace.CellOps):
+def _int2str(i, space=ss.CellSpace.CellOps):
     if isinstance(i, str):
         return i
     for k, v in space.items():
@@ -39,7 +41,68 @@ def _split_op_args(op_code):
     return op_code, op_args
 
 
-def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_code):
+def _get_op_arg(op_args, i, default=None, space=None):
+    try:
+        result = op_args[i]
+        if space is not None:
+            index = result
+            return space[index]
+        else:
+            return result
+    except IndexError:
+        return default
+
+
+def _get_op_label(op, op_args, hparams, is_combine=False):
+    str_op = _int2str(op, space=ss.CellSpace.CombineOps if is_combine else ss.CellSpace.CellOps)
+    label_list = [str_op]
+    if is_combine:
+        if str_op == 'Add':
+            pass
+        elif str_op == 'Concat':
+            pass
+        else:
+            raise RuntimeError('Unknown op code {}'.format(str_op))
+    else:
+        if str_op == 'LSTM':
+            label_list.extend([
+                'reversed={}'.format(_get_op_arg(op_args, 1, False)),
+            ])
+        elif str_op == 'CNN':
+            space = ss.ConvolutionalSpaces[hparams.conv_space]
+            label_list.extend([
+                'kernel_size={}'.format(_get_op_arg(op_args, 1, 3, space=space.KernelSizes)),
+                'stride={}'.format(_get_op_arg(op_args, 2, 1, space=space.Strides)),
+                'groups={}'.format(_get_op_arg(op_args, 3, 1, space=space.Groups)),
+            ])
+        elif str_op == 'SelfAttention':
+            space = ss.AttentionSpaces[hparams.attn_space]
+            label_list.extend([
+                '#heads={}'.format(_get_op_arg(op_args, 0, 8, space=space.NumHeads)),
+            ])
+        elif str_op == 'FFN':
+            space = ss.CellSpace.Activations
+            label_list.extend([
+                'activ={}'.format(_int2str(_get_op_arg(op_args, 0, space['identity']), space)),
+                'bias={}'.format(_get_op_arg(op_args, 1, True)),
+            ])
+        elif str_op == 'PFFN':
+            pass
+        elif str_op == 'Identity':
+            pass
+        elif str_op == 'GroupedLSTM':
+            raise NotImplementedError()
+        elif str_op == 'EncoderAttention':
+            space = ss.AttentionSpaces[hparams.attn_space]
+            label_list.extend([
+                '#heads={}'.format(_get_op_arg(op_args, 0, 8, space=space.NumHeads)),
+            ])
+        else:
+            raise RuntimeError('Unknown op code {}'.format(str_op))
+    return '\n'.join(label_list)
+
+
+def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_code, hparams):
     c = gv.Digraph(name='cluster_{}_{}'.format(block_name, i))
     c.graph_attr.update({
         'label': 'cell {}'.format(i),
@@ -62,9 +125,9 @@ def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_
 
     c.node(i1_n, 'in1', fillcolor='lightblue')
     c.node(i2_n, 'in2', fillcolor='lightblue')
-    c.node(op1_n, _int2str(op1), fillcolor='green')
-    c.node(op2_n, _int2str(op2), fillcolor='green')
-    c.node(combine_op_n, _int2str(combine_op, space=CellSpace.CombineOps), fillcolor='orange')
+    c.node(op1_n, _get_op_label(op1, op1_args, hparams), fillcolor='green')
+    c.node(op2_n, _get_op_label(op2, op2_args, hparams), fillcolor='green')
+    c.node(combine_op_n, _get_op_label(combine_op, combine_op_args, hparams, is_combine=True), fillcolor='orange')
     c.edge(i1_n, op1_n)
     c.edge(i2_n, op2_n)
     c.edge(op1_n, combine_op_n)
@@ -79,6 +142,7 @@ def main(args=None):
     parser.add_argument('-T', '--format', default='jpg', help='Output format, default is %(default)r')
     parser.add_argument('-d', '--dir', help='Output directory', required=True)
     parser.add_argument('-o', '--output', help='Output filename (without format ext)', default=None)
+    parser.add_argument('-H', '--hparams', help='HParams JSON filename, default is use system default', default=None)
 
     args = parser.parse_args(args)
     print(args)
@@ -98,6 +162,13 @@ def main(args=None):
     else:
         raise RuntimeError('The net code type {!r} is not supported yet'.format(code.type))
 
+    if args.hparams is None:
+        hparams = get_hparams('normal')
+        print('WARNING: Use default hparams, op args may be incorrect. Please give a hparams JSON file.')
+    else:
+        with open(args.hparams, 'r', encoding='utf-8') as f:
+            hparams = argparse.Namespace(**json.load(f))
+
     g_global = gv.Digraph()
 
     g_global.format = args.format
@@ -115,8 +186,12 @@ def main(args=None):
             'style': 'filled',
         })
 
+        # Block-level Combine Node
+        bcn_name = _name(name, 'combine')
+        g.node(bcn_name, 'combine')
+
         input_node_indices = []
-        for i, cell in enumerate(block):
+        for i, cell in enumerate(block, start=0):
             node_name = _name(name, i)
             in1, in2, op1, op2, combine_op = cell
 
@@ -130,7 +205,7 @@ def main(args=None):
             else:
                 g.subgraph(_make_cell_subgraph(
                     name, i,
-                    in1, in2, (op1, op_args1), (op2, op_args2), (combine_op, combine_op_args)))
+                    in1, in2, (op1, op_args1), (op2, op_args2), (combine_op, combine_op_args), hparams))
 
                 # Add input edges.
                 for in_, in_name in zip((in1, in2), ('in1', 'in2')):
@@ -139,7 +214,7 @@ def main(args=None):
                     else:
                         g.edge(_name(name, in_, 'combine'), _name(name, i, in_name))
 
-            # Combine operator.
+                g.edge(_name(name, i, 'combine'), bcn_name)
 
         g_global.subgraph(g)
 
