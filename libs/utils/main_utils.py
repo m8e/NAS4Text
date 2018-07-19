@@ -3,11 +3,14 @@
 
 """Utilities for main entries."""
 
+import json
 import logging
+import os
 import pprint
 
 import torch as th
 
+from .paths import get_model_path
 from ..hparams import get_hparams
 from ..layers.net_code import get_net_code
 from ..utils.data_processing import LanguageDatasets
@@ -69,6 +72,13 @@ def main_entry(hparams, **kwargs):
             hparams.max_sentences_valid = hparams.max_sentences
 
     logging.info('Child {} hparams:\n{}'.format(title, pprint.pformat(hparams.__dict__)))
+    if train:
+        model_path = get_model_path(hparams)
+        os.makedirs(model_path, exist_ok=True)
+        hparams_path = os.path.join(get_model_path(hparams), 'hparams.json')
+        with open(hparams_path, 'w', encoding='utf-8') as f:
+            json.dump(hparams.__dict__, f, indent=4)
+            logging.info('Dump hparams into {}'.format(hparams_path))
     logging.info('Search space information:')
     logging.info('LSTM search space: {}'.format(hparams.lstm_space))
     logging.info('Convolutional search space: {}'.format(hparams.conv_space))

@@ -28,7 +28,6 @@ def _int2str(i, space=CellSpace.CellOps):
     for k, v in space.items():
         if v == i:
             return k
-    print('#', i)
 
 
 def _split_op_args(op_code):
@@ -139,6 +138,8 @@ def main(args=None):
                         g.edge(_name(name, in_), _name(name, i, in_name))
                     else:
                         g.edge(_name(name, in_, 'combine'), _name(name, i, in_name))
+
+            # Combine operator.
 
         g_global.subgraph(g)
 

@@ -164,6 +164,9 @@ class LSTMOp(BlockNodeOp):
 
         reversed_ = _get_op_arg(self, 1, False)
 
+        if reversed_ and not self.in_encoder:
+            raise RuntimeError('R2L LSTM layer only available in encoder')
+
         self.lstm = LSTMLayer(
             hparams=self.hparams,
             input_size=input_size,
