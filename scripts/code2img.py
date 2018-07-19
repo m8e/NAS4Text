@@ -40,7 +40,7 @@ def _split_op_args(op_code):
     return op_code, op_args
 
 
-def _make_cell_subgraph(block_name, i, in1, in2, op1, op2, combine_op):
+def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_code):
     c = gv.Digraph(name='cluster_{}_{}'.format(block_name, i))
     c.graph_attr.update({
         'label': 'cell {}'.format(i),
@@ -56,6 +56,10 @@ def _make_cell_subgraph(block_name, i, in1, in2, op1, op2, combine_op):
     op1_n = _name(block_name, i, 'op1')
     op2_n = _name(block_name, i, 'op2')
     combine_op_n = _name(block_name, i, 'combine')
+
+    op1, op1_args = op1_code
+    op2, op2_args = op2_code
+    combine_op, combine_op_args = combine_op_code
 
     c.node(i1_n, 'in1', fillcolor='lightblue')
     c.node(i2_n, 'in2', fillcolor='lightblue')
@@ -125,7 +129,9 @@ def main(args=None):
                 g.node(node_name, 'input {}'.format(len(input_node_indices)))
                 input_node_indices.append(i)
             else:
-                g.subgraph(_make_cell_subgraph(name, i, in1, in2, op1, op2, combine_op))
+                g.subgraph(_make_cell_subgraph(
+                    name, i,
+                    in1, in2, (op1, op_args1), (op2, op_args2), (combine_op, combine_op_args)))
 
                 # Add input edges.
                 for in_, in_name in zip((in1, in2), ('in1', 'in2')):

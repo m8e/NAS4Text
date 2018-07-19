@@ -155,7 +155,7 @@ class BlockLayer(ChildLayer):
         if len(self.input_node_indices) != 2:
             raise RuntimeError('The block layer must have exactly two input nodes, but got {}'.format(
                 len(self.input_node_indices)))
-        self.combine_node.set_concat_linear(input_shape, n=len(self.nodes) - len(self.input_node_indices))
+        self.combine_node.set_concat_linear(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices))
         return input_shape
 
     def forward(self, input_, prev_input, lengths=None, encoder_state=None, **kwargs):

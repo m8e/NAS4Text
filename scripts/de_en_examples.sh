@@ -15,12 +15,30 @@ BEAM=5; ALPHA=1.1; VARS="49 59"; CUDA_VISIBLE_DEVICES=3; for i in ${VARS}
 do
     python3 child_gen.py -T de_en_iwslt_bpe2 -H bpe2_transformer_kt_bias -N net_code_example/transformer_nda.json \
     --path checkpoint${i}.pt --output-file output_pt${i}_beam${BEAM}.txt --use-task-maxlen --beam ${BEAM} \
-    --lenpen ${ALPHA}
+    --lenpen ${ALPHA} --gen-subset test
 done; for i in ${VARS}
 do
-    python3 score.py -r data/de_en_iwslt/test.iwslt.de-en.en \
+    python3 score.py -r data/de_en_iwslt_bpe2/test.iwslt-bpe2.de-en.en-orig \
     -s translated/de_en_iwslt_bpe2/bpe2_transformer_kt_bias/transformer_nda/output_pt${i}_beam${BEAM}.txt
 done
 
 # Perl script example.
-perl scripts/multi-bleu.perl data/de_en_iwslt/test.iwslt.de-en.en < translated/de_en_iwslt_bpe2/bpe2_transformer_kt_bias/block_s_example/output_pt2_beam5.txt
+perl scripts/multi-bleu.perl data/de_en_iwslt_bpe2/test.iwslt-bpe2.de-en.en-orig < \
+    translated/de_en_iwslt_bpe2/bpe2_transformer_kt_bias/block_s_example/output_pt2_beam5.txt
+
+
+# Generate script for dev dataset.
+BEAM=5; ALPHA=1.1; VARS="49 59"; CUDA_VISIBLE_DEVICES=3; for i in ${VARS}
+do
+    python3 child_gen.py -T de_en_iwslt_bpe2 -H bpe2_transformer_kt_bias -N net_code_example/transformer_nda.json \
+    --path checkpoint${i}.pt --output-file output_pt${i}_beam${BEAM}_dev.txt --use-task-maxlen --beam ${BEAM} \
+    --lenpen ${ALPHA} --gen-subset dev
+done; for i in ${VARS}
+do
+    python3 score.py -r data/de_en_iwslt_bpe2/dev.iwslt-bpe2.de-en.en-orig \
+    -s translated/de_en_iwslt_bpe2/bpe2_transformer_kt_bias/transformer_nda/output_pt${i}_beam${BEAM}_dev.txt
+done
+
+# Perl script example.
+perl scripts/multi-bleu.perl data/de_en_iwslt_bpe2/dev.iwslt-bpe2.de-en.en-orig < \
+    translated/de_en_iwslt_bpe2/bpe2_transformer_kt_bias/block_s_example/output_pt2_beam5_dev.txt

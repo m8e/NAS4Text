@@ -50,9 +50,9 @@ class LSTMLayer(ChildLayer):
     def _init_lstm_params(self):
         for name, param in self.lstm.named_parameters():
             if 'bias' in name:
-                nn.init.constant(param, 0.0)
+                nn.init.constant_(param, 0.0)
             else:
-                nn.init.xavier_normal(param)
+                nn.init.xavier_normal_(param)
 
     def forward(self, input_, lengths=None, encoder_state=None, **kwargs):
         input_ = self._reverse_io(input_, lengths=lengths)
