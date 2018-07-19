@@ -354,8 +354,8 @@ def item(tensor):
 def get_reversed_index(lengths, max_length):
     return th.stack([
         th.cat([
-            th.arange(l - 1, -1, -1, dtype=th.int64),
-            th.arange(l, max_length, 1, dtype=th.int64),
+            th.arange(l - 1, -1, -1, dtype=th.int64).cuda(),
+            th.arange(l, max_length, 1, dtype=th.int64).cuda(),
         ])
         for l in lengths])
 

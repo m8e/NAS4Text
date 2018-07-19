@@ -6,13 +6,13 @@
             [null, null, null, null, null],
             [null, null, null, null, null],
             [0, 1, "PFFN", "SelfAttention", "Concat"],
-            [0, 2, "CNN", "SelfAttention", "Concat"]
+            [0, 2, ["LSTM", null, true], "SelfAttention", "Concat"]
         ],
         "dec1": [
             [null, null, null, null, null],
             [null, null, null, null, null],
             [0, 1, "SelfAttention", "EncoderAttention", "Concat"],
-            [0, 2, "EncoderAttention", ["LSTM", null, true], "Concat"]
+            [0, 2, "EncoderAttention", "CNN", "Concat"]
         ]
     },
     "Layers": [
