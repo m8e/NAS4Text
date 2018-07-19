@@ -121,3 +121,6 @@ ENV/
 # Logs
 /log/
 
+# Ignored scripts
+/ignored_scripts/
+

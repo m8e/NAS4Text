@@ -79,7 +79,7 @@ class BlockCombineNodeOp(nn.Module):
         if op_code == ss.CellSpace.CombineOps['Add']:
             op_type = AddOp
         elif op_code == ss.CellSpace.CombineOps['Concat']:
-            raise NotImplementedError()
+            op_type = ConcatOp
         else:
             raise RuntimeError('Unknown combine op code {}'.format(op_code))
         return op_type(op_args, input_shape, hparams=hparams)
