@@ -188,7 +188,7 @@ def main(args=None):
 
         # Block-level Combine Node
         bcn_name = _name(name, 'combine')
-        g.node(bcn_name, 'combine')
+        g.node(bcn_name, hparams.block_combine_op)
 
         input_node_indices = []
         for i, cell in enumerate(block, start=0):

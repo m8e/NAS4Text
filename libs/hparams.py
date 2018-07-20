@@ -261,3 +261,14 @@ def hparams_transformer_de_en_iwslt_bpe2_kaitao_bias():
     hparams.attn_linear_bias = True
 
     return hparams
+
+
+@register_hparams('bpe2_transformer_l2_best')
+def hparams_transformer_de_en_iwslt_bpe2_e2d2_best():
+    """The best hparams of en-de-iwslt14 transformer e2d2 now."""
+    hparams = hparams_transformer_de_en_iwslt_bpe2_kaitao_bias()
+
+    hparams.dec_output_fc = True
+    hparams.attn_linear_bias = False
+
+    return hparams
