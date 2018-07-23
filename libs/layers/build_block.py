@@ -7,8 +7,9 @@ import torch as th
 import torch.nn as nn
 
 from .base import ChildLayer
+from .ppp import push_prepostprocessors
 from .block_node_ops import BlockNodeOp, BlockCombineNodeOp
-from ..utils.search_space import CellSpace
+from ..utils.search_space import CellSpace, PPPSpace
 from ..layers.common import Linear
 
 __author__ = 'fyabc'

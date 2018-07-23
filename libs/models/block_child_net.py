@@ -8,7 +8,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .child_net_base import ChildNetBase, EncDecChildNet, ChildDecoderBase
+from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
 from ..utils.data_processing import LanguagePairDataset
 from ..tasks import get_task
 from ..layers.common import *
@@ -18,7 +18,7 @@ from ..layers.grad_multiply import GradMultiply
 __author__ = 'fyabc'
 
 
-class BlockChildEncoder(nn.Module):
+class BlockChildEncoder(ChildEncoderBase):
     def __init__(self, code, hparams):
         super().__init__()
 
@@ -116,6 +116,10 @@ class BlockChildEncoder(nn.Module):
         logging.debug('Encoder output shape: {} & {}'.format(list(x.shape), list(y.shape)))
         return x, y
 
+    def reorder_encoder_out(self, encoder_out, new_order):
+        # TODO: Implement this method.
+        return encoder_out
+
     def upgrade_state_dict(self, state_dict):
         return state_dict
 
@@ -123,7 +127,7 @@ class BlockChildEncoder(nn.Module):
         return self.embed_positions.max_positions()
 
 
-class BlockChildDecoder(ChildDecoderBase):
+class BlockChildDecoder(ChildIncrementalDecoderBase):
     def __init__(self, code, hparams, **kwargs):
         super().__init__(code, hparams, **kwargs)
 
@@ -167,17 +171,18 @@ class BlockChildDecoder(ChildDecoderBase):
             src_lengths: (batch_size,) of long
             trg_tokens: (batch_size, trg_seq_len) of int32
             trg_lengths: (batch_size,) of long
-            incremental_state: Incremental states for decoding. TODO
+            incremental_state: Incremental states for decoding.
 
         Returns:
             Output: (batch_size, trg_seq_len, trg_vocab_size) of float32
             Attention scores: (batch_size, trg_seq_len, src_seq_len) of float32
         """
 
-        encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
+        # TODO: Implement incremental state.
+        if not self.ApplyIncrementalState:
+            incremental_state = None
 
-        # split and (transpose) encoder outputs
-        encoder_out = self._split_encoder_out(encoder_out, incremental_state)
+        encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
 
         x = trg_tokens
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))

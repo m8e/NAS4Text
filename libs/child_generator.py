@@ -13,6 +13,7 @@ from .utils.data_processing import ShardedIterator
 from .utils.meters import StopwatchMeter
 from .utils import common
 from .tasks import get_task
+from .models.child_net_base import ChildIncrementalDecoderBase
 
 __author__ = 'fyabc'
 
@@ -38,6 +39,9 @@ class ChildGenerator:
 
         self.stop_early = not hparams.no_early_stop
         self.normalize_scores = not hparams.unnormalized
+
+        # Options support in future
+        self.retain_dropout = False
 
     def _get_input_iter(self):
         itr = self.datasets.eval_dataloader(
@@ -132,7 +136,8 @@ class ChildGenerator:
         maxlen = self._get_maxlen(srclen)
 
         for model in self.models:
-            model.eval()
+            if not self.retain_dropout:
+                model.eval()
 
         if timer is not None:
             timer.start()
@@ -171,7 +176,8 @@ class ChildGenerator:
         sample = common.make_variable(sample, volatile=True, cuda=self.is_cuda)
         batch_size = sample['id'].numel()
         for model in self.models:
-            model.eval()
+            if not self.retain_dropout:
+                model.eval()
         if timer is not None:
             timer.start()
         with common.maybe_no_grad():
@@ -208,6 +214,14 @@ class ChildGenerator:
             model.encode(beam_src_tokens, beam_src_lengths)
             for model in self.models
         ]
+
+        # incremental states
+        incremental_states = {}
+        for model in self.models:
+            if isinstance(model.decoder, ChildIncrementalDecoderBase):
+                incremental_states[model] = {}
+            else:
+                incremental_states[model] = None
 
         # buffers
         scores = src_tokens.data.new(batch_size * beam, maxlen + 1).float().fill_(0)
@@ -336,15 +350,28 @@ class ChildGenerator:
                     num_finished += 1
             return num_finished
 
+        reorder_state = None
+        batch_idxs = None
         for step in range(maxlen + 1):  # one extra step for EOS marker
             # print('$', step, tokens_var.shape)
-            # [NOTE]: Omitted: reorder decoder internal states based on the prev choice of beams
+
+            # reorder decoder internal states based on the prev choice of beams
+            if reorder_state is not None:
+                if batch_idxs is not None:
+                    # update beam indices to take into account removed sentences
+                    corr = batch_idxs - th.arange(batch_idxs.numel()).type_as(batch_idxs)
+                    reorder_state.view(-1, beam).add_(corr.unsqueeze(-1) * beam)
+                for i, model in enumerate(self.models):
+                    if isinstance(model.decoder, ChildIncrementalDecoderBase):
+                        model.decoder.reorder_incremental_state(incremental_states[model], reorder_state)
+                    encoder_outs[i] = model.encoder.reorder_encoder_out(encoder_outs[i], reorder_state)
 
             trg_lengths[:] = step + 1
             # avg_probs: (batch_size * beam, vocab_size)
             probs, attn_scores = self._decode(
                 encoder_outs, beam_src_lengths,
                 common.make_variable(tokens[:, :step + 1], volatile=True, cuda=self.is_cuda), trg_lengths,
+                incremental_states,
                 compute_attn=True)
 
             if step == 0:
@@ -494,11 +521,11 @@ class ChildGenerator:
 
         return finalized
 
-    def _decode(self, encoder_outs, src_lengths, trg_tokens, trg_lengths, compute_attn=False):
+    def _decode(self, encoder_outs, src_lengths, trg_tokens, trg_lengths, incremental_states, compute_attn=False):
         net_outputs = [
             model.decode(
                 encoder_out, src_lengths,
-                trg_tokens, trg_lengths)
+                trg_tokens, trg_lengths, incremental_state=incremental_states[model])
             for encoder_out, model in zip(encoder_outs, self.models)
         ]
         return self._get_normalized_probs(net_outputs, compute_attn=compute_attn)

@@ -114,7 +114,24 @@ class EncDecChildNet(ChildNetBase):
         return state_dict
 
 
+class ChildEncoderBase(nn.Module):
+    def reorder_encoder_out(self, encoder_out, new_order):
+        """Reorder encoder output according to new_order.
+
+        Args:
+            encoder_out:
+            new_order:
+
+        Returns:
+            Reordered encoder out.
+        """
+        raise NotImplementedError()
+
+
 class ChildDecoderBase(nn.Module):
+    # A temporary flag to mark using incremental state or not.
+    ApplyIncrementalState = False
+
     def __init__(self, code, hparams, **kwargs):
         super().__init__()
 
@@ -169,28 +186,6 @@ class ChildDecoderBase(nn.Module):
             tokens = tokens[:, -1:]
         return self.embed_tokens(tokens)
 
-    def _split_encoder_out(self, encoder_out, incremental_state):
-        """Split and transpose encoder outputs.
-
-        This is cached when doing incremental inference.
-        """
-        cached_result = common.get_incremental_state(self, incremental_state, 'encoder_out')
-        if cached_result is not None:
-            return cached_result
-
-        # transpose only once to speed up attention layers
-        if self.hparams.enc_dec_attn_type == 'fairseq':
-            # [NOTE]: Only do transpose here for fairseq attention
-            encoder_a, encoder_b = encoder_out
-            encoder_a = encoder_a.transpose(1, 2).contiguous()
-            result = (encoder_a, encoder_b)
-        else:
-            result = encoder_out
-
-        if incremental_state is not None:
-            common.set_incremental_state(self, incremental_state, 'encoder_out', result)
-        return result
-
     def _contains_lstm(self):
         """Test if the decoder contains LSTM layers."""
         return False
@@ -220,6 +215,40 @@ class ChildDecoderBase(nn.Module):
     def max_positions(self):
         return self.embed_positions.max_positions()
 
+    def reorder_incremental_state(self, incremental_state, new_order):
+        """Reorder incremental state.
+
+        This should be called when the order of the input has changed from the
+        previous time step. A typical use case is beam search, where the input
+        order changes between time steps based on the selection of beams.
+        """
+
+        def apply_reorder_incremental_state(module):
+            if module != self and hasattr(module, 'reorder_incremental_state'):
+                module.reorder_incremental_state(
+                    incremental_state,
+                    new_order,
+                )
+
+        self.apply(apply_reorder_incremental_state)
+
+    def set_beam_size(self, beam_size):
+        """Sets the beam size in the decoder and all children."""
+        if getattr(self, '_beam_size', -1) != beam_size:
+            def apply_set_beam_size(module):
+                if module != self and hasattr(module, 'set_beam_size'):
+                    module.set_beam_size(beam_size)
+
+            self.apply(apply_set_beam_size)
+            self._beam_size = beam_size
+
+
+class ChildIncrementalDecoderBase(ChildDecoderBase):
+    """The incremental child decoder.
+
+    TODO: Just a tag class now, move incremental-related methods into it in future."""
+    pass
+
 
 def _forward_call(method_name):
     def _method(self, *args, **kwargs):
@@ -242,7 +271,9 @@ __all__ = [
     'ChildNetBase',
     'EncDecChildNet',
 
+    'ChildEncoderBase',
     'ChildDecoderBase',
+    'ChildIncrementalDecoderBase',
 
     'ParalleledChildNet',
 ]

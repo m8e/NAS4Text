@@ -23,10 +23,11 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .child_net_base import ChildNetBase, EncDecChildNet, ChildDecoderBase
+from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
 from ..tasks import get_task
 from ..utils.data_processing import LanguagePairDataset
 from ..utils.search_space import LayerTypes
+from ..utils import common
 from ..layers.common import *
 from ..layers.lstm import build_lstm, LSTMLayer
 from ..layers.cnn import build_cnn
@@ -50,7 +51,7 @@ def _code2layer(layer_code, input_shape, hparams, in_encoder=True):
         raise ValueError('Unknown layer type {}'.format(layer_type))
 
 
-class ChildEncoder(nn.Module):
+class ChildEncoder(ChildEncoderBase):
     def __init__(self, code, hparams):
         super().__init__()
 
@@ -149,6 +150,10 @@ class ChildEncoder(nn.Module):
         logging.debug('Encoder output shape: {} & {}'.format(list(x.shape), list(y.shape)))
         return x, y
 
+    def reorder_encoder_out(self, encoder_out, new_order):
+        # TODO: Implement this method.
+        return encoder_out
+
     def upgrade_state_dict(self, state_dict):
         return state_dict
 
@@ -162,7 +167,7 @@ class ChildEncoder(nn.Module):
         return [self.get_layer(i) for i in range(self.num_layers)]
 
 
-class ChildDecoder(ChildDecoderBase):
+class ChildDecoder(ChildIncrementalDecoderBase):
     def __init__(self, code, hparams, **kwargs):
         super().__init__(code, hparams, **kwargs)
 
@@ -220,6 +225,9 @@ class ChildDecoder(ChildDecoderBase):
             Output: (batch_size, trg_seq_len, trg_vocab_size) of float32
             Attention scores: (batch_size, trg_seq_len, src_seq_len) of float32
         """
+
+        if not self.ApplyIncrementalState:
+            incremental_state = None
 
         encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
 
@@ -282,6 +290,28 @@ class ChildDecoder(ChildDecoderBase):
 
     def _contains_lstm(self):
         return any(isinstance(l, LSTMLayer) for l in self.get_layers())
+
+    def _split_encoder_out(self, encoder_out, incremental_state):
+        """Split and transpose encoder outputs.
+
+        This is cached when doing incremental inference.
+        """
+        cached_result = common.get_incremental_state(self, incremental_state, 'encoder_out')
+        if cached_result is not None:
+            return cached_result
+
+        # transpose only once to speed up attention layers
+        if self.hparams.enc_dec_attn_type == 'fairseq':
+            # [NOTE]: Only do transpose here for fairseq attention
+            encoder_a, encoder_b = encoder_out
+            encoder_a = encoder_a.transpose(1, 2).contiguous()
+            result = (encoder_a, encoder_b)
+        else:
+            result = encoder_out
+
+        if incremental_state is not None:
+            common.set_incremental_state(self, incremental_state, 'encoder_out', result)
+        return result
 
     @property
     def num_attention_layers(self):
