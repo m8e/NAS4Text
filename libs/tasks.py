@@ -246,3 +246,34 @@ class DeEnIwsltBpe2(TextTask):
             'test': 20.650222222222222,
         },
     }
+
+
+@register_task
+class DeEnIwsltFs(TextTask):
+    """De-En iwslt bpe dataset from FairSeq."""
+
+    SourceLang = Languages.DE
+    TargetLang = Languages.EN
+
+    SourceDictType = 'text'
+    TargetDictType = 'text'
+
+    UniqueFilename = 'iwslt-fs'
+
+    SourceVocabSize = None
+    TargetVocabSize = None
+
+    BPESymbol = '@@ '
+
+    LengthInfo = {
+        'src': {
+            'train': None,
+            'dev': None,
+            'test': None,
+        },
+        'trg': {
+            'train': None,
+            'dev': None,
+            'test': None,
+        },
+    }

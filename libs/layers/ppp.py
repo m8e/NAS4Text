@@ -37,6 +37,11 @@ def _push_processors(hparams, module_list: nn.ModuleList, ops, shape):
 
 
 def push_prepostprocessors(layer, preprocess_code, postprocess_code, input_shape, output_shape):
+    if hasattr(layer, 'push_prepostprocessors'):
+        # Forward to layer itself if needed.
+        layer.push_prepostprocessors(preprocess_code, postprocess_code, input_shape, output_shape)
+        return
+
     pre_ops = PPPSpace.get_ops(preprocess_code)
     assert PPPSpace.Residual not in pre_ops, 'Residual connection cannot be preprocessor'
     _push_processors(layer.hparams, layer.preprocessors, pre_ops, input_shape)

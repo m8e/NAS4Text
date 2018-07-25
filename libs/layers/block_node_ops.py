@@ -239,8 +239,8 @@ class SelfAttentionOp(BlockNodeOp):
             linear_bias=self.hparams.attn_linear_bias,
             dropout=self.hparams.attention_dropout,
             subsequent_mask=True,
+            ppp_args=[preprocessors, postprocessors],
         )
-        push_prepostprocessors(self.attention, preprocessors, postprocessors, input_shape, input_shape)
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.attention(x, x, x, lengths)
@@ -268,8 +268,8 @@ class EncoderAttentionOp(BlockNodeOp):
             d_q=input_shape[2], d_kv=self.hparams.src_embedding_size,
             dropout=self.hparams.attention_dropout, in_encoder=False, hparams=self.hparams,
             linear_bias=self.hparams.attn_linear_bias, subsequent_mask=False, attn_mean=True,
+            ppp_args=[preprocessors, postprocessors],
         )
-        push_prepostprocessors(self.attention, preprocessors, postprocessors, input_shape, input_shape)
 
         self.attn_scores = None
 

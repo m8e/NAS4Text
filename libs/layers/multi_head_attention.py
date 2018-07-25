@@ -13,6 +13,7 @@ from .base import ChildLayer, wrap_ppp
 from .common import Linear
 from ..utils import common
 from ..utils.data_processing import LanguagePairDataset
+from .ppp import push_prepostprocessors
 
 __author__ = 'fyabc'
 
@@ -148,6 +149,11 @@ class MultiHeadAttention(ChildLayer):
         self.subsequent_mask = kwargs.pop('subsequent_mask', True)
         self.attn_mean = kwargs.pop('attn_mean', False)
 
+        # PPP args: [pre-code, post-code]
+        ppp_args = kwargs.pop('ppp_args', None)
+        if ppp_args is not None:
+            push_prepostprocessors(self, *ppp_args, [1, 1, self.d_q], [1, 1, self.d_q])
+
     @wrap_ppp
     def forward(self, query, key, value, src_lengths, **kwargs):
         x, self.attn = attention_and_proj_mask(
@@ -227,14 +233,15 @@ class SelfAttention(ChildLayer):
         super().__init__(hparams)
 
         linear_bias = kwargs.pop('linear_bias', True)
+        self.d_model = d_model
 
         self.in_encoder = kwargs.pop('in_encoder', True)
         self.attention = MultiHeadAttention(
             h, d_model, dropout=kwargs.pop('dropout', self.hparams.attention_dropout),
-            hparams=hparams, linear_bias=linear_bias).simplify()
+            hparams=hparams, linear_bias=linear_bias)
         self.feed_forward = PositionwiseFeedForward(
             d_model, d_ff, dropout=kwargs.pop('ffn_dropout', self.hparams.ffn_dropout),
-            hparams=hparams, linear_bias=linear_bias).simplify()
+            hparams=hparams, linear_bias=linear_bias)
 
         # [NOTE]: The encoder-decoder attention layer may be inside this attention layer.
         # Used in decoder.
@@ -263,21 +270,26 @@ class SelfAttention(ChildLayer):
             Each need to be preprocessed and postprocessed.
         """
 
-        attn_input = self.preprocess(x)
-        attn_result = self.attention(attn_input, attn_input, attn_input, src_lengths=lengths)
-        attn_result = self.postprocess(attn_result, x)
+        attn_result = self.attention(x, x, x, src_lengths=lengths)
 
         if self.encdec_attention_fwd is not None:
-            encdec_input = self.preprocess(attn_result)
-            encdec_result = self.encdec_attention_fwd(encdec_input)
+            encdec_result = self.encdec_attention_fwd(attn_result)
             self.attn_scores = self.encdec_attention_layer.attn
-            attn_result = self.postprocess(encdec_result, attn_result)
+        else:
+            encdec_result = attn_result
 
-        ff_input = self.preprocess(attn_result)
-        result = self.feed_forward(ff_input)
-        result = self.postprocess(result, attn_result)
+        result = self.feed_forward(encdec_result)
 
         return result
+
+    def push_prepostprocessors(self, preprocess_code, postprocess_code, input_shape, output_shape):
+        # [NOTE]: Different layer norm parameters between child layers.
+        push_prepostprocessors(self.attention, preprocess_code, postprocess_code,
+                               [1, 1, self.d_model], [1, 1, self.d_model])
+        push_prepostprocessors(self.feed_forward, preprocess_code, postprocess_code,
+                               [1, 1, self.d_model], [1, 1, self.d_model])
+        # This layer does not have its own ppp.
+        self.simplify()
 
 
 class MultiHeadAttention2(nn.Module):

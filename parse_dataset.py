@@ -28,6 +28,8 @@ def main(args=None):
 
     hparams = parser.parse_args(args=args)
 
+    print('#', hparams.task)
+
     task = get_task(hparams.task)
 
     dataset_dir = get_data_path(hparams)
@@ -43,4 +45,4 @@ def main(args=None):
 
 
 if __name__ == '__main__':
-    main(['-T', 'de_en_iwslt_bpe2'])
+    main()
