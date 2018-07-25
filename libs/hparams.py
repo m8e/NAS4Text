@@ -107,9 +107,8 @@ def hparams_base():
         clip_norm=25,
 
         # About block child net.
+        # Candidates: concat, add, last
         block_combine_op='concat',
-        default_block_preprocessors=2,      # Norm
-        default_block_postprocessors=1,     # Dropout
     )
 
 
@@ -321,5 +320,7 @@ def hparams_transformer_de_en_iwslt_bpe2_fairseq():
     hparams.enc_learned_pos = False
     hparams.dec_learned_pos = False
     hparams.embed_scale = True
+
+    hparams.block_combine_op = 'last'
 
     return hparams

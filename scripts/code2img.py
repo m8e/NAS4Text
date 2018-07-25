@@ -53,10 +53,13 @@ def _get_op_arg(op_args, i, default=None, space=None):
         return default
 
 
-def _get_op_label(op, op_args, hparams, is_combine=False):
+def _get_op_label(op, op_args, hparams, is_combine=False, cell_args=()):
     str_op = _int2str(op, space=ss.CellSpace.CombineOps if is_combine else ss.CellSpace.CellOps)
     label_list = [str_op]
+    pre_list, post_list = [], []
     if is_combine:
+        # [NOTE]: Maybe postprocessors on combine
+        post_list = ss.PPPSpace.get_ops(_get_op_arg(cell_args, 1, ''))
         if str_op == 'Add':
             pass
         elif str_op == 'Concat':
@@ -80,6 +83,8 @@ def _get_op_label(op, op_args, hparams, is_combine=False):
             label_list.extend([
                 '#heads={}'.format(_get_op_arg(op_args, 0, 8, space=space.NumHeads)),
             ])
+            pre_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 1, ''))
+            post_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 2, ''))
         elif str_op == 'FFN':
             space = ss.CellSpace.Activations
             label_list.extend([
@@ -87,7 +92,8 @@ def _get_op_label(op, op_args, hparams, is_combine=False):
                 'bias={}'.format(_get_op_arg(op_args, 1, True)),
             ])
         elif str_op == 'PFFN':
-            pass
+            pre_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 0, ''))
+            post_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 1, ''))
         elif str_op == 'Identity':
             pass
         elif str_op == 'GroupedLSTM':
@@ -97,19 +103,22 @@ def _get_op_label(op, op_args, hparams, is_combine=False):
             label_list.extend([
                 '#heads={}'.format(_get_op_arg(op_args, 0, 8, space=space.NumHeads)),
             ])
+            pre_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 1, ''))
+            post_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 2, ''))
         else:
             raise RuntimeError('Unknown op code {}'.format(str_op))
-    return '\n'.join(label_list)
+    total_list = pre_list + ['\n'.join(label_list)] + post_list
+    return '{{{}}}'.format('|'.join(total_list))
 
 
-def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_code, hparams):
+def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_code, hparams, cell_args=()):
     c = gv.Digraph(name='cluster_{}_{}'.format(block_name, i))
     c.graph_attr.update({
         'label': 'cell {}'.format(i),
         'labelloc': 't',
     })
     c.node_attr.update({
-        'shape': 'box',
+        'shape': 'record',
         'style': 'filled',
     })
 
@@ -123,11 +132,16 @@ def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_
     op2, op2_args = op2_code
     combine_op, combine_op_args = combine_op_code
 
-    c.node(i1_n, 'in1', fillcolor='lightblue')
+    # [NOTE]: Maybe preprocessors on in1
+    in1_label_list = ss.PPPSpace.get_ops(_get_op_arg(cell_args, 0, '')) + ['in1']
+
+    c.node(i1_n, '{{{}}}'.format('|'.join(in1_label_list)), fillcolor='lightblue')
     c.node(i2_n, 'in2', fillcolor='lightblue')
     c.node(op1_n, _get_op_label(op1, op1_args, hparams), fillcolor='green')
     c.node(op2_n, _get_op_label(op2, op2_args, hparams), fillcolor='green')
-    c.node(combine_op_n, _get_op_label(combine_op, combine_op_args, hparams, is_combine=True), fillcolor='orange')
+    c.node(combine_op_n,
+           _get_op_label(combine_op, combine_op_args, hparams, is_combine=True, cell_args=cell_args),
+           fillcolor='orange')
     c.edge(i1_n, op1_n)
     c.edge(i2_n, op2_n)
     c.edge(op1_n, combine_op_n)
@@ -210,12 +224,12 @@ def main(args=None):
 
         input_node_indices = []
         for i, cell in enumerate(block, start=0):
-            if isinstance(cell, block):
+            if isinstance(cell, dict):
                 # TODO: Process block params.
                 continue
 
             node_name = _name(name, i)
-            in1, in2, op1, op2, combine_op = cell
+            in1, in2, op1, op2, combine_op, *cell_args = cell
 
             op1, op_args1 = _split_op_args(op1)
             op2, op_args2 = _split_op_args(op2)
@@ -227,7 +241,7 @@ def main(args=None):
             else:
                 g.subgraph(_make_cell_subgraph(
                     name, i,
-                    in1, in2, (op1, op_args1), (op2, op_args2), (combine_op, combine_op_args), hparams))
+                    in1, in2, (op1, op_args1), (op2, op_args2), (combine_op, combine_op_args), hparams, cell_args))
 
                 # Add input edges.
                 for in_, in_name in zip((in1, in2), ('in1', 'in2')):

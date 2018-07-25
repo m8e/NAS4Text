@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from collections.abc import Sequence, Mapping
+from weakref import ref
 
 import torch as th
 import torch.nn as nn
@@ -9,7 +10,7 @@ import torch.nn as nn
 from .base import ChildLayer, wrap_ppp
 from .ppp import push_prepostprocessors
 from .block_node_ops import BlockNodeOp, BlockCombineNodeOp
-from ..utils.search_space import CellSpace, PPPSpace
+from ..utils.search_space import CellSpace
 from ..layers.common import Linear
 
 __author__ = 'fyabc'
@@ -18,9 +19,11 @@ __author__ = 'fyabc'
 class InputNode(nn.Module):
     """Input node."""
 
-    def __init__(self, input_index):
+    def __init__(self, input_index, hparams=None, node_args=None):
         super().__init__()
         self.input_index = input_index
+        self.hparams = hparams
+        self.node_args = node_args
 
         assert self.input_index in (0, 1)
 
@@ -28,36 +31,36 @@ class InputNode(nn.Module):
         """
 
         :param in1: Input
-        :param in2: Previous input. None for the first layer.
+        :param in2: Previous input. equal to in1 for the first layer.
         :param lengths:
         :param encoder_state:
         :return:
         """
-        result = (in1, in2)[self.input_index]
-        if result is None:
-            assert self.input_index == 1
-            result = in1
-        return result
+        return (in1, in2)[self.input_index]
 
     def contains_lstm(self):
         return False
 
 
-class Node(nn.Module):
+class Node(ChildLayer):
     """Block node.
 
-    Input[1], Input[2], Op[1], Op[2], CombineOp => Output
+    Input[1], Input[2], Op[1], Op[2], CombineOp, *node_args => Output
+
+    Node args: [..., preprocessors, postprocessors]
     """
 
-    def __init__(self, in1, in2, op1, op2, combine_op, input_shape, in_encoder=True, hparams=None):
-        super().__init__()
-        self.hparams = hparams
+    def __init__(self, in1, in2, op1, op2, combine_op, input_shape, in_encoder=True, hparams=None, node_args=()):
+        super().__init__(hparams)
         self.in_encoder = in_encoder
         self.in1_index = in1
         self.in2_index = in2
         self.op1 = self._parse_op(op1, input_shape)
         self.op2 = self._parse_op(op2, input_shape)
         self.combine_op = self._parse_combine_op(combine_op, input_shape)
+        self.node_args = node_args
+
+        push_prepostprocessors(self, self._get_node_arg(0, ''), self._get_node_arg(1, ''), input_shape, input_shape)
 
     @staticmethod
     def _normalize_op_code(op_code, space=CellSpace.CellOps):
@@ -73,6 +76,12 @@ class Node(nn.Module):
 
         return op_code, op_args
 
+    def _get_node_arg(self, i, default=None):
+        try:
+            return self.node_args[i]
+        except IndexError:
+            return default
+
     def _parse_op(self, op_code, input_shape):
         op_code, op_args = self._normalize_op_code(op_code)
         return BlockNodeOp.create(op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams)
@@ -81,6 +90,7 @@ class Node(nn.Module):
         op_code, op_args = self._normalize_op_code(op_code, space=CellSpace.CombineOps)
         return BlockCombineNodeOp.create(op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams)
 
+    @wrap_ppp
     def forward(self, in1, in2, lengths=None, encoder_state=None, **kwargs):
         in1, in2 = self._process_inputs(in1, in2)
         return self.combine_op(
@@ -106,16 +116,17 @@ class Node(nn.Module):
 class CombineNode(nn.Module):
     """Combine node."""
 
-    def __init__(self, in_encoder=True, hparams=None):
+    def __init__(self, block, in_encoder=True, hparams=None):
         super().__init__()
+        self.block_ref = ref(block)
         self.in_encoder = in_encoder
         self.hparams = hparams
         self.op = hparams.block_combine_op.lower()
-        assert self.op in ('add', 'concat'), 'Unknown block combine op {!r}'.format(self.op)
+        assert self.op in ('add', 'concat', 'last'), 'Unknown block combine op {!r}'.format(self.op)
 
         self.linear = None
 
-    def set_concat_linear(self, hidden_size, n):
+    def build(self, hidden_size, n):
         if self.op == 'concat':
             self.linear = Linear(
                 hidden_size * n, hidden_size, bias=True, dropout=self.hparams.dropout, hparams=self.hparams)
@@ -123,9 +134,12 @@ class CombineNode(nn.Module):
     def forward(self, node_output_list):
         if self.op == 'add':
             return th.stack([t for t in node_output_list if t is not None]).mean(dim=0)
-        else:
-            assert self.op == 'concat'
+        elif self.op == 'concat':
             return self.linear(th.cat([t for t in node_output_list if t is not None], dim=-1))
+        elif self.op == 'last':
+            return node_output_list[-1]
+        else:
+            raise ValueError('Unknown block combine op {!r}'.format(self.op))
 
 
 class BlockLayer(ChildLayer):
@@ -136,7 +150,7 @@ class BlockLayer(ChildLayer):
         self.in_encoder = in_encoder
         self.input_node_indices = []
         self.nodes = nn.ModuleList()
-        self.combine_node = CombineNode(in_encoder=in_encoder, hparams=hparams)
+        self.combine_node = CombineNode(self, in_encoder=in_encoder, hparams=hparams)
         self.topological_order = []
         self.block_params = {}
 
@@ -148,24 +162,25 @@ class BlockLayer(ChildLayer):
         self._get_topological_order(layer_code)
 
         for i, node_code in enumerate(layer_code):
-            in1, in2, op1, op2, combine_op = node_code
+            in1, in2, op1, op2, combine_op, *node_args = node_code
             if in1 is None:
                 # This is an input node.
-                self.nodes.append(InputNode(input_index=len(self.input_node_indices)))
+                self.nodes.append(InputNode(
+                    input_index=len(self.input_node_indices), hparams=self.hparams, node_args=node_args))
                 self.input_node_indices.append(i)
             else:
                 # This is a normal node.
                 self.nodes.append(Node(in1, in2, op1, op2, combine_op, input_shape,
-                                       in_encoder=self.in_encoder, hparams=self.hparams))
+                                       in_encoder=self.in_encoder, hparams=self.hparams, node_args=node_args))
 
         if len(self.input_node_indices) != 2:
             raise RuntimeError('The block layer must have exactly two input nodes, but got {}'.format(
                 len(self.input_node_indices)))
-        self.combine_node.set_concat_linear(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices))
+        self.combine_node.build(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices))
 
         push_prepostprocessors(
-            self, self.block_params.get('preprocessors', self.hparams.default_block_preprocessors),
-            self.block_params.get('postprocessors', self.hparams.default_block_postprocessors),
+            self, self.block_params.get('preprocessors', ''),
+            self.block_params.get('postprocessors', ''),
             input_shape, input_shape,
         )
 

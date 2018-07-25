@@ -9,7 +9,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .base import ChildLayer
+from .base import ChildLayer, wrap_ppp
 from .common import Linear
 from ..utils import common
 from ..utils.data_processing import LanguagePairDataset
@@ -88,7 +88,7 @@ def attention_and_proj_mask(
     return x, attn
 
 
-class MultiHeadAttention(nn.Module):
+class MultiHeadAttention(ChildLayer):
     r"""The module of multi-head attention.
 
     :math:`MultiHead(Q, K, V) = Concat(head_1, ..., head_h) * W^O`
@@ -116,9 +116,9 @@ class MultiHeadAttention(nn.Module):
     """
 
     def __init__(self, h, d_model, **kwargs):
-        super().__init__()
-
         hparams = kwargs.pop('hparams', None)
+
+        super().__init__(hparams)
 
         assert d_model % h == 0
 
@@ -148,6 +148,7 @@ class MultiHeadAttention(nn.Module):
         self.subsequent_mask = kwargs.pop('subsequent_mask', True)
         self.attn_mean = kwargs.pop('attn_mean', False)
 
+    @wrap_ppp
     def forward(self, query, key, value, src_lengths, **kwargs):
         x, self.attn = attention_and_proj_mask(
             self, query, key, value, src_lengths=src_lengths, subsequent_mask=self.subsequent_mask,
@@ -194,17 +195,19 @@ def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
     return mask
 
 
-class PositionwiseFeedForward(nn.Module):
+class PositionwiseFeedForward(ChildLayer):
     def __init__(self, d_model, d_ff, **kwargs):
-        super().__init__()
-
         hparams = kwargs.pop('hparams', None)
+
+        super().__init__(hparams)
+
         linear_bias = kwargs.pop('linear_bias', True)
 
         self.w_1 = Linear(d_model, d_ff, hparams=hparams, bias=linear_bias)
         self.w_2 = Linear(d_ff, d_model, hparams=hparams, bias=linear_bias)
         self.dropout = nn.Dropout(kwargs.pop('dropout', 0.1))
 
+    @wrap_ppp
     def forward(self, x):
         return self.w_2(self.dropout(F.relu(self.w_1(x))))
 
@@ -228,20 +231,22 @@ class SelfAttention(ChildLayer):
         self.in_encoder = kwargs.pop('in_encoder', True)
         self.attention = MultiHeadAttention(
             h, d_model, dropout=kwargs.pop('dropout', self.hparams.attention_dropout),
-            hparams=hparams, linear_bias=linear_bias)
+            hparams=hparams, linear_bias=linear_bias).simplify()
         self.feed_forward = PositionwiseFeedForward(
             d_model, d_ff, dropout=kwargs.pop('ffn_dropout', self.hparams.ffn_dropout),
-            hparams=hparams, linear_bias=linear_bias)
+            hparams=hparams, linear_bias=linear_bias).simplify()
 
         # [NOTE]: The encoder-decoder attention layer may be inside this attention layer.
         # Used in decoder.
-        self.encdec_attention = None
+        self.encdec_attention_layer = None
+        self.encdec_attention_fwd = None
         self.attn_scores = None
 
     def add_encdec_attention(self, layer, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
-        self.encdec_attention = lambda x: layer(x, *args, **kwargs)
+        self.encdec_attention_layer = layer
+        self.encdec_attention_fwd = lambda x: layer(x, *args, **kwargs)
 
     def forward(self, x, lengths=None, **kwargs):
         """
@@ -259,13 +264,13 @@ class SelfAttention(ChildLayer):
         """
 
         attn_input = self.preprocess(x)
-        mask = _mask_from_lengths(attn_input, lengths, self, subsequent_mask=True)
-        attn_result = self.attention(attn_input, attn_input, attn_input, mask=mask)
+        attn_result = self.attention(attn_input, attn_input, attn_input, src_lengths=lengths)
         attn_result = self.postprocess(attn_result, x)
 
-        if self.encdec_attention is not None:
+        if self.encdec_attention_fwd is not None:
             encdec_input = self.preprocess(attn_result)
-            encdec_result, self.attn_scores = self.encdec_attention(encdec_input)
+            encdec_result = self.encdec_attention_fwd(encdec_input)
+            self.attn_scores = self.encdec_attention_layer.attn
             attn_result = self.postprocess(encdec_result, attn_result)
 
         ff_input = self.preprocess(attn_result)

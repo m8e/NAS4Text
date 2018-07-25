@@ -10,6 +10,7 @@ from .common import *
 from .lstm import LSTMLayer
 from .cnn import EncoderConvLayer, DecoderConvLayer
 from .multi_head_attention import MultiHeadAttention, PositionwiseFeedForward
+from .ppp import push_prepostprocessors
 from ..utils import search_space as ss
 
 __author__ = 'fyabc'
@@ -126,7 +127,7 @@ class FFNOp(BlockNodeOp):
 
 class PFFNOp(BlockNodeOp):
     """
-    op_args: []
+    op_args: [..., preprocessors = "", postprocessors = ""]
     """
 
     # TODO: Other args?
@@ -135,12 +136,16 @@ class PFFNOp(BlockNodeOp):
         super().__init__(op_args, input_shape, **kwargs)
         input_size = input_shape[-1]
 
+        preprocessors = _get_op_arg(self, 0, "")
+        postprocessors = _get_op_arg(self, 1, "")
+
         self.pffn = PositionwiseFeedForward(
             input_size, self.hparams.attn_d_ff,
             dropout=self.hparams.attention_dropout,
             hparams=self.hparams,
             linear_bias=self.hparams.attn_linear_bias,
         )
+        push_prepostprocessors(self.pffn, preprocessors, postprocessors, input_shape, input_shape)
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.pffn(x)
@@ -215,7 +220,7 @@ class ConvolutionOp(BlockNodeOp):
 
 class SelfAttentionOp(BlockNodeOp):
     """
-    op_args: [num_heads: index = 8]
+    op_args: [num_heads: index = 8, ..., preprocessors = "", postprocessors = ""]
     """
 
     def __init__(self, op_args, input_shape, **kwargs):
@@ -224,6 +229,8 @@ class SelfAttentionOp(BlockNodeOp):
 
         space = ss.AttentionSpaces[self.hparams.attn_space]
         h = _get_op_arg(self, 0, 8, space=space.NumHeads)
+        preprocessors = _get_op_arg(self, 1, "")
+        postprocessors = _get_op_arg(self, 2, "")
 
         self.attention = MultiHeadAttention(
             h, input_size,
@@ -233,6 +240,7 @@ class SelfAttentionOp(BlockNodeOp):
             dropout=self.hparams.attention_dropout,
             subsequent_mask=True,
         )
+        push_prepostprocessors(self.attention, preprocessors, postprocessors, input_shape, input_shape)
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.attention(x, x, x, lengths)
@@ -240,7 +248,7 @@ class SelfAttentionOp(BlockNodeOp):
 
 class EncoderAttentionOp(BlockNodeOp):
     """
-    op_args: [num_heads: index = 8]
+    op_args: [num_heads: index = 8, ..., preprocessors = "", postprocessors = ""]
     """
 
     # FIXME: The decoder must contains at least one encoder attention op,
@@ -251,14 +259,17 @@ class EncoderAttentionOp(BlockNodeOp):
 
         space = ss.AttentionSpaces[self.hparams.attn_space]
         h = _get_op_arg(self, 0, 8, space=space.NumHeads)
+        preprocessors = _get_op_arg(self, 1, "")
+        postprocessors = _get_op_arg(self, 2, "")
 
         self.attention = MultiHeadAttention(
             h,
             d_model=self.hparams.trg_embedding_size,
             d_q=input_shape[2], d_kv=self.hparams.src_embedding_size,
             dropout=self.hparams.attention_dropout, in_encoder=False, hparams=self.hparams,
-            linear_bias=self.hparams.attn_linear_bias, subsequent_mask=False,
+            linear_bias=self.hparams.attn_linear_bias, subsequent_mask=False, attn_mean=True,
         )
+        push_prepostprocessors(self.attention, preprocessors, postprocessors, input_shape, input_shape)
 
         self.attn_scores = None
 

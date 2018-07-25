@@ -82,7 +82,7 @@ class BlockChildEncoder(ChildEncoderBase):
         # x = self.fc1(x)
 
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
-        input_list = [None, x]
+        input_list = [x, x]
         for i in range(self.num_layers):
             layer = self.layers[i]
             output = layer(input_list[-1], input_list[-2], lengths=src_lengths)

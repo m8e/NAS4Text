@@ -27,6 +27,12 @@ class PPPSpace:
     Norm = 'norm'
     Residual = 'residual'
 
+    Abbreviations = {
+        'd': Dropout,
+        'n': Norm,
+        'a': Residual,
+    }
+
     # None, Dropout, Norm, Dropout + Norm, Norm + Dropout, Residual, Dropout + Residual,
     # Dropout + Residual + Norm
     # TODO: Add more
@@ -35,6 +41,9 @@ class PPPSpace:
 
     @classmethod
     def get_ops(cls, code):
+        if isinstance(code, str):
+            # "nda" -> Norm + Dropout + Residual
+            return [cls.Abbreviations[c] for c in code]
         if code == 0:
             return []
         elif code == 1:

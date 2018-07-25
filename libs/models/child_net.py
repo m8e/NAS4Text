@@ -184,7 +184,7 @@ class ChildDecoder(ChildIncrementalDecoderBase):
                 attention = MultiHeadAttention(
                     8, d_model=hparams.trg_embedding_size, d_q=output_shape[2], d_kv=hparams.src_embedding_size,
                     dropout=hparams.attention_dropout, in_encoder=False, hparams=hparams,
-                    linear_bias=hparams.attn_linear_bias, subsequent_mask=False)
+                    linear_bias=hparams.attn_linear_bias, subsequent_mask=False, attn_mean=True).simplify()
             elif hparams.enc_dec_attn_type == 'fairseq':
                 raise ValueError('Old fairseq encoder-decoder attention is not supported now')
             else:
