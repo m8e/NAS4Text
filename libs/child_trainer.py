@@ -69,6 +69,7 @@ class ChildTrainer:
     def save_checkpoint(self, filename, extra_state):
         """Save all training state in a checkpoint file."""
         if distributed_utils.is_master(self.hparams):
+            extra_state['train_meters'] = self.meters
             model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
             common.save_state(filename, self.hparams, model, self.criterion, self.optimizer,
                               self.lr_scheduler, self._num_updates, self._optim_history, extra_state,
@@ -95,6 +96,10 @@ class ChildTrainer:
                     self.optimizer.load_state_dict(last_optim_state)
 
             self._num_updates = last_optim['num_updates']
+
+        if extra_state is not None and 'train_meters' in extra_state:
+            self.meters = extra_state['train_meters']
+            del extra_state['train_meters']
 
         return extra_state
 

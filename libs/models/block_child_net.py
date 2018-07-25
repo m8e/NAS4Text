@@ -31,15 +31,7 @@ class BlockChildEncoder(ChildEncoderBase):
         self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
 
         # Embeddings.
-        self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
-                                      hparams=hparams)
-        self.embed_positions = PositionalEmbedding(
-            hparams.max_src_positions,
-            hparams.src_embedding_size,
-            self.task.PAD_ID,
-            left_pad=LanguagePairDataset.LEFT_PAD_SOURCE,
-            hparams=hparams,
-        )
+        self._build_embedding()
 
         # The main encoder network.
         self.layers = nn.ModuleList()
@@ -52,7 +44,10 @@ class BlockChildEncoder(ChildEncoderBase):
 
             input_shape = output_shape
 
-        self.out_norm = LayerNorm(input_shape[2])
+        if hparams.enc_out_norm:
+            self.out_norm = LayerNorm(input_shape[2])
+        else:
+            self.out_norm = None
 
         if hparams.enc_output_fc or input_shape[2] != hparams.src_embedding_size:
             self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
@@ -97,7 +92,8 @@ class BlockChildEncoder(ChildEncoderBase):
         x = input_list[-1]
 
         # Output normalization
-        x = self.out_norm(x)
+        if self.out_norm is not None:
+            x = self.out_norm(x)
 
         # project back to size of embedding
         if self.fc2 is not None:
@@ -149,7 +145,10 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
-        self.out_norm = LayerNorm(self.output_shape[2])
+        if hparams.dec_out_norm:
+            self.out_norm = LayerNorm(self.output_shape[2])
+        else:
+            self.out_norm = None
         if hparams.dec_output_fc or self.output_shape[2] != hparams.decoder_out_embedding_size:
             self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
         else:
@@ -207,7 +206,8 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
         x = input_list[-1]
 
         # Output normalization
-        x = self.out_norm(x)
+        if self.out_norm is not None:
+            x = self.out_norm(x)
 
         # Project back to size of vocabulary
         if self.fc2 is not None:

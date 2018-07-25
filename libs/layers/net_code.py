@@ -6,6 +6,7 @@
 See ``NetCodeFormat.md`` for details of net code.
 """
 
+from copy import deepcopy
 import json
 import os
 import pickle
@@ -27,7 +28,7 @@ class NetCode:
     BlockChildNet = 'BlockChildNet'
 
     def __init__(self, net_code):
-        self.original_code = net_code
+        self.original_code = deepcopy(net_code)
 
         if isinstance(net_code, list):
             # Compatible with old net code.

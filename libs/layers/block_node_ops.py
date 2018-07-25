@@ -9,7 +9,7 @@ import torch.nn as nn
 from .common import *
 from .lstm import LSTMLayer
 from .cnn import EncoderConvLayer, DecoderConvLayer
-from .multi_head_attention import EncDecAttention, MHAttentionWrapper, PositionwiseFeedForward
+from .multi_head_attention import MultiHeadAttention, PositionwiseFeedForward
 from ..utils import search_space as ss
 
 __author__ = 'fyabc'
@@ -225,16 +225,17 @@ class SelfAttentionOp(BlockNodeOp):
         space = ss.AttentionSpaces[self.hparams.attn_space]
         h = _get_op_arg(self, 0, 8, space=space.NumHeads)
 
-        self.attention = MHAttentionWrapper(
+        self.attention = MultiHeadAttention(
             h, input_size,
             hparams=self.hparams,
             in_encoder=self.in_encoder,
             linear_bias=self.hparams.attn_linear_bias,
             dropout=self.hparams.attention_dropout,
+            subsequent_mask=True,
         )
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
-        return self.attention(x, lengths=lengths, encoder_state=encoder_state)
+        return self.attention(x, x, x, lengths)
 
 
 class EncoderAttentionOp(BlockNodeOp):
@@ -251,12 +252,12 @@ class EncoderAttentionOp(BlockNodeOp):
         space = ss.AttentionSpaces[self.hparams.attn_space]
         h = _get_op_arg(self, 0, 8, space=space.NumHeads)
 
-        self.attention = EncDecAttention(
+        self.attention = MultiHeadAttention(
             h,
-            input_shape[2],
-            self.hparams.trg_embedding_size, self.hparams.src_embedding_size,
-            dropout=self.hparams.dropout, in_encoder=False, hparams=self.hparams,
-            linear_bias=self.hparams.attn_linear_bias,
+            d_model=self.hparams.trg_embedding_size,
+            d_q=input_shape[2], d_kv=self.hparams.src_embedding_size,
+            dropout=self.hparams.attention_dropout, in_encoder=False, hparams=self.hparams,
+            linear_bias=self.hparams.attn_linear_bias, subsequent_mask=False,
         )
 
         self.attn_scores = None
@@ -276,10 +277,12 @@ class EncoderAttentionOp(BlockNodeOp):
         """
         # assert encoder_state is not None
 
-        result, self.attn_scores = self.attention(
-            x, target_embedding=kwargs.pop('target_embedding', None),
-            encoder_outs=encoder_state, src_lengths=kwargs.get('src_lengths', None),
+        result = self.attention(
+            x, encoder_state[0], encoder_state[1], src_lengths=kwargs.get('src_lengths', None),
+            target_embedding=kwargs.get('target_embedding', None),
         )
+        self.attn_scores = self.attention.attn
+
         return result
 
 

@@ -373,3 +373,8 @@ def batched_index_select(input_, index):
     """
 
     return th.stack([th.index_select(a, 0, i) for a, i in zip(input_, index)])
+
+
+def fill_with_neg_inf(t):
+    """FP16-compatible function that fills a tensor with -inf."""
+    return t.float().fill_(float('-inf')).type_as(t)

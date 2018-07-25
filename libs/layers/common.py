@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .learned_positional_embedding import LearnedPositionalEmbedding
+from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 
 __author__ = 'fyabc'
 
@@ -71,6 +72,11 @@ def Linear(in_features, out_features, bias=True, dropout=0, hparams=None):
         if bias:
             m.bias.data.uniform_(-0.1, 0.1)
         return nn.utils.weight_norm(m)
+    elif hparams.initializer == 'fairseq':
+        nn.init.xavier_uniform_(m.weight)
+        if bias:
+            nn.init.constant_(m.bias, 0.)
+        return m
     else:
         raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
 
@@ -82,66 +88,33 @@ def Embedding(num_embeddings, embedding_dim, padding_idx, hparams=None):
         m.weight.data.normal_(0, 0.1)
     elif hparams.initializer == 'uniform_unit_scaling':
         uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
+    elif hparams.initializer == 'fairseq':
+        nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     else:
         raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
     return m
 
 
-def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad, hparams=None):
-    m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad)
-    if hparams.initializer in ('original', 'kaitao', 'kaitao_wn'):
-        m.weight.data.normal_(0, 0.1)
-    elif hparams.initializer == 'uniform_unit_scaling':
-        uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
+def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad, hparams=None, learned=True):
+    if learned:
+        m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad)
+        if hparams.initializer in ('original', 'kaitao', 'kaitao_wn'):
+            m.weight.data.normal_(0, 0.1)
+        elif hparams.initializer == 'uniform_unit_scaling':
+            uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
+        elif hparams.initializer == 'fairseq':
+            nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
+            nn.init.constant_(m.weight[padding_idx], 0)
+        else:
+            raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
     else:
-        raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
+        m = SinusoidalPositionalEmbedding(embedding_dim, padding_idx, left_pad, num_embeddings)
     return m
 
 
 class Identity(nn.Module):
     def forward(self, x):
         return x
-
-
-class FairseqAttention(nn.Module):
-    def __init__(self, conv_channels, embed_dim, bmm=None, hparams=None):
-        super().__init__()
-
-        self.hparams = hparams
-
-        # projects from output of convolution to embedding dimension
-        self.in_projection = Linear(conv_channels, embed_dim, hparams=hparams)
-        # projects from embedding dimension to convolution size
-        self.out_projection = Linear(embed_dim, conv_channels, hparams=hparams)
-
-        self.bmm = bmm if bmm is not None else th.bmm
-
-    def forward(self, x, target_embedding, encoder_out, src_lengths=None):
-        residual = x
-
-        # attention
-        x = (self.in_projection(x) + target_embedding) * math.sqrt(0.5)
-        x = self.bmm(x, encoder_out[0])
-
-        # softmax over last dim
-        sz = x.size()
-        x = F.softmax(x.view(sz[0] * sz[1], sz[2]), dim=1)
-        x = x.view(sz)
-        attn_scores = x
-
-        x = self.bmm(x, encoder_out[1])
-
-        # scale attention output
-        s = encoder_out[1].size(1)
-        x = x * (s * math.sqrt(1.0 / s))
-
-        # project back
-        x = (self.out_projection(x) + residual) * math.sqrt(0.5)
-        return x, attn_scores
-
-    def make_generation_fast_(self, beamable_mm_beam_size=None, **kwargs):
-        """Replace torch.bmm with BeamableMM."""
-        # TODO
 
 
 def residual(x, input_, res_type='default'):
@@ -161,7 +134,7 @@ class NLCBatchNorm1d(nn.BatchNorm1d):
         return super().forward(x)
 
 
-class LayerNorm(nn.Module):
+class _LayerNorm(nn.Module):
     """A Simple implementation of layer normalization, applied on (N, L, C) input."""
 
     def __init__(self, num_features, eps=1e-6):
@@ -178,6 +151,22 @@ class LayerNorm(nn.Module):
 
     def __repr__(self):
         return '{name}({num_features}, eps={eps})'.format(name=self.__class__.__name__, **self.__dict__)
+
+
+if hasattr(nn, 'LayerNorm'):
+    class _FairseqLayerNorm(nn.LayerNorm):
+        """Wrapper of nn.LayerNorm, make the forward arguments compatible."""
+
+        def forward(self, x, input_=None):
+            return super().forward(x)
+else:
+    _FairseqLayerNorm = None
+
+
+def LayerNorm(*args, **kwargs):
+    if _FairseqLayerNorm is not None:
+        return _FairseqLayerNorm(*args, **kwargs)
+    return _LayerNorm(*args, **kwargs)
 
 
 class MyDropout(nn.Dropout):
@@ -204,7 +193,6 @@ __all__ = [
     'Linear',
     'PositionalEmbedding',
     'Identity',
-    'FairseqAttention',
     'residual',
     'NLCBatchNorm1d', 'LayerNorm', 'MyDropout', 'Residual',
 ]

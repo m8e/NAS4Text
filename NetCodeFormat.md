@@ -128,7 +128,11 @@ class ConvSpaceBase:
                     CELL_OP,    # Op 1 id (null if this is an input node)
                     COMBINE_OP  # Combine op id (null if this is an input node)
                 ],
-                ...
+                ...,
+                {               # If the last node item is a dict, it is block params
+                    "preprocessors": 0,
+                    "postprocessors": 4,
+                }
             ],
             [   # Layer 1
                 ...
@@ -154,7 +158,11 @@ class ConvSpaceBase:
         "enc1": [
             [None, None, None, None, None],
             [None, None, None, None, None],
-            [0, 1, CELL_OP, CELL_OP, COMBINE_OP]
+            [0, 1, CELL_OP, CELL_OP, COMBINE_OP],
+            {       # If the last node item is a dict, it is block params
+                "preprocessors": 0,
+                "postprocessors": 4,
+            }
         ],
         "enc2": [
             [None, None, None, None, None],

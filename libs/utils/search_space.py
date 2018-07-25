@@ -27,9 +27,11 @@ class PPPSpace:
     Norm = 'norm'
     Residual = 'residual'
 
-    # None, Dropout, Norm, Dropout + Norm, Norm + Dropout, Residual, Dropout + Residual, TODO: Add more
-    Preprocessors = [0, 1, 2, 3, 4, 5, 6]
-    Postprocessors = [0, 1, 2, 3, 4, 5, 6]
+    # None, Dropout, Norm, Dropout + Norm, Norm + Dropout, Residual, Dropout + Residual,
+    # Dropout + Residual + Norm
+    # TODO: Add more
+    Preprocessors = [0, 1, 2, 3, 4, 5, 6, 7]
+    Postprocessors = [0, 1, 2, 3, 4, 5, 6, 7]
 
     @classmethod
     def get_ops(cls, code):
@@ -47,6 +49,8 @@ class PPPSpace:
             return [cls.Residual]
         elif code == 6:
             return [cls.Dropout, cls.Residual]
+        elif code == 7:
+            return [cls.Dropout, cls.Residual, cls.Norm]
         elif code is None:
             return []
         else:

@@ -1,12 +1,12 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-from collections.abc import Sequence
+from collections.abc import Sequence, Mapping
 
 import torch as th
 import torch.nn as nn
 
-from .base import ChildLayer
+from .base import ChildLayer, wrap_ppp
 from .ppp import push_prepostprocessors
 from .block_node_ops import BlockNodeOp, BlockCombineNodeOp
 from ..utils.search_space import CellSpace, PPPSpace
@@ -138,8 +138,13 @@ class BlockLayer(ChildLayer):
         self.nodes = nn.ModuleList()
         self.combine_node = CombineNode(in_encoder=in_encoder, hparams=hparams)
         self.topological_order = []
+        self.block_params = {}
 
     def build(self, layer_code, input_shape):
+        if isinstance(layer_code[-1], Mapping):
+            # The last item of the block code can be block params.
+            self.block_params = dict(layer_code[-1])
+            layer_code = layer_code[:-1]
         self._get_topological_order(layer_code)
 
         for i, node_code in enumerate(layer_code):
@@ -157,8 +162,16 @@ class BlockLayer(ChildLayer):
             raise RuntimeError('The block layer must have exactly two input nodes, but got {}'.format(
                 len(self.input_node_indices)))
         self.combine_node.set_concat_linear(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices))
+
+        push_prepostprocessors(
+            self, self.block_params.get('preprocessors', self.hparams.default_block_preprocessors),
+            self.block_params.get('postprocessors', self.hparams.default_block_postprocessors),
+            input_shape, input_shape,
+        )
+
         return input_shape
 
+    @wrap_ppp
     def forward(self, input_, prev_input, lengths=None, encoder_state=None, **kwargs):
         """
 
@@ -168,6 +181,7 @@ class BlockLayer(ChildLayer):
         :param encoder_state:
         :return:
         """
+
         node_output_list = [None for _ in self.nodes]
 
         for i in self.topological_order:

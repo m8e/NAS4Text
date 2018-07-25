@@ -4,7 +4,7 @@
 """Generate image from net code."""
 
 import argparse
-from collections import Sequence
+from collections import Sequence, defaultdict
 import json
 import os
 import sys
@@ -174,6 +174,24 @@ def main(args=None):
     g_global.format = args.format
     g_global.name = 'G'
 
+    block_counter = defaultdict(int)
+    for blocks_ed in code.original_code['Layers']:  # Get block in string format
+        for block in blocks_ed:
+            if isinstance(block, str):
+                block_counter[block] += 1
+            else:
+                block_counter['<unknown>'] += 1
+
+    global_title_list = [
+        'Name={}'.format(output_basename),
+        ', '.join('{}*{}'.format(b, n) for b, n in block_counter.items()),
+    ]
+    global_title = '\n'.join(global_title_list)
+    g_global.graph_attr.update({
+        'label': global_title,
+        'labelloc': 't',
+    })
+
     for name, block in blocks.items():
         # [NOTE]: Add 'cluster_' prefix to add border of this subgraph.
         g = gv.Digraph(name='cluster_' + name)
@@ -192,6 +210,10 @@ def main(args=None):
 
         input_node_indices = []
         for i, cell in enumerate(block, start=0):
+            if isinstance(cell, block):
+                # TODO: Process block params.
+                continue
+
             node_name = _name(name, i)
             in1, in2, op1, op2, combine_op = cell
 

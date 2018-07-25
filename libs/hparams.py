@@ -61,6 +61,7 @@ def hparams_base():
         decoder_out_embedding_size=8,
         share_input_output_embedding=False,
         share_src_trg_embedding=False,
+        embed_scale=False,
 
         dropout=0.1,
         ppp_dropout=0.1,        # Dropout for layer pre-post-processing.
@@ -74,6 +75,10 @@ def hparams_base():
         enc_output_fc=False,
         dec_output_fc=False,
         attn_linear_bias=False,
+        enc_out_norm=False,
+        dec_out_norm=False,
+        enc_learned_pos=True,
+        dec_learned_pos=True,
 
         # This define the search space of three layer types.
         lstm_space='base',
@@ -91,7 +96,7 @@ def hparams_base():
         norm_epsilon=1e-6,
 
         # About initializer
-        # Candidates: original, uniform_init_scaling, kaitao
+        # Candidates: original, uniform_init_scaling, kaitao, fairseq,
         initializer='uniform_unit_scaling',
         initializer_gain=1.0,
 
@@ -103,6 +108,8 @@ def hparams_base():
 
         # About block child net.
         block_combine_op='concat',
+        default_block_preprocessors=2,      # Norm
+        default_block_postprocessors=1,     # Dropout
     )
 
 
@@ -268,7 +275,51 @@ def hparams_transformer_de_en_iwslt_bpe2_e2d2_best():
     """The best hparams of en-de-iwslt14 transformer e2d2 now."""
     hparams = hparams_transformer_de_en_iwslt_bpe2_kaitao_bias()
 
+    # # Copy inherited hparams here.
+    # hparams.max_src_positions = 1024
+    # hparams.max_trg_positions = 1024
+    # hparams.src_embedding_size = 256
+    # hparams.trg_embedding_size = 256
+    # hparams.decoder_out_embedding_size = 256
+    # hparams.attn_d_ff = 1024
+    # hparams.clip_norm = 0.1
+    # hparams.dropout = 0.1
+    # hparams.ppp_dropout = 0.1
+    # hparams.attn_dropout = 0.1
+    # hparams.ffn_dropout = 0.1
+    # hparams.share_src_trg_embedding = False
+    # hparams.share_input_output_embedding = False
+    # hparams.initializer = 'kaitao_wn'
+
     hparams.dec_output_fc = True
     hparams.attn_linear_bias = False
+    hparams.enc_out_norm = True
+    hparams.dec_out_norm = True
+
+    return hparams
+
+
+@register_hparams('bpe2_transformer_fairseq')
+def hparams_transformer_de_en_iwslt_bpe2_fairseq():
+    hparams = hparams_normal()
+
+    hparams.initializer = 'fairseq'
+
+    hparams.dropout = 0.2
+    hparams.attention_dropout = 0.0
+    hparams.ffn_dropout = 0.0
+    hparams.ppp_dropout = hparams.dropout
+
+    hparams.max_src_positions = 1024
+    hparams.max_trg_positions = 1024
+    hparams.src_embedding_size = 256
+    hparams.trg_embedding_size = 256
+    hparams.decoder_out_embedding_size = 256
+    hparams.share_input_output_embedding = True
+    hparams.attn_d_ff = 512
+    hparams.attn_linear_bias = True
+    hparams.enc_learned_pos = False
+    hparams.dec_learned_pos = False
+    hparams.embed_scale = True
 
     return hparams

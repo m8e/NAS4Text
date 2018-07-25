@@ -3,6 +3,8 @@
 
 """The base class of child layers."""
 
+import functools
+
 import torch.nn as nn
 
 from .common import Linear
@@ -51,3 +53,13 @@ class ChildLayer(nn.Module):
         self.preprocessors = None
         self.postprocessors = None
         return self
+
+
+def wrap_ppp(forward_fn):
+    @functools.wraps(forward_fn)
+    def forward(self, input_, *args, **kwargs):
+        input_before = input_
+        input_ = self.preprocess(input_)
+        result = forward_fn(self, input_, *args, **kwargs)
+        return self.postprocess(result, input_before)
+    return forward

@@ -25,14 +25,13 @@ import torch.nn.functional as F
 
 from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
 from ..tasks import get_task
-from ..utils.data_processing import LanguagePairDataset
 from ..utils.search_space import LayerTypes
 from ..utils import common
 from ..layers.common import *
 from ..layers.lstm import build_lstm, LSTMLayer
 from ..layers.cnn import build_cnn
 from ..layers.attention import build_attention
-from ..layers.multi_head_attention import EncDecAttention
+from ..layers.multi_head_attention import MultiHeadAttention
 from ..layers.grad_multiply import GradMultiply
 
 __author__ = 'fyabc'
@@ -67,15 +66,7 @@ class ChildEncoder(ChildEncoderBase):
         self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
 
         # Embeddings.
-        self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
-                                      hparams=hparams)
-        self.embed_positions = PositionalEmbedding(
-            hparams.max_src_positions,
-            hparams.src_embedding_size,
-            self.task.PAD_ID,
-            left_pad=LanguagePairDataset.LEFT_PAD_SOURCE,
-            hparams=hparams,
-        )
+        self._build_embedding()
 
         # TODO: Need fc1 to project src_emb_size to in_channels here?
 
@@ -93,7 +84,10 @@ class ChildEncoder(ChildEncoderBase):
             input_shape = output_shape
             self.num_layers += 1
 
-        self.out_norm = LayerNorm(input_shape[2])
+        if hparams.enc_out_norm:
+            self.out_norm = LayerNorm(input_shape[2])
+        else:
+            self.out_norm = None
         if hparams.enc_output_fc or input_shape[2] != hparams.src_embedding_size:
             self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
         else:
@@ -116,7 +110,7 @@ class ChildEncoder(ChildEncoderBase):
         x = src_tokens
         logging.debug('Encoder input shape: {}'.format(list(x.shape)))
 
-        x = self.embed_tokens(x) + self.embed_positions(x)
+        x = self.embed_tokens(x) * self.embed_scale + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
 
@@ -131,7 +125,8 @@ class ChildEncoder(ChildEncoderBase):
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(x.shape)))
 
         # Output normalization
-        x = self.out_norm(x)
+        if self.out_norm is not None:
+            x = self.out_norm(x)
 
         # project back to size of embedding
         if self.fc2 is not None:
@@ -186,11 +181,12 @@ class ChildDecoder(ChildIncrementalDecoderBase):
             setattr(self, 'layer_{}'.format(i), layer)
 
             if hparams.enc_dec_attn_type == 'dot_product':
-                attention = EncDecAttention(8, output_shape[2], hparams.trg_embedding_size, hparams.src_embedding_size,
-                                            dropout=hparams.dropout, in_encoder=False, hparams=hparams,
-                                            linear_bias=hparams.attn_linear_bias)
+                attention = MultiHeadAttention(
+                    8, d_model=hparams.trg_embedding_size, d_q=output_shape[2], d_kv=hparams.src_embedding_size,
+                    dropout=hparams.attention_dropout, in_encoder=False, hparams=hparams,
+                    linear_bias=hparams.attn_linear_bias, subsequent_mask=False)
             elif hparams.enc_dec_attn_type == 'fairseq':
-                attention = FairseqAttention(output_shape[2], hparams.trg_embedding_size, hparams=hparams)
+                raise ValueError('Old fairseq encoder-decoder attention is not supported now')
             else:
                 raise ValueError('Unknown encoder-decoder attention type {}'.format(hparams.enc_dec_attn_type))
             setattr(self, 'attention_{}'.format(i), attention)
@@ -201,7 +197,10 @@ class ChildDecoder(ChildIncrementalDecoderBase):
         # Decoder output shape (before softmax)
         self.output_shape = input_shape
 
-        self.out_norm = LayerNorm(self.output_shape[2])
+        if hparams.dec_out_norm:
+            self.out_norm = LayerNorm(self.output_shape[2])
+        else:
+            self.out_norm = None
         if hparams.dec_output_fc or self.output_shape[2] != hparams.decoder_out_embedding_size:
             self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
         else:
@@ -237,7 +236,7 @@ class ChildDecoder(ChildIncrementalDecoderBase):
         x = trg_tokens
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))
 
-        x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
+        x = self._embed_tokens(x, incremental_state) * self.embed_scale + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         target_embedding = x
 
@@ -251,8 +250,9 @@ class ChildDecoder(ChildIncrementalDecoderBase):
             encdec_attention_inside = hasattr(layer, 'add_encdec_attention')
 
             encdec_attention_kwargs = {
+                'key': encoder_out[0],
+                'value': encoder_out[1],
                 'target_embedding': target_embedding if self.hparams.connect_trg_emb else None,
-                'encoder_outs': encoder_out,
                 'src_lengths': src_lengths,
             }
             if encdec_attention_inside:
@@ -276,7 +276,8 @@ class ChildDecoder(ChildIncrementalDecoderBase):
             logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
 
         # Output normalization
-        x = self.out_norm(x)
+        if self.out_norm is not None:
+            x = self.out_norm(x)
 
         # Project back to size of vocabulary
         if self.fc2 is not None:

@@ -1,6 +1,8 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+import math
+
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -96,8 +98,8 @@ class EncDecChildNet(ChildNetBase):
     def encode(self, src_tokens, src_lengths):
         return self.encoder(src_tokens, src_lengths)
 
-    def decode(self, encoder_out, src_lengths, trg_tokens, trg_lengths):
-        return self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths)
+    def decode(self, encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state=None):
+        return self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state=incremental_state)
 
     def get_normalized_probs(self, net_output, log_probs=False):
         return self.decoder.get_normalized_probs(net_output, log_probs)
@@ -126,6 +128,20 @@ class ChildEncoderBase(nn.Module):
             Reordered encoder out.
         """
         raise NotImplementedError()
+
+    def _build_embedding(self):
+        hparams = self.hparams
+        self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
+                                      hparams=hparams)
+        self.embed_positions = PositionalEmbedding(
+            hparams.max_src_positions,
+            hparams.src_embedding_size,
+            self.task.PAD_ID,
+            left_pad=LanguagePairDataset.LEFT_PAD_SOURCE,
+            hparams=hparams,
+            learned=hparams.enc_learned_pos,
+        )
+        self.embed_scale = math.sqrt(hparams.src_embedding_size) if hparams.embed_scale else 1
 
 
 class ChildDecoderBase(nn.Module):
@@ -165,7 +181,9 @@ class ChildDecoderBase(nn.Module):
             self.task.PAD_ID,
             left_pad=LanguagePairDataset.LEFT_PAD_TARGET,
             hparams=hparams,
+            learned=hparams.dec_learned_pos,
         )
+        self.embed_scale = math.sqrt(hparams.trg_embedding_size) if hparams.embed_scale else 1
 
     def _build_fc_last(self):
         hparams = self.hparams
@@ -174,11 +192,11 @@ class ChildDecoderBase(nn.Module):
             assert hparams.trg_embedding_size == hparams.decoder_out_embedding_size, \
                 'Shared embed weights implies same dimensions out_embedding_size={} vs trg_embedding_size={}'.format(
                     hparams.decoder_out_embedding_size, hparams.trg_embedding_size)
-            self.fc_last = nn.Linear(hparams.decoder_out_embedding_size, self.task.TargetVocabSize)
+            self.fc_last = nn.Linear(hparams.decoder_out_embedding_size, self.task.TargetVocabSize, bias=False)
             self.fc_last.weight = self.embed_tokens.weight
         else:
             self.fc_last = Linear(hparams.decoder_out_embedding_size,
-                                  self.task.TargetVocabSize, dropout=hparams.dropout, hparams=hparams)
+                                  self.task.TargetVocabSize, dropout=hparams.dropout, hparams=hparams, bias=False)
 
     def _embed_tokens(self, tokens, incremental_state):
         if incremental_state is not None:
