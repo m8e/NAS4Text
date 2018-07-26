@@ -4,6 +4,7 @@
 """Multi-head attention layer."""
 
 import math
+from weakref import ref
 
 import torch as th
 import torch.nn as nn
@@ -123,6 +124,7 @@ class MultiHeadAttention(ChildLayer):
 
         assert d_model % h == 0
 
+        self.d_model = d_model
         self.d_head = d_model // h
         self.h = h
         self.d_q = kwargs.pop('d_q', d_model)
@@ -133,15 +135,24 @@ class MultiHeadAttention(ChildLayer):
         assert window is None or (isinstance(window, int) and window % 2 == 1), \
             'Local attention window size must be None or an odd number'
 
-        # 4 Weights matrices.
+        # Input / output projections.
         linear_bias = kwargs.pop('linear_bias', True)
+        self.dim_equal = self.d_q == self.d_kv == d_model
 
-        self.linears = nn.ModuleList([
-            Linear(self.d_q, d_model, hparams=hparams, bias=linear_bias),
-            Linear(self.d_kv, d_model, hparams=hparams, bias=linear_bias),
-            Linear(self.d_kv, d_model, hparams=hparams, bias=linear_bias),
-            Linear(d_model, self.d_q, hparams=hparams, bias=linear_bias),
-        ])
+        if self.dim_equal:
+            self.in_proj_weight = nn.Parameter(th.Tensor(3 * d_model, d_model))
+            if linear_bias:
+                self.in_proj_bias = nn.Parameter(th.Tensor(3 * d_model))
+            else:
+                self.register_parameter('in_proj_bias', None)
+        else:
+            self.linears = nn.ModuleList([
+                Linear(self.d_q, d_model, hparams=hparams, bias=linear_bias),
+                Linear(self.d_kv, d_model, hparams=hparams, bias=linear_bias),
+                Linear(self.d_kv, d_model, hparams=hparams, bias=linear_bias),
+            ])
+
+        self.out_proj = nn.Linear(d_model, self.d_q, bias=linear_bias)
 
         self.attn = None
         self.dropout = nn.Dropout(p=kwargs.pop('dropout', 0.1))
@@ -154,6 +165,17 @@ class MultiHeadAttention(ChildLayer):
         if ppp_args is not None:
             push_prepostprocessors(self, *ppp_args, [1, 1, self.d_q], [1, 1, self.d_q])
 
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        if self.dim_equal:
+            nn.init.xavier_uniform_(self.in_proj_weight)
+            if self.in_proj_bias is not None:
+                nn.init.constant_(self.in_proj_bias, 0.)
+        nn.init.xavier_uniform_(self.out_proj.weight)
+        if self.out_proj.bias is not None:
+            nn.init.constant_(self.out_proj.bias, 0.)
+
     @wrap_ppp
     def forward(self, query, key, value, src_lengths, **kwargs):
         x, self.attn = attention_and_proj_mask(
@@ -163,16 +185,39 @@ class MultiHeadAttention(ChildLayer):
         return x
 
     def in_proj_q(self, query):
-        return self.linears[0](query)
+        if self.dim_equal:
+            return self._in_proj(query, end=self.d_model)
+        else:
+            return self.linears[0](query)
 
     def in_proj_k(self, key):
-        return self.linears[1](key)
+        if self.dim_equal:
+            return self._in_proj(key, start=self.d_model, end=2 * self.d_model)
+        else:
+            return self.linears[1](key)
 
     def in_proj_v(self, value):
-        return self.linears[2](value)
+        if self.dim_equal:
+            return self._in_proj(value, start=2 * self.d_model)
+        else:
+            return self.linears[2](value)
 
-    def out_proj(self, out):
-        return self.linears[-1](out)
+    def _in_proj(self, input_, start=None, end=None):
+        weight = self.in_proj_weight
+        bias = self.in_proj_bias
+
+        if end is not None:
+            weight = weight[:end, :]
+            if bias is not None:
+                bias = bias[:end]
+        if start is not None:
+            weight = weight[start:, :]
+            if bias is not None:
+                bias = bias[start:]
+        return F.linear(input_, weight, bias)
+
+    # def out_proj(self, out):
+    #     return self.linears[-1](out)
 
 
 def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
@@ -245,14 +290,14 @@ class SelfAttention(ChildLayer):
 
         # [NOTE]: The encoder-decoder attention layer may be inside this attention layer.
         # Used in decoder.
-        self.encdec_attention_layer = None
+        self.encdec_attention_layer_ref = None
         self.encdec_attention_fwd = None
         self.attn_scores = None
 
     def add_encdec_attention(self, layer, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
-        self.encdec_attention_layer = layer
+        self.encdec_attention_layer_ref = ref(layer)
         self.encdec_attention_fwd = lambda x: layer(x, *args, **kwargs)
 
     def forward(self, x, lengths=None, **kwargs):
@@ -274,7 +319,7 @@ class SelfAttention(ChildLayer):
 
         if self.encdec_attention_fwd is not None:
             encdec_result = self.encdec_attention_fwd(attn_result)
-            self.attn_scores = self.encdec_attention_layer.attn
+            self.attn_scores = self.encdec_attention_layer_ref().attn
         else:
             encdec_result = attn_result
 
