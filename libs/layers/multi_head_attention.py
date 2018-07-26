@@ -37,17 +37,45 @@ def attention(query, key, value, mask=None, dropout=None):
             p_attn (batch_size, num_heads, length_q, length_kv): Attention probability distribution
     """
 
-    d_k = query.size(-1)
-    scores = th.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+    batch_size, h, length_q, d_k = query.size()
+    _, _, length_kv, _ = key.size()
+
+    query = query.view(batch_size * h, length_q, d_k)
+    key = key.view(batch_size * h, length_kv, d_k)
+    value = value.view(batch_size * h, length_kv, d_k)
+
+    scores = th.bmm(query, key.transpose(1, 2))
+    assert list(scores.size()) == [batch_size * h, length_q, length_kv]
 
     if mask is not None:
-        scores = scores.masked_fill_(mask == 0, -1e9)
-    p_attn = F.softmax(scores, dim=-1)
+        # don't attend to padding symbols
+        scores = scores.view(batch_size, h, length_q, length_kv)
+        scores = scores.masked_fill_(mask == 0, float('-inf'))
+        scores = scores.view(batch_size * h, length_q, length_kv)
 
+    p_attn = F.softmax(scores, dim=1)
     if dropout is not None:
         p_attn = dropout(p_attn)
 
-    return th.matmul(p_attn, value), p_attn
+    attn = th.bmm(p_attn, value)
+    assert list(attn.size()) == [batch_size * h, length_q, d_k]
+
+    attn = attn.view(batch_size, h, length_q, d_k)
+    p_attn = p_attn.view(batch_size, h, length_q, length_kv)
+
+    return attn, p_attn
+
+    # d_k = query.size(-1)
+    # scores = th.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+    #
+    # if mask is not None:
+    #     scores = scores.masked_fill_(mask == 0, -1e9)
+    # p_attn = F.softmax(scores, dim=-1)
+    #
+    # if dropout is not None:
+    #     p_attn = dropout(p_attn)
+    #
+    # return th.matmul(p_attn, value), p_attn
 
 
 def attention_and_proj_mask(
