@@ -110,6 +110,10 @@ class EncDecChildNet(ChildNetBase):
     def max_decoder_positions(self):
         return self.decoder.max_positions()
 
+    def max_positions(self):
+        """Maximum length supported by the model."""
+        return self.encoder.max_positions(), self.decoder.max_positions()
+
     def upgrade_state_dict(self, state_dict):
         state_dict = self.encoder.upgrade_state_dict(state_dict)
         state_dict = self.decoder.upgrade_state_dict(state_dict)
@@ -129,10 +133,9 @@ class ChildEncoderBase(nn.Module):
         """
         raise NotImplementedError()
 
-    def _build_embedding(self):
+    def _build_embedding(self, embed_tokens):
         hparams = self.hparams
-        self.embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
-                                      hparams=hparams)
+        self.embed_tokens = embed_tokens
         self.embed_positions = PositionalEmbedding(
             hparams.max_src_positions,
             hparams.src_embedding_size,
@@ -148,7 +151,7 @@ class ChildDecoderBase(nn.Module):
     # A temporary flag to mark using incremental state or not.
     ApplyIncrementalState = False
 
-    def __init__(self, code, hparams, **kwargs):
+    def __init__(self, code, hparams):
         super().__init__()
 
         self.code = code
@@ -159,22 +162,10 @@ class ChildDecoderBase(nn.Module):
         self.embed_position = None
         self.fc_last = None
 
-    def _build_embedding(self, src_embedding=None):
+    def _build_embedding(self, embed_tokens):
         hparams = self.hparams
 
-        if hparams.share_src_trg_embedding:
-            assert self.task.SourceVocabSize == self.task.TargetVocabSize, \
-                'Shared source and target embedding weights implies same source and target vocabulary size, but got ' \
-                '{}(src) vs {}(trg)'.format(self.task.SourceVocabSize, self.task.TargetVocabSize)
-            assert hparams.src_embedding_size == hparams.trg_embedding_size, \
-                'Shared source and target embedding weights implies same source and target embedding size, but got ' \
-                '{}(src) vs {}(trg)'.format(hparams.src_embedding_size, hparams.trg_embedding_size)
-            self.embed_tokens = nn.Embedding(
-                self.task.TargetVocabSize, hparams.trg_embedding_size, padding_idx=self.task.PAD_ID)
-            self.embed_tokens.weight = src_embedding.weight
-        else:
-            self.embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID,
-                                          hparams=hparams)
+        self.embed_tokens = embed_tokens
         self.embed_positions = PositionalEmbedding(
             hparams.max_trg_positions,
             hparams.trg_embedding_size,
@@ -281,6 +272,7 @@ class ParalleledChildNet(nn.DataParallel):
     get_targets = _forward_call('get_targets')
     max_encoder_positions = _forward_call('max_encoder_positions')
     max_decoder_positions = _forward_call('max_decoder_positions')
+    max_positions = _forward_call('max_positions')
     upgrade_state_dict = _forward_call('upgrade_state_dict')
     num_parameters = _forward_call('num_parameters')
 

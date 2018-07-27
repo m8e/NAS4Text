@@ -38,7 +38,7 @@ def attention(query, key, value, mask=None, dropout=None):
     """
 
     batch_size, h, length_q, d_k = query.size()
-    _, _, length_kv, _ = key.size()
+    _, _, length_kv, _ = key.size()     # [DEBUG]: Same here
 
     query = query.contiguous().view(batch_size * h, length_q, d_k)
     key = key.contiguous().view(batch_size * h, length_kv, d_k)
@@ -47,13 +47,14 @@ def attention(query, key, value, mask=None, dropout=None):
     scores = th.bmm(query, key.transpose(1, 2))
     assert list(scores.size()) == [batch_size * h, length_q, length_kv]
 
-    if mask is not None:
+    # [NOTE]: Skip if mask is None or mask is all 1 (no padding to mask)
+    if mask is not None and not mask.all():
         # don't attend to padding symbols
         scores = scores.view(batch_size, h, length_q, length_kv)
         scores = scores.masked_fill_(mask == 0, -1e9)
         scores = scores.view(batch_size * h, length_q, length_kv)
 
-    p_attn = F.softmax(scores, dim=-1)
+    p_attn = F.softmax(scores, dim=-1)  # [DEBUG]: Same after here
     if dropout is not None:
         p_attn = dropout(p_attn)
 
@@ -92,17 +93,17 @@ def attention_and_proj_mask(
     # Mask: (batch_size, 1, src_seq_len)
     if mask is None:
         mask = _mask_from_lengths(query, src_lengths, layer, subsequent_mask=subsequent_mask, maxlen=key.size(1))
-    num_batches = query.size(0)
+    num_batches = query.size(0)     # [DEBUG]: Same here
 
     # 1) Do all the linear projections in batch from d_model => h x d_head
-    query = layer.in_proj_q(query)
+    query = layer.in_proj_q(query)  # [DEBUG]: Same after here
     if target_embedding is not None:
         query = (query + target_embedding) * math.sqrt(0.5)
     query = query.view(num_batches, -1, h, d_head).transpose(1, 2)
     query *= layer.scaling
 
     key = layer.in_proj_k(key).view(num_batches, -1, h, d_head).transpose(1, 2)
-    value = layer.in_proj_v(value).view(num_batches, -1, h, d_head).transpose(1, 2)
+    value = layer.in_proj_v(value).view(num_batches, -1, h, d_head).transpose(1, 2)     # [DEBUG]: Same after here
 
     # 2) Apply attention on all the projected vectors in batch.
     x, attn = attention(query, key, value, mask=mask, dropout=layer.dropout)
@@ -198,9 +199,9 @@ class MultiHeadAttention(ChildLayer):
     def reset_parameters(self):
         if self.dim_equal:
             nn.init.xavier_uniform_(self.in_proj_weight)
-            if self.in_proj_bias is not None:
-                nn.init.constant_(self.in_proj_bias, 0.)
         nn.init.xavier_uniform_(self.out_proj.weight)
+        if self.dim_equal and self.in_proj_bias is not None:
+            nn.init.constant_(self.in_proj_bias, 0.)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
@@ -309,9 +310,10 @@ class SelfAttention(ChildLayer):
         self.d_model = d_model
 
         self.in_encoder = kwargs.pop('in_encoder', True)
+        # [NOTE]: Only apply subsequent mask in decoder.
         self.attention = MultiHeadAttention(
             h, d_model, dropout=kwargs.pop('dropout', self.hparams.attention_dropout),
-            hparams=hparams, linear_bias=linear_bias)
+            hparams=hparams, linear_bias=linear_bias, subsequent_mask=not self.in_encoder)
         self.feed_forward = PositionwiseFeedForward(
             d_model, d_ff, dropout=kwargs.pop('ffn_dropout', self.hparams.ffn_dropout),
             hparams=hparams, linear_bias=linear_bias)

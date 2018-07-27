@@ -20,6 +20,7 @@ class Dictionary:
         self.task = task
 
         self.mode = mode
+        self.nspecial = None
         if mode == 'pkl':
             with open(filename, 'rb') as f:
                 self._dict = pickle.load(f, encoding='utf-8')
@@ -60,11 +61,14 @@ class Dictionary:
         return self.task.TargetLang
 
     def _default_symbols(self):
-        return {
+        result = {
+            self.task.LUA: self.task.LUA_ID,
             self.task.PAD: self.task.PAD_ID,
             self.task.EOS: self.task.EOS_ID,
             self.task.UNK: self.task.UNK_ID,
         }
+        self.nspecial = len(result)
+        return result
 
     def _parse_text_dict(self, f):
         """Parse the text dict.
@@ -97,8 +101,10 @@ class Dictionary:
 
     def _check_dict(self):
         if self.mode != 'empty':
-            assert len(self._dict) == self.task.get_vocab_size(self.is_src_lang), 'Incorrect vocabulary size'
+            assert len(self._dict) == self.task.get_vocab_size(self.is_src_lang), \
+                'Incorrect vocabulary size'
 
+        assert self.nspecial == self.task.NumSpecialTokens, 'Incorrect number of special tokens'
         assert self._dict.get(self.task.PAD, None) == self.task.PAD_ID, 'Incorrect PAD id'
         assert self._dict.get(self.task.EOS, None) == self.task.EOS_ID, 'Incorrect EOS id'
         assert self._dict.get(self.task.UNK, None) == self.task.UNK_ID, 'Incorrect UNK id'
@@ -147,4 +153,9 @@ class Dictionary:
             return '<{}>'.format(self.task.UNK)
         else:
             return self.task.UNK
+
+    def dummy_sentence(self, length):
+        t = th.Tensor(length).uniform_(self.nspecial + 1, len(self)).long()
+        t[-1] = self.eos_id
+        return t
 

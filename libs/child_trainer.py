@@ -1,7 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 import logging
 import math
 
@@ -49,6 +49,9 @@ class ChildTrainer:
         # Initialize meters
         self.meters = OrderedDict()
         self._init_meters()
+
+        # [NOTE]: Different from fairseq: Does not use buffered stats
+        # self._buffered_stats = defaultdict(lambda: [])
 
         self._max_bsz_seen = 0
         self._num_updates = 0
@@ -103,8 +106,14 @@ class ChildTrainer:
 
         return extra_state
 
-    def train_step(self, sample):
+    def train_step(self, sample, update_params=True):
         """Do forward, backward and parameter update."""
+
+        # Set seed based on args.seed and the update number so that we get
+        # reproducible results when resuming from checkpoints
+        seed = self.hparams.seed + self.get_num_updates()
+        th.manual_seed(seed)
+        th.cuda.manual_seed(seed)
 
         sample = self._prepare_sample(sample, volatile=False)
 
@@ -118,7 +127,10 @@ class ChildTrainer:
         agg_logging_output = self.criterion.__class__.aggregate_logging_outputs(logging_outputs)
 
         # backward pass, all-reduce gradients and take an optimization step
-        grad_norm, ooms_bwd = self._backward_and_opt(loss, grad_denom)
+        grad_norm, ooms_bwd = self._backward_and_opt(loss, grad_denom, update_params=update_params)
+
+        if grad_norm is None:
+            return None
 
         # update meters
         self.meters['wps'].update(ntokens)
@@ -180,7 +192,7 @@ class ChildTrainer:
 
         return loss, sample_sizes, logging_outputs, ooms
 
-    def _backward_and_opt(self, loss, grad_denom):
+    def _backward_and_opt(self, loss, grad_denom, update_params=True):
         oom = 0
         if loss is not None:
             try:
@@ -195,6 +207,9 @@ class ChildTrainer:
                     self.optimizer.zero_grad()
                 else:
                     raise e
+
+        if not update_params:
+            return None, None
 
         # all-reduce grads and rescale by grad_denom
         if UseFairseqParallel and self.hparams.distributed_world_size > 1:
@@ -245,6 +260,14 @@ class ChildTrainer:
     def lr_step(self, epoch, val_loss=None):
         """Adjust the learning rate based on the validation loss."""
         return self.lr_scheduler.step(epoch, val_loss)
+
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def dummy_train_step(self, dummy_batch):
+        """Dummy training step for warming caching allocator."""
+        self.train_step(dummy_batch, update_params=False)
+        self.zero_grad()
 
     def get_lr(self):
         """Get the current learning rate."""

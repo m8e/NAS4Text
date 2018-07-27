@@ -78,6 +78,11 @@ def single_process_main(hparams, datasets=None):
         logging.info('No loaded checkpoint, start from scratch')
         epoch, batch_offset = 1, 0
 
+    # Send a dummy batch to warm the caching allocator
+    # [DEBUG]: Dummy batch different because of random states.
+    dummy_batch = datasets.get_dataset('train').get_dummy_batch(hparams.max_tokens, trainer.get_model().max_positions())
+    trainer.dummy_train_step(dummy_batch)
+
     # Train until the learning rate gets too small
     max_epoch = hparams.max_epoch or math.inf
     max_update = hparams.max_update or math.inf
@@ -127,7 +132,7 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
 
     # Set seed based on args.seed and the epoch number so that we get
     # reproducible results when resuming from checkpoints
-    seed = hparams.seed + epoch
+    seed = hparams.seed
     th.manual_seed(seed)
 
     # The max number of positions can be different for train and valid
@@ -151,8 +156,8 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
         num_shards=hparams.distributed_world_size,
     )
 
+    next(itertools.islice(itr, batch_offset, batch_offset), None)
     progress = build_progress_bar(hparams, itr, epoch, no_progress_bar='simple')
-    itr = itertools.islice(itr, batch_offset, None)
 
     # Reset training meters
     for k in ['train_loss', 'train_nll_loss', 'wps', 'ups', 'wpb', 'bsz', 'clip']:

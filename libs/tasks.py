@@ -74,13 +74,17 @@ class TextTask:
     SourceVocabSize = None
     TargetVocabSize = None
 
+    NumSpecialTokens = 4
+
+    LUA = '<Lua heritage>'
     PAD = '<pad>'
     EOS = '</s>'
     UNK = '<unk>'
 
-    PAD_ID = 0
-    EOS_ID = 1
-    UNK_ID = 2
+    LUA_ID = 0
+    PAD_ID = 1
+    EOS_ID = 2
+    UNK_ID = 3
 
     BPESymbol = None
 
@@ -229,8 +233,8 @@ class DeEnIwsltBpe2(TextTask):
 
     UniqueFilename = 'iwslt-bpe2'
 
-    SourceVocabSize = 20121
-    TargetVocabSize = 14635
+    SourceVocabSize = 20118 + TextTask.NumSpecialTokens
+    TargetVocabSize = 14632 + TextTask.NumSpecialTokens
 
     BPESymbol = '@@ '
 

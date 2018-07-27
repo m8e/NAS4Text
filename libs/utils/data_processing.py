@@ -67,13 +67,12 @@ class LanguageDatasets:
                          sort_by_source_size=False, shard_id=0, num_shards=1):
         dataset = self.get_dataset(split)
 
-        with numpy_seed(seed):
-            batch_sampler = dataset.shuffled_batches_by_size(
-                max_tokens=max_tokens,
-                max_sentences=max_sentences, epoch=epoch,
-                sample=sample_without_replacement, max_positions=max_positions,
-                sort_by_source_size=sort_by_source_size)
-            batch_sampler = mask_batches(batch_sampler, shard_id=shard_id, num_shards=num_shards)
+        batch_sampler = dataset.shuffled_batches_by_size(
+            max_tokens=max_tokens,
+            max_sentences=max_sentences, epoch=epoch,
+            sample=sample_without_replacement, max_positions=max_positions,
+            sort_by_source_size=sort_by_source_size, seed=seed)
+        batch_sampler = mask_batches(batch_sampler, shard_id=shard_id, num_shards=num_shards)
 
         return DataLoader(
             dataset, collate_fn=dataset.collater,
@@ -149,6 +148,7 @@ class TextDataset:
         self.reverse_order = reverse_order
         self.read_data(path, dictionary)
         self.size = len(self.tokens_list)
+        self.dictionary = dictionary
 
     def __len__(self):
         return self.size
@@ -191,8 +191,12 @@ class LanguagePairDataset(Dataset):
     def __init__(self, src, trg, pad_id, eos_id):
         self.src = src
         self.trg = trg
+        self.src_dict = self.src.dictionary
+        self.trg_dict = self.trg.dictionary if self.trg else None
         self.pad_id = pad_id
         self.eos_id = eos_id
+
+        self.frozen_batches = None
 
     def __len__(self):
         return len(self.src)
@@ -226,7 +230,7 @@ class LanguagePairDataset(Dataset):
 
     def shuffled_batches_by_size(self, max_tokens=None, max_sentences=None,
                                  epoch=1, sample=0, max_positions=(1024, 1024),
-                                 sort_by_source_size=False):
+                                 sort_by_source_size=False, seed=1):
         """Returns batches of indices, bucketed by size and then shuffled. Batches
         may contain sequences of different lengths."""
         if max_tokens is None:
@@ -234,18 +238,22 @@ class LanguagePairDataset(Dataset):
         if max_sentences is None:
             max_sentences = float('Inf')
 
-        indices = np.random.permutation(len(self.src))
+        if self.frozen_batches is None:
+            with numpy_seed(seed):
+                indices = np.random.permutation(len(self.src))
 
-        # sort by sizes
-        indices = indices[np.argsort(self.trg.sizes[indices], kind='mergesort')]
-        indices = indices[np.argsort(self.src.sizes[indices], kind='mergesort')]
+            # sort by sizes
+            indices = indices[np.argsort(self.trg.sizes[indices], kind='mergesort')]
+            indices = indices[np.argsort(self.src.sizes[indices], kind='mergesort')]
 
-        batches = list(_make_batches(
-            self.src, self.trg, indices, max_tokens, max_sentences, max_positions,
-            ignore_invalid_inputs=True, allow_different_src_lens=True))
+            self.frozen_batches = list(_make_batches(
+                self.src, self.trg, indices, max_tokens, max_sentences, max_positions,
+                ignore_invalid_inputs=True, allow_different_src_lens=True))
 
-        if not sort_by_source_size:
-            np.random.shuffle(batches)
+        with numpy_seed(seed + epoch):
+            batches = list(self.frozen_batches)
+            if not sort_by_source_size:
+                np.random.shuffle(batches)
 
         if sample:
             offset = (epoch - 1) * sample
@@ -337,6 +345,21 @@ class LanguagePairDataset(Dataset):
                 copy_tensor(v, res[i][:len(v)])
         return res
 
+    def get_dummy_batch(self, num_tokens, max_positions, src_len=128, tgt_len=128):
+        # [NOTE]: Different from fairseq: this class does not contains ``max_xxx_position`` attributes,
+        # so use the given directly.
+        max_source_positions, max_target_positions = max_positions
+        src_len, tgt_len = min(src_len, max_source_positions), min(tgt_len, max_target_positions)
+        bsz = num_tokens // max(src_len, tgt_len)
+        return self.collater([
+            {
+                'id': i,
+                'source': self.src_dict.dummy_sentence(src_len),
+                'target': self.trg_dict.dummy_sentence(tgt_len) if self.trg_dict is not None else None,
+            }
+            for i in range(bsz)
+        ])
+
 
 def _valid_size(src_size, trg_size, max_positions):
     if isinstance(max_positions, numbers.Number):
@@ -351,7 +374,7 @@ def _valid_size(src_size, trg_size, max_positions):
 
 
 def _make_batches(src, trg, indices, max_tokens, max_sentences, max_positions,
-                  ignore_invalid_inputs=False, allow_different_src_lens=False):
+                  ignore_invalid_inputs=False, allow_different_src_lens=False, required_batch_size_multiple=8):
     batch = []
 
     def yield_batch(next_idx, num_tokens):
@@ -367,6 +390,7 @@ def _make_batches(src, trg, indices, max_tokens, max_sentences, max_positions,
         return False
 
     sample_len = 0
+    sample_lens = []
     ignored = []
     for idx in map(int, indices):
         src_size = src.sizes[idx]
@@ -380,12 +404,22 @@ def _make_batches(src, trg, indices, max_tokens, max_sentences, max_positions,
                 " Skip this example with --skip-invalid-size-inputs-valid-test"
             ).format(idx, src_size, trg_size, max_positions))
 
-        sample_len = max(sample_len, src_size, trg_size)
+        sample_lens.append(max(src_size, trg_size))
+        sample_len = max(sample_len, sample_lens[-1])
         num_tokens = (len(batch) + 1) * sample_len
         if yield_batch(idx, num_tokens):
-            yield batch
-            batch = []
-            sample_len = max(src_size, trg_size)
+            # yield batch
+            # batch = []
+            # sample_len = max(src_size, trg_size)
+
+            mod_len = max(
+                required_batch_size_multiple * (len(batch) // required_batch_size_multiple),
+                len(batch) % required_batch_size_multiple,
+            )
+            yield batch[:mod_len]
+            batch = batch[mod_len:]
+            sample_lens = sample_lens[mod_len:]
+            sample_len = max(sample_lens) if len(sample_lens) > 0 else 0
 
         batch.append(idx)
 

@@ -19,7 +19,7 @@ __author__ = 'fyabc'
 
 
 class BlockChildEncoder(ChildEncoderBase):
-    def __init__(self, code, hparams):
+    def __init__(self, code, hparams, embed_tokens):
         super().__init__()
 
         self.code = code
@@ -31,7 +31,7 @@ class BlockChildEncoder(ChildEncoderBase):
         self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
 
         # Embeddings.
-        self._build_embedding()
+        self._build_embedding(embed_tokens)
 
         # The main encoder network.
         self.layers = nn.ModuleList()
@@ -124,14 +124,14 @@ class BlockChildEncoder(ChildEncoderBase):
 
 
 class BlockChildDecoder(ChildIncrementalDecoderBase):
-    def __init__(self, code, hparams, **kwargs):
-        super().__init__(code, hparams, **kwargs)
+    def __init__(self, code, hparams, embed_tokens):
+        super().__init__(code, hparams)
 
         # Decoder input shape (after embedding)
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
         self.input_shape = th.Size([1, 1, hparams.trg_embedding_size])
 
-        self._build_embedding(kwargs.pop('src_embedding'))
+        self._build_embedding(embed_tokens)
 
         self.layers = nn.ModuleList()
 

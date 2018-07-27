@@ -51,7 +51,7 @@ def _code2layer(layer_code, input_shape, hparams, in_encoder=True):
 
 
 class ChildEncoder(ChildEncoderBase):
-    def __init__(self, code, hparams):
+    def __init__(self, code, hparams, embed_tokens):
         super().__init__()
 
         self.code = code
@@ -66,7 +66,7 @@ class ChildEncoder(ChildEncoderBase):
         self.input_shape = th.Size([1, 1, hparams.src_embedding_size])
 
         # Embeddings.
-        self._build_embedding()
+        self._build_embedding(embed_tokens)
 
         # TODO: Need fc1 to project src_emb_size to in_channels here?
 
@@ -112,7 +112,7 @@ class ChildEncoder(ChildEncoderBase):
 
         x = self.embed_tokens(x) * self.embed_scale + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-        source_embedding = x
+        source_embedding = x    # [DEBUG]: Same here.
 
         # x = self.fc1(x)
 
@@ -163,14 +163,14 @@ class ChildEncoder(ChildEncoderBase):
 
 
 class ChildDecoder(ChildIncrementalDecoderBase):
-    def __init__(self, code, hparams, **kwargs):
-        super().__init__(code, hparams, **kwargs)
+    def __init__(self, code, hparams, embed_tokens):
+        super().__init__(code, hparams)
 
         # Decoder input shape (after embedding)
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
         self.input_shape = th.Size([1, 1, hparams.trg_embedding_size])
 
-        self._build_embedding(kwargs.pop('src_embedding'))
+        self._build_embedding(embed_tokens)
 
         # The main decoder network.
         self.num_layers = 0
@@ -340,6 +340,25 @@ class ChildNet(EncDecChildNet):
 
         self.task = get_task(hparams.task)
 
-        self.encoder = ChildEncoder(net_code[0], hparams)
-        self.decoder = ChildDecoder(net_code[1], hparams, src_embedding=self.encoder.embed_tokens)
+        src_embed_tokens, trg_embed_tokens = self._build_embed_tokens()
+
+        self.encoder = ChildEncoder(net_code[0], hparams, src_embed_tokens)
+        self.decoder = ChildDecoder(net_code[1], hparams, trg_embed_tokens)
         self.encoder.num_attention_layers = self.decoder.num_attention_layers
+
+    def _build_embed_tokens(self):
+        hparams = self.hparams
+        src_embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
+                                     hparams=hparams)
+        if hparams.share_src_trg_embedding:
+            assert self.task.SourceVocabSize == self.task.TargetVocabSize, \
+                'Shared source and target embedding weights implies same source and target vocabulary size, but got ' \
+                '{}(src) vs {}(trg)'.format(self.task.SourceVocabSize, self.task.TargetVocabSize)
+            assert hparams.src_embedding_size == hparams.trg_embedding_size, \
+                'Shared source and target embedding weights implies same source and target embedding size, but got ' \
+                '{}(src) vs {}(trg)'.format(hparams.src_embedding_size, hparams.trg_embedding_size)
+            trg_embed_tokens = src_embed_tokens
+        else:
+            trg_embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID,
+                                         hparams=hparams)
+        return src_embed_tokens, trg_embed_tokens
