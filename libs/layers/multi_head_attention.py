@@ -44,7 +44,7 @@ def attention(query, key, value, mask=None, dropout=None):
     key = key.contiguous().view(batch_size * h, length_kv, d_k)
     value = value.contiguous().view(batch_size * h, length_kv, d_k)
 
-    scores = th.bmm(query, key.transpose(1, 2))
+    scores = th.bmm(query, key.transpose(1, 2))     # [DEBUG]: Same after here (decoder)
     assert list(scores.size()) == [batch_size * h, length_q, length_kv]
 
     # [NOTE]: Skip if mask is None or mask is all 1 (no padding to mask)
@@ -59,7 +59,7 @@ def attention(query, key, value, mask=None, dropout=None):
         p_attn = dropout(p_attn)
 
     attn = th.bmm(p_attn, value)
-    assert list(attn.size()) == [batch_size * h, length_q, d_k]
+    assert list(attn.size()) == [batch_size * h, length_q, d_k]     # [DEBUG]: Same after here
 
     attn = attn.view(batch_size, h, length_q, d_k)
     p_attn = p_attn.view(batch_size, h, length_q, length_kv)
@@ -85,7 +85,7 @@ def attention_and_proj_mask(
     """Wrap attention with input / output projection and mask computation."""
 
     h = layer.h
-    d_head = layer.d_head
+    d_head = layer.d_head   # [DEBUG]: Same after here (decoder)
 
     # qkv_same = query.data_ptr() == key.data_ptr() == value.data_ptr()
     # kv_same = key.data_ptr() == value.data_ptr()
@@ -116,7 +116,7 @@ def attention_and_proj_mask(
 
     x = layer.out_proj(x)
 
-    return x, attn
+    return x, attn  # [DEBUG]: Same after here (in decoder)
 
 
 class MultiHeadAttention(ChildLayer):
@@ -289,7 +289,7 @@ class PositionwiseFeedForward(ChildLayer):
 
     @wrap_ppp
     def forward(self, x):
-        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))      # [DEBUG]: Same before here
 
 
 class SelfAttention(ChildLayer):
@@ -314,21 +314,33 @@ class SelfAttention(ChildLayer):
         self.attention = MultiHeadAttention(
             h, d_model, dropout=kwargs.pop('dropout', self.hparams.attention_dropout),
             hparams=hparams, linear_bias=linear_bias, subsequent_mask=not self.in_encoder)
+
+        # [NOTE]: If not in encoder, add enc-dec attention.
+        if not self.in_encoder:
+            self.encdec_attention = MultiHeadAttention(
+                    h, d_model=hparams.trg_embedding_size, d_q=d_model, d_kv=hparams.src_embedding_size,
+                    dropout=hparams.attention_dropout, in_encoder=False, hparams=hparams,
+                    linear_bias=hparams.attn_linear_bias, subsequent_mask=False, attn_mean=True,
+                    ppp_args=['', 'dan'],
+                )
+        else:
+            self.encdec_attention = None
+
         self.feed_forward = PositionwiseFeedForward(
             d_model, d_ff, dropout=kwargs.pop('ffn_dropout', self.hparams.ffn_dropout),
             hparams=hparams, linear_bias=linear_bias)
 
         # [NOTE]: The encoder-decoder attention layer may be inside this attention layer.
         # Used in decoder.
-        self.encdec_attention_layer_ref = None
-        self.encdec_attention_fwd = None
+        # self.encdec_attention_layer_ref = None
+        # self.encdec_attention_fwd = None
         self.attn_scores = None
 
-    def add_encdec_attention(self, layer, args=(), kwargs=None):
-        if kwargs is None:
-            kwargs = {}
-        self.encdec_attention_layer_ref = ref(layer)
-        self.encdec_attention_fwd = lambda x: layer(x, *args, **kwargs)
+    # def add_encdec_attention(self, layer, args=(), kwargs=None):
+    #     if kwargs is None:
+    #         kwargs = {}
+    #     self.encdec_attention_layer_ref = ref(layer)
+    #     self.encdec_attention_fwd = lambda x: layer(x, *args, **kwargs)
 
     def forward(self, x, lengths=None, **kwargs):
         """
@@ -345,17 +357,28 @@ class SelfAttention(ChildLayer):
             Each need to be preprocessed and postprocessed.
         """
 
-        attn_result = self.attention(x, x, x, src_lengths=lengths)
+        attn_result = self.attention(x, x, x, src_lengths=lengths)  # [DEBUG]: Same after here (except dropout)
 
-        if self.encdec_attention_fwd is not None:
-            encdec_result = self.encdec_attention_fwd(attn_result)
-            self.attn_scores = self.encdec_attention_layer_ref().attn
+        if self.encdec_attention is not None:
+            encoder_out = kwargs['encoder_out']
+            encdec_result = self.encdec_attention(
+                attn_result, key=encoder_out[0], value=encoder_out[1],
+                src_lengths=kwargs['src_lengths'],
+                target_embedding=kwargs['target_embedding'],
+            )
+            self.attn_scores = self.encdec_attention.attn
         else:
             encdec_result = attn_result
 
+        # if self.encdec_attention_fwd is not None:
+        #     encdec_result = self.encdec_attention_fwd(attn_result)
+        #     self.attn_scores = self.encdec_attention_layer_ref().attn
+        # else:
+        #     encdec_result = attn_result
+
         result = self.feed_forward(encdec_result)
 
-        return result
+        return result   # [DEBUG]: Same before here (decoder)
 
     def push_prepostprocessors(self, preprocess_code, postprocess_code, input_shape, output_shape):
         # [NOTE]: Different layer norm parameters between child layers.

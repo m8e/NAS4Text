@@ -112,7 +112,7 @@ class ChildEncoder(ChildEncoderBase):
 
         x = self.embed_tokens(x) * self.embed_scale + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-        source_embedding = x    # [DEBUG]: Same here.
+        source_embedding = x  # [DEBUG]: Same here.
 
         # x = self.fc1(x)
 
@@ -180,17 +180,27 @@ class ChildDecoder(ChildIncrementalDecoderBase):
             layer, output_shape = _code2layer(layer_code, input_shape, self.hparams, in_encoder=False)
             setattr(self, 'layer_{}'.format(i), layer)
 
-            if hparams.enc_dec_attn_type == 'dot_product':
+            if getattr(layer, 'encdec_attention', None) is None:
                 attention = MultiHeadAttention(
                     8, d_model=hparams.trg_embedding_size, d_q=output_shape[2], d_kv=hparams.src_embedding_size,
                     dropout=hparams.attention_dropout, in_encoder=False, hparams=hparams,
                     linear_bias=hparams.attn_linear_bias, subsequent_mask=False, attn_mean=True,
                     ppp_args=['', 'dan'],
                 )
-            elif hparams.enc_dec_attn_type == 'fairseq':
-                raise ValueError('Old fairseq encoder-decoder attention is not supported now')
             else:
-                raise ValueError('Unknown encoder-decoder attention type {}'.format(hparams.enc_dec_attn_type))
+                attention = None
+
+            # if hparams.enc_dec_attn_type == 'dot_product':
+            #     attention = MultiHeadAttention(
+            #         8, d_model=hparams.trg_embedding_size, d_q=output_shape[2], d_kv=hparams.src_embedding_size,
+            #         dropout=hparams.attention_dropout, in_encoder=False, hparams=hparams,
+            #         linear_bias=hparams.attn_linear_bias, subsequent_mask=False, attn_mean=True,
+            #         ppp_args=['', 'dan'],
+            #     )
+            # elif hparams.enc_dec_attn_type == 'fairseq':
+            #     raise ValueError('Old fairseq encoder-decoder attention is not supported now')
+            # else:
+            #     raise ValueError('Unknown encoder-decoder attention type {}'.format(hparams.enc_dec_attn_type))
             setattr(self, 'attention_{}'.format(i), attention)
 
             input_shape = output_shape
@@ -244,30 +254,25 @@ class ChildDecoder(ChildIncrementalDecoderBase):
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         avg_attn_scores = None
-        num_attn_layers = self.num_layers   # TODO: Explain why include layers without attention (None)?
+        num_attn_layers = self.num_layers  # TODO: Explain why include layers without attention (None)?
         for i in range(self.num_layers):
             layer = self.get_layer(i)
             attention = self.get_attention(i)
 
-            encdec_attention_inside = hasattr(layer, 'add_encdec_attention')
+            x = layer(
+                x, trg_lengths,
+                encoder_state=encoder_state_mean, encoder_out=encoder_out,
+                target_embedding=target_embedding if self.hparams.connect_trg_emb else None,
+                src_lengths=src_lengths,
+            )
 
-            encdec_attention_kwargs = {
-                'key': encoder_out[0],
-                'value': encoder_out[1],
-                'target_embedding': target_embedding if self.hparams.connect_trg_emb else None,
-                'src_lengths': src_lengths,
-            }
-            if encdec_attention_inside:
-                layer.add_encdec_attention(attention, kwargs=encdec_attention_kwargs)
-
-            x = layer(x, trg_lengths, encoder_state=encoder_state_mean)
-
-            if encdec_attention_inside:
-                # Attention layer (inside): get computed attention scores.
+            if attention is None:
                 attn_scores = layer.attn_scores
             else:
-                # Attention layer (outside).
-                x, attn_scores = attention(x, **encdec_attention_kwargs)
+                x, attn_scores = attention(
+                    x, key=encoder_out[0], value=encoder_out[1],
+                    target_embedding=target_embedding if self.hparams.connect_trg_emb else None,
+                    src_lengths=src_lengths)
 
             attn_scores = attn_scores / num_attn_layers
             if avg_attn_scores is None:

@@ -40,7 +40,7 @@ class ChildLayer(nn.Module):
         if self.postprocessors is None:
             return x
         input_ = self.modify_input_before_postprocess(input_)
-        for m in self.postprocessors:
+        for m in self.postprocessors:   # [DEBUG]: Same after here (except dropout)
             x = m(x, input_)
         return x
 
@@ -60,6 +60,6 @@ def wrap_ppp(forward_fn):
     def forward(self, input_, *args, **kwargs):
         input_before = input_
         input_ = self.preprocess(input_)
-        result = forward_fn(self, input_, *args, **kwargs)
+        result = forward_fn(self, input_, *args, **kwargs)  # [DEBUG]: Same after here
         return self.postprocess(result, input_before)
     return forward

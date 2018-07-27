@@ -93,7 +93,7 @@ class EncDecChildNet(ChildNetBase):
         encoder_out = self.encoder(src_tokens, src_lengths)
         decoder_out = self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths)
 
-        return decoder_out
+        return decoder_out  # [DEBUG]: Same after here
 
     def encode(self, src_tokens, src_lengths):
         return self.encoder(src_tokens, src_lengths)
