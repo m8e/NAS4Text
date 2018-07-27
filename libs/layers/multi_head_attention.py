@@ -40,9 +40,9 @@ def attention(query, key, value, mask=None, dropout=None):
     batch_size, h, length_q, d_k = query.size()
     _, _, length_kv, _ = key.size()
 
-    query = query.view(batch_size * h, length_q, d_k)
-    key = key.view(batch_size * h, length_kv, d_k)
-    value = value.view(batch_size * h, length_kv, d_k)
+    query = query.contiguous().view(batch_size * h, length_q, d_k)
+    key = key.contiguous().view(batch_size * h, length_kv, d_k)
+    value = value.contiguous().view(batch_size * h, length_kv, d_k)
 
     scores = th.bmm(query, key.transpose(1, 2))
     assert list(scores.size()) == [batch_size * h, length_q, length_kv]
@@ -50,10 +50,10 @@ def attention(query, key, value, mask=None, dropout=None):
     if mask is not None:
         # don't attend to padding symbols
         scores = scores.view(batch_size, h, length_q, length_kv)
-        scores = scores.masked_fill_(mask == 0, float('-inf'))
+        scores = scores.masked_fill_(mask == 0, -1e9)
         scores = scores.view(batch_size * h, length_q, length_kv)
 
-    p_attn = F.softmax(scores, dim=1)
+    p_attn = F.softmax(scores, dim=-1)
     if dropout is not None:
         p_attn = dropout(p_attn)
 
