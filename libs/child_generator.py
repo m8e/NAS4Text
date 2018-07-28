@@ -135,9 +135,11 @@ class ChildGenerator:
 
         maxlen = self._get_maxlen(srclen)
 
+        incremental_states = {}
         for model in self.models:
             if not self.retain_dropout:
                 model.eval()
+            incremental_states[model] = None
 
         if timer is not None:
             timer.start()
@@ -155,7 +157,8 @@ class ChildGenerator:
                 th.zeros(batch_size).fill_(1).type_as(input_['src_lengths'].data),
                 volatile=True, cuda=self.is_cuda)
             for i in range(maxlen - 1):
-                avg_probs, _ = self._decode(encoder_outs, input_['src_lengths'], trg_tokens, trg_lengths)
+                avg_probs, _ = self._decode(
+                    encoder_outs, input_['src_lengths'], trg_tokens, trg_lengths, incremental_states=incremental_states)
 
                 if self.hparams.greedy_sample_temperature == 0.0:
                     _, next_word = avg_probs.max(dim=1)
