@@ -238,7 +238,7 @@ class SelfAttentionOp(BlockNodeOp):
             in_encoder=self.in_encoder,
             linear_bias=self.hparams.attn_linear_bias,
             dropout=self.hparams.attention_dropout,
-            subsequent_mask=True,
+            subsequent_mask=not self.in_encoder,
             ppp_args=[preprocessors, postprocessors],
         )
 
