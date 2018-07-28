@@ -51,7 +51,7 @@ def attention(query, key, value, mask=None, dropout=None):
     if mask is not None and not mask.all():
         # don't attend to padding symbols
         scores = scores.view(batch_size, h, length_q, length_kv)
-        scores = scores.masked_fill_(mask == 0, -1e9)
+        scores = scores.masked_fill_(mask == 0, float('-inf'))
         scores = scores.view(batch_size * h, length_q, length_kv)
 
     p_attn = F.softmax(scores, dim=-1)  # [DEBUG]: Same after here
