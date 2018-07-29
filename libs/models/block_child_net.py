@@ -191,7 +191,7 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
         target_embedding = x
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
-        input_list = [None, x]
+        input_list = [x, x]
         for i in range(self.num_layers):
             layer = self.layers[i]
 

@@ -122,6 +122,9 @@ class LSTMLayer(ChildLayer):
 
         return batched_index_select(data, get_reversed_index(lengths, max_length))
 
+    def extra_repr(self):
+        return 'reversed={}'.format(self.reversed)
+
 
 def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
     """

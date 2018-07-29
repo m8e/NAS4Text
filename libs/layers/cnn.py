@@ -9,7 +9,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .base import ChildLayer
+from .base import ChildLayer, wrap_ppp
 from .ppp import push_prepostprocessors
 from ..utils.search_space import ConvolutionalSpaces
 
@@ -91,10 +91,8 @@ class EncoderConvLayer(ConvLayer):
         )
         self.conv = self.conv_weight_norm(conv)
 
+    @wrap_ppp
     def forward(self, input_, lengths=None, **kwargs):
-        input_before = input_
-        input_ = self.preprocess(input_)
-
         x = input_.transpose(1, 2)
 
         # Add padding.
@@ -109,7 +107,7 @@ class EncoderConvLayer(ConvLayer):
 
         result = x.transpose(1, 2)
 
-        return self.postprocess(result, input_before)
+        return result
 
 
 class DecoderConvLayer(ConvLayer):
@@ -137,10 +135,8 @@ class DecoderConvLayer(ConvLayer):
         )
         self.conv = self.conv_weight_norm(conv)
 
+    @wrap_ppp
     def forward(self, input_, lengths=None, **kwargs):
-        input_before = input_
-        input_ = self.preprocess(input_)
-
         x = input_.transpose(1, 2)
 
         x = self.conv(x)
@@ -153,7 +149,7 @@ class DecoderConvLayer(ConvLayer):
 
         result = x.transpose(1, 2)
 
-        return self.postprocess(result, input_before)
+        return result
 
 
 def build_cnn(layer_code, input_shape, hparams, in_encoder=True):
