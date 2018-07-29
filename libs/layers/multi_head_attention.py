@@ -248,6 +248,9 @@ class MultiHeadAttention(ChildLayer):
     # def out_proj(self, out):
     #     return self.linears[-1](out)
 
+    def extra_repr(self):
+        return '#heads={}, d_model={}, d_q={}, d_kv={}'.format(self.h, self.d_model, self.d_q, self.d_kv)
+
 
 def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
     if lengths is None:

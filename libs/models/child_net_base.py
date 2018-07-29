@@ -119,6 +119,23 @@ class EncDecChildNet(ChildNetBase):
         state_dict = self.decoder.upgrade_state_dict(state_dict)
         return state_dict
 
+    def _build_embed_tokens(self):
+        hparams = self.hparams
+        src_embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
+                                     hparams=hparams)
+        if hparams.share_src_trg_embedding:
+            assert self.task.SourceVocabSize == self.task.TargetVocabSize, \
+                'Shared source and target embedding weights implies same source and target vocabulary size, but got ' \
+                '{}(src) vs {}(trg)'.format(self.task.SourceVocabSize, self.task.TargetVocabSize)
+            assert hparams.src_embedding_size == hparams.trg_embedding_size, \
+                'Shared source and target embedding weights implies same source and target embedding size, but got ' \
+                '{}(src) vs {}(trg)'.format(hparams.src_embedding_size, hparams.trg_embedding_size)
+            trg_embed_tokens = src_embed_tokens
+        else:
+            trg_embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID,
+                                         hparams=hparams)
+        return src_embed_tokens, trg_embed_tokens
+
 
 class ChildEncoderBase(nn.Module):
     def reorder_encoder_out(self, encoder_out, new_order):

@@ -141,7 +141,7 @@ class PFFNOp(BlockNodeOp):
 
         self.pffn = PositionwiseFeedForward(
             input_size, self.hparams.attn_d_ff,
-            dropout=self.hparams.attention_dropout,
+            dropout=self.hparams.ffn_dropout,
             hparams=self.hparams,
             linear_bias=self.hparams.attn_linear_bias,
         )
@@ -266,7 +266,7 @@ class EncoderAttentionOp(BlockNodeOp):
             h,
             d_model=self.hparams.trg_embedding_size,
             d_q=input_shape[2], d_kv=self.hparams.src_embedding_size,
-            dropout=self.hparams.attention_dropout, in_encoder=False, hparams=self.hparams,
+            dropout=self.hparams.attention_dropout, in_encoder=self.in_encoder, hparams=self.hparams,
             linear_bias=self.hparams.attn_linear_bias, subsequent_mask=False, attn_mean=True,
             ppp_args=[preprocessors, postprocessors],
         )

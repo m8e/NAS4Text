@@ -75,7 +75,7 @@ class BlockChildEncoder(ChildEncoderBase):
         x = src_tokens
         logging.debug('Encoder input shape: {}'.format(list(x.shape)))
 
-        x = self.embed_tokens(x) + self.embed_positions(x)
+        x = self.embed_tokens(x) * self.embed_scale + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
 
@@ -186,7 +186,7 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
         x = trg_tokens
         logging.debug('Decoder input shape: {}'.format(list(x.shape)))
 
-        x = self._embed_tokens(x, incremental_state) + self.embed_positions(x, incremental_state)
+        x = self._embed_tokens(x, incremental_state) * self.embed_scale + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         target_embedding = x
 
@@ -230,5 +230,7 @@ class BlockChildNet(EncDecChildNet):
 
         self.task = get_task(hparams.task)
 
-        self.encoder = BlockChildEncoder(net_code[0], hparams)
-        self.decoder = BlockChildDecoder(net_code[1], hparams, src_embedding=self.encoder.embed_tokens)
+        src_embed_tokens, trg_embed_tokens = self._build_embed_tokens()
+
+        self.encoder = BlockChildEncoder(net_code[0], hparams, src_embed_tokens)
+        self.decoder = BlockChildDecoder(net_code[1], hparams, trg_embed_tokens)

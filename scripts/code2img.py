@@ -107,7 +107,7 @@ def _get_op_label(op, op_args, hparams, is_combine=False, cell_args=()):
             post_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 2, ''))
         else:
             raise RuntimeError('Unknown op code {}'.format(str_op))
-    total_list = pre_list + ['\n'.join(label_list)] + post_list
+    total_list = pre_list + ['\\n'.join(label_list)] + post_list
     return '{{{}}}'.format('|'.join(total_list))
 
 

@@ -350,20 +350,3 @@ class ChildNet(EncDecChildNet):
         self.encoder = ChildEncoder(net_code[0], hparams, src_embed_tokens)
         self.decoder = ChildDecoder(net_code[1], hparams, trg_embed_tokens)
         self.encoder.num_attention_layers = self.decoder.num_attention_layers
-
-    def _build_embed_tokens(self):
-        hparams = self.hparams
-        src_embed_tokens = Embedding(self.task.SourceVocabSize, hparams.src_embedding_size, self.task.PAD_ID,
-                                     hparams=hparams)
-        if hparams.share_src_trg_embedding:
-            assert self.task.SourceVocabSize == self.task.TargetVocabSize, \
-                'Shared source and target embedding weights implies same source and target vocabulary size, but got ' \
-                '{}(src) vs {}(trg)'.format(self.task.SourceVocabSize, self.task.TargetVocabSize)
-            assert hparams.src_embedding_size == hparams.trg_embedding_size, \
-                'Shared source and target embedding weights implies same source and target embedding size, but got ' \
-                '{}(src) vs {}(trg)'.format(hparams.src_embedding_size, hparams.trg_embedding_size)
-            trg_embed_tokens = src_embed_tokens
-        else:
-            trg_embed_tokens = Embedding(self.task.TargetVocabSize, hparams.trg_embedding_size, self.task.PAD_ID,
-                                         hparams=hparams)
-        return src_embed_tokens, trg_embed_tokens

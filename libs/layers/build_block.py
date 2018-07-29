@@ -112,6 +112,9 @@ class Node(ChildLayer):
         from .block_node_ops import LSTMOp
         return isinstance(self.op1, LSTMOp) or isinstance(self.op2, LSTMOp)
 
+    def extra_repr(self):
+        return 'in1_idx={}, in2_idx={}'.format(self.in1_index, self.in2_index)
+
 
 class CombineNode(nn.Module):
     """Combine node."""
@@ -140,6 +143,9 @@ class CombineNode(nn.Module):
             return node_output_list[-1]
         else:
             raise ValueError('Unknown block combine op {!r}'.format(self.op))
+
+    def extra_repr(self):
+        return 'op={}'.format(self.op)
 
 
 class BlockLayer(ChildLayer):
