@@ -351,6 +351,14 @@ def item(tensor):
     return tensor
 
 
+def clip_grad_norm_(tensor, max_norm):
+    grad_norm = item(th.norm(tensor))
+    if grad_norm > max_norm > 0:
+        clip_coef = max_norm / (grad_norm + 1e-6)
+        tensor.mul_(clip_coef)
+    return grad_norm
+
+
 def get_reversed_index(lengths, max_length):
     return th.stack([
         th.cat([

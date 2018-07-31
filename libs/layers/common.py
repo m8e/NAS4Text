@@ -137,7 +137,7 @@ class NLCBatchNorm1d(nn.BatchNorm1d):
 class _LayerNorm(nn.Module):
     """A Simple implementation of layer normalization, applied on (N, L, C) input."""
 
-    def __init__(self, num_features, eps=1e-6):
+    def __init__(self, num_features, eps=1e-5):
         super().__init__()
         self.num_features = num_features
         self.eps = eps

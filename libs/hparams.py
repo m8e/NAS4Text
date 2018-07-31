@@ -93,7 +93,7 @@ def hparams_base():
 
         # Candidates: none, layer, batch, noam
         norm_type='layer',
-        norm_epsilon=1e-6,
+        norm_epsilon=1e-5,
 
         # About initializer
         # Candidates: original, uniform_init_scaling, kaitao, fairseq,

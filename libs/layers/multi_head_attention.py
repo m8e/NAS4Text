@@ -84,6 +84,9 @@ def attention_and_proj_mask(
         subsequent_mask=True, target_embedding=None, attn_mean=False, mask=None):
     """Wrap attention with input / output projection and mask computation."""
 
+    qkv_same = query.data_ptr() == key.data_ptr() == value.data_ptr()
+    kv_same = key.data_ptr() == value.data_ptr()
+
     h = layer.h
     d_head = layer.d_head   # [DEBUG]: Same after here (decoder)
 
@@ -96,17 +99,32 @@ def attention_and_proj_mask(
     num_batches = query.size(0)     # [DEBUG]: Same here
 
     # 1) Do all the linear projections in batch from d_model => h x d_head
-    query = layer.in_proj_q(query)  # [DEBUG]: Same after here
-    if target_embedding is not None:
-        query = (query + target_embedding) * math.sqrt(0.5)
-    query = query.view(num_batches, -1, h, d_head).transpose(1, 2)
-    query *= layer.scaling
+    if qkv_same:
+        q, k, v = layer.in_proj_qkv(query)
+    elif kv_same:
+        q = layer.in_proj_q(query)
+        if key is None:
+            assert value is None
+            # this will allow us to concat it with previous value and get
+            # just get the previous value   [NOTE]: Not implemented now
+            k = v = q.new(0)
+        else:
+            k, v = layer.in_proj_kv(key)
+    else:
+        q = layer.in_proj_q(query)
+        k = layer.in_proj_k(key)
+        v = layer.in_proj_v(value)
 
-    key = layer.in_proj_k(key).view(num_batches, -1, h, d_head).transpose(1, 2)
-    value = layer.in_proj_v(value).view(num_batches, -1, h, d_head).transpose(1, 2)     # [DEBUG]: Same after here
+    if target_embedding is not None:
+        q = (q + target_embedding) * math.sqrt(0.5)
+    q *= layer.scaling
+
+    q = q.view(num_batches, -1, h, d_head).transpose(1, 2)
+    k = k.view(num_batches, -1, h, d_head).transpose(1, 2)
+    v = v.view(num_batches, -1, h, d_head).transpose(1, 2)
 
     # 2) Apply attention on all the projected vectors in batch.
-    x, attn = attention(query, key, value, mask=mask, dropout=layer.dropout)
+    x, attn = attention(q, k, v, mask=mask, dropout=layer.dropout)
 
     if attn_mean:
         attn = attn.mean(dim=1)
@@ -212,6 +230,12 @@ class MultiHeadAttention(ChildLayer):
             target_embedding=kwargs.pop('target_embedding', None), attn_mean=self.attn_mean,
         )
         return x
+
+    def in_proj_qkv(self, query):
+        return self._in_proj(query).chunk(3, dim=-1)
+
+    def in_proj_kv(self, key):
+        return self._in_proj(key, start=self.d_model).chunk(2, dim=-1)
 
     def in_proj_q(self, query):
         if self.dim_equal:
@@ -360,7 +384,7 @@ class SelfAttention(ChildLayer):
             Each need to be preprocessed and postprocessed.
         """
 
-        attn_result = self.attention(x, x, x, src_lengths=lengths)  # [DEBUG]: Same after here (except dropout)
+        attn_result = self.attention(x, x, x, src_lengths=lengths)
 
         if self.encdec_attention is not None:
             encoder_out = kwargs['encoder_out']

@@ -69,6 +69,8 @@ class ChildTrainer:
         self.meters['clip'] = AverageMeter()  # % of updates clipped
         self.meters['oom'] = AverageMeter()  # out of memory
 
+        self._flat_grads = None
+
     def save_checkpoint(self, filename, extra_state):
         """Save all training state in a checkpoint file."""
         if distributed_utils.is_master(self.hparams):
@@ -211,29 +213,66 @@ class ChildTrainer:
         if not update_params:
             return None, None
 
-        # all-reduce grads and rescale by grad_denom
+        grad_norm = self._all_reduce_and_scale(grad_denom)
+        self._opt()
+
+        return grad_norm, oom
+
+    def _all_reduce_and_scale(self, grad_denom):
+        # flatten grads into a single buffer and all-reduce
+        flat_grads = self._flat_grads = self._get_flat_grads(self._flat_grads)
         if UseFairseqParallel and self.hparams.distributed_world_size > 1:
-            grads = [p.grad.data for p in self.model.parameters() if p.requires_grad]
-            distributed_utils.all_reduce_and_rescale_tensors(grads, grad_denom)
-        else:
-            for p in self.model.parameters():
-                if p.requires_grad:
-                    p.grad.data.div_(grad_denom)
+            th.distributed.all_reduce(flat_grads)
 
-        # clip grads
-        if self.hparams.clip_norm > 0:
-            grad_norm = common.item(nn.utils.clip_grad_norm_(self.model.parameters(), self.hparams.clip_norm))
-        else:
-            grad_norm = math.sqrt(sum(p.grad.data.norm() ** 2 for p in self.model.parameters()))
+        # rescale and clip gradients
+        # FIXME: Sum of flat grads same before here, different after here (why???)
+        flat_grads.div_(grad_denom)
+        grad_norm = common.clip_grad_norm_(flat_grads, self.hparams.clip_norm)
 
+        # copy grads back into model parameters
+        self._set_flat_grads(flat_grads)
+
+        return grad_norm
+
+    def _get_grads(self):
+        grads = []
+        for name, p in self.model.named_parameters():
+            if not p.requires_grad:
+                continue
+            if p.grad is None:
+                raise RuntimeError('Model parameter did not receive gradient: ' + name + '. '
+                                   'Use the param in the forward pass or set requires_grad=False')
+            grads.append(p.grad.data)
+        return grads
+
+    def _get_flat_grads(self, out=None):
+        grads = self._get_grads()
+        if out is None:
+            grads_size = sum(g.numel() for g in grads)
+            out = grads[0].new(grads_size).zero_()
+        offset = 0
+        for g in grads:
+            numel = g.numel()
+            out[offset:offset+numel].copy_(g.view(-1))
+            offset += numel
+        return out[:offset]
+
+    def _set_flat_grads(self, new_grads):
+        grads = self._get_grads()
+        offset = 0
+        for g in grads:
+            numel = g.numel()
+            g.copy_(new_grads[offset:offset+numel].view_as(g))
+            offset += numel
+
+    def _opt(self):
         # take an optimization step
         self.optimizer.step()
+        self.zero_grad()
         self._num_updates += 1
 
         # update learning rate
         self.lr_scheduler.step_update(self._num_updates)
-
-        return grad_norm, oom
 
     def valid_step(self, sample):
         """Do forward pass in evaluation mode."""
