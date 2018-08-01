@@ -4,7 +4,6 @@
 """Multi-head attention layer."""
 
 import math
-from weakref import ref
 
 import torch as th
 import torch.nn as nn
@@ -19,84 +18,35 @@ from .ppp import push_prepostprocessors
 __author__ = 'fyabc'
 
 
-def attention(query, key, value, mask=None, dropout=None):
-    r"""Compute scaled dot-product attention.
-
-    :math:`Attention(Q, K, V) = softmax( Q * K^T / \sqrt{d_k} ) * V`
-
-    Args:
-        query (batch_size, num_heads, length_q, d_k):
-        key (batch_size, num_heads, length_kv, d_k):
-        value (batch_size, num_heads, length_kv, d_v):
-        mask (batch_size, 1, 1 or length_q, length_kv):
-        dropout:
-
-    Returns:
-        tuple
-            Attention value (batch_size, num_heads, length_q, d_v):
-            p_attn (batch_size, num_heads, length_q, length_kv): Attention probability distribution
-    """
-
-    batch_size, h, length_q, d_k = query.size()
-    _, _, length_kv, _ = key.size()     # [DEBUG]: Same here
-
-    query = query.contiguous().view(batch_size * h, length_q, d_k)
-    key = key.contiguous().view(batch_size * h, length_kv, d_k)
-    value = value.contiguous().view(batch_size * h, length_kv, d_k)
-
-    scores = th.bmm(query, key.transpose(1, 2))     # [DEBUG]: Same after here (decoder)
-    assert list(scores.size()) == [batch_size * h, length_q, length_kv]
-
-    # [NOTE]: Skip if mask is None or mask is all 1 (no padding to mask)
-    if mask is not None and not mask.all():
-        # don't attend to padding symbols
-        scores = scores.view(batch_size, h, length_q, length_kv)
-        scores = scores.masked_fill_(mask == 0, float('-inf'))
-        scores = scores.view(batch_size * h, length_q, length_kv)
-
-    p_attn = F.softmax(scores, dim=-1)  # [DEBUG]: Same after here
-    if dropout is not None:
-        p_attn = dropout(p_attn)
-
-    attn = th.bmm(p_attn, value)
-    assert list(attn.size()) == [batch_size * h, length_q, d_k]     # [DEBUG]: Same after here
-
-    attn = attn.view(batch_size, h, length_q, d_k)
-    p_attn = p_attn.view(batch_size, h, length_q, length_kv)
-
-    return attn, p_attn
-
-    # d_k = query.size(-1)
-    # scores = th.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
-    #
-    # if mask is not None:
-    #     scores = scores.masked_fill_(mask == 0, -1e9)
-    # p_attn = F.softmax(scores, dim=-1)
-    #
-    # if dropout is not None:
-    #     p_attn = dropout(p_attn)
-    #
-    # return th.matmul(p_attn, value), p_attn
-
-
 def attention_and_proj_mask(
         layer, query, key, value, src_lengths,
         subsequent_mask=True, target_embedding=None, attn_mean=False, mask=None):
-    """Wrap attention with input / output projection and mask computation."""
+    """Wrap attention with input / output projection and mask computation.
+
+    :math:`Attention(Q, K, V) = softmax( Q * K^T / \sqrt{d_head} ) * V`
+
+    :param layer:
+    :param query:
+    :param key:
+    :param value:
+    :param src_lengths:
+    :param subsequent_mask:
+    :param target_embedding:
+    :param attn_mean:
+    :param mask:
+    :return:
+    """
 
     qkv_same = query.data_ptr() == key.data_ptr() == value.data_ptr()
     kv_same = key.data_ptr() == value.data_ptr()
 
     h = layer.h
-    d_head = layer.d_head   # [DEBUG]: Same after here (decoder)
-
-    # qkv_same = query.data_ptr() == key.data_ptr() == value.data_ptr()
-    # kv_same = key.data_ptr() == value.data_ptr()
+    d_head = layer.d_head
 
     # Mask: (batch_size, 1, src_seq_len)
     if mask is None:
         mask = _mask_from_lengths(query, src_lengths, layer, subsequent_mask=subsequent_mask, maxlen=key.size(1))
-    num_batches = query.size(0)     # [DEBUG]: Same here
+    batch_size = query.size(0)
 
     # 1) Do all the linear projections in batch from d_model => h x d_head
     if qkv_same:
@@ -119,22 +69,72 @@ def attention_and_proj_mask(
         q = (q + target_embedding) * math.sqrt(0.5)
     q *= layer.scaling
 
-    q = q.view(num_batches, -1, h, d_head).transpose(1, 2)
-    k = k.view(num_batches, -1, h, d_head).transpose(1, 2)
-    v = v.view(num_batches, -1, h, d_head).transpose(1, 2)
+    length_q = q.size(1)
+    length_kv = k.size(1)
+
+    # q: (batch_size, length_q, d_model)
+    # k & v: (batch_size, length_kv, d_model)
+
+    q = q.view(batch_size, -1, h, d_head).transpose(1, 2)
+    k = k.view(batch_size, -1, h, d_head).transpose(1, 2)
+    v = v.view(batch_size, -1, h, d_head).transpose(1, 2)
 
     # 2) Apply attention on all the projected vectors in batch.
-    x, attn = attention(q, k, v, mask=mask, dropout=layer.dropout)
+
+    # TODO: Simplify the code.
+    r"""Compute scaled dot-product attention.
+
+    :math:`Attention(Q, K, V) = softmax( Q * K^T / \sqrt{d_head} ) * V`
+
+    Args:
+        query (batch_size, num_heads, length_q, d_head):
+        key (batch_size, num_heads, length_kv, d_head):
+        value (batch_size, num_heads, length_kv, d_v):
+        mask (batch_size, 1, 1 or length_q, length_kv):
+        dropout:
+
+    Returns:
+        tuple
+            Attention value (batch_size, num_heads, length_q, d_v):
+            attn_weights (batch_size, num_heads, length_q, length_kv): Attention probability distribution
+    """
+
+    q = q.contiguous().view(batch_size * h, length_q, d_head)
+    k = k.contiguous().view(batch_size * h, length_kv, d_head)
+    v = v.contiguous().view(batch_size * h, length_kv, d_head)
+
+    scores = th.bmm(q, k.transpose(1, 2))
+    assert list(scores.size()) == [batch_size * h, length_q, length_kv]
+
+    # [NOTE]: Skip if mask is None or mask is all 1 (no padding to mask)
+    if mask is not None and not mask.all():
+        # don't attend to padding symbols
+        scores = scores.view(batch_size, h, length_q, length_kv)
+        scores = scores.masked_fill_(mask == 0, float('-inf'))
+        scores = scores.view(batch_size * h, length_q, length_kv)
+
+    attn_weights = F.softmax(scores, dim=-1)
+    dropout = layer.dropout
+    if dropout is not None:
+        attn_weights = dropout(attn_weights)
+
+    attn = th.bmm(attn_weights, v)
+    assert list(attn.size()) == [batch_size * h, length_q, d_head]
+
+    # x: Attention value (batch_size, num_heads, length_q, d_v)
+    # attn: Attention probability distribution (batch_size, num_heads, length_q, length_kv)
+    attn = attn.view(batch_size, h, length_q, d_head)
+    attn_weights = attn_weights.view(batch_size, h, length_q, length_kv)
 
     if attn_mean:
-        attn = attn.mean(dim=1)
+        attn_weights = attn_weights.mean(dim=1)
 
     # 3) "Concat" using a view and apply a final linear.
-    x = x.transpose(1, 2).contiguous().view(num_batches, -1, h * d_head)
+    attn = attn.transpose(1, 2).contiguous().view(batch_size, -1, h * d_head)
 
-    x = layer.out_proj(x)
+    attn = layer.out_proj(attn)
 
-    return x, attn  # [DEBUG]: Same after here (in decoder)
+    return attn, attn_weights
 
 
 class MultiHeadAttention(ChildLayer):
