@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
-from ..utils.data_processing import LanguagePairDataset
 from ..tasks import get_task
 from ..layers.common import *
 from ..layers.build_block import build_block
@@ -19,7 +18,7 @@ __author__ = 'fyabc'
 
 
 class BlockChildEncoder(ChildEncoderBase):
-    def __init__(self, code, hparams, embed_tokens):
+    def __init__(self, code, hparams, embed_tokens, controller=None):
         super().__init__()
 
         self.code = code
@@ -39,7 +38,8 @@ class BlockChildEncoder(ChildEncoderBase):
         # self.fc1 = Linear(input_shape[2], 128)
         # input_shape = th.Size([1, 1, 128])
         for i, layer_code in enumerate(code):
-            layer, output_shape = build_block(layer_code, input_shape, self.hparams, in_encoder=True)
+            layer, output_shape = build_block(layer_code, input_shape, self.hparams,
+                                              in_encoder=True, controller=controller)
             self.layers.append(layer)
 
             input_shape = output_shape
@@ -79,13 +79,16 @@ class BlockChildEncoder(ChildEncoderBase):
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         source_embedding = x
 
+        # Compute mask from length, shared between all encoder layers.
+        src_mask = self._mask_from_lengths(x, src_lengths, apply_subsequent_mask=False)
+
         # x = self.fc1(x)
 
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         input_list = [x, x]
         for i in range(self.num_layers):
             layer = self.layers[i]
-            output = layer(input_list[-1], input_list[-2], lengths=src_lengths)
+            output = layer(input_list[-1], input_list[-2], lengths=src_lengths, mask=src_mask)
             input_list.append(output)
 
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(output.shape)))
@@ -110,7 +113,11 @@ class BlockChildEncoder(ChildEncoderBase):
             y = x
 
         logging.debug('Encoder output shape: {} & {}'.format(list(x.shape), list(y.shape)))
-        return x, y
+        return {
+            'x': x,
+            'y': y,
+            'src_mask': src_mask,
+        }
 
     def reorder_encoder_out(self, encoder_out, new_order):
         # TODO: Implement this method.
@@ -124,7 +131,7 @@ class BlockChildEncoder(ChildEncoderBase):
 
 
 class BlockChildDecoder(ChildIncrementalDecoderBase):
-    def __init__(self, code, hparams, embed_tokens):
+    def __init__(self, code, hparams, embed_tokens, controller=None):
         super().__init__(code, hparams)
 
         # Decoder input shape (after embedding)
@@ -137,7 +144,8 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
 
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
-            layer, output_shape = build_block(layer_code, input_shape, self.hparams, in_encoder=False)
+            layer, output_shape = build_block(layer_code, input_shape, self.hparams,
+                                              in_encoder=False, controller=controller)
             self.layers.append(layer)
 
             input_shape = output_shape
@@ -190,6 +198,9 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         target_embedding = x
 
+        # Compute mask from length, shared between all decoder layers.
+        trg_mask = self._mask_from_lengths(x, trg_lengths, apply_subsequent_mask=True)
+
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         input_list = [x, x]
         for i in range(self.num_layers):
@@ -199,6 +210,7 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
                 input_list[-1], input_list[-2],
                 lengths=trg_lengths, encoder_state=encoder_out, src_lengths=src_lengths,
                 target_embedding=target_embedding, encoder_state_mean=encoder_state_mean,
+                mask=trg_mask,
             )
             input_list.append(output)
 
@@ -228,9 +240,20 @@ class BlockChildNet(EncDecChildNet):
     def __init__(self, net_code, hparams):
         super().__init__(net_code, hparams)
 
-        self.task = get_task(hparams.task)
+        self.controller = None
+        self._build_nas_controller()
 
         src_embed_tokens, trg_embed_tokens = self._build_embed_tokens()
 
-        self.encoder = BlockChildEncoder(net_code[0], hparams, src_embed_tokens)
-        self.decoder = BlockChildDecoder(net_code[1], hparams, trg_embed_tokens)
+        self.encoder = BlockChildEncoder(net_code[0], hparams, src_embed_tokens, controller=self.controller)
+        self.decoder = BlockChildDecoder(net_code[1], hparams, trg_embed_tokens, controller=self.controller)
+
+    def _build_nas_controller(self):
+        nas_algo = self.hparams.nas_algo
+        if nas_algo is None:
+            return
+        elif nas_algo == 'darts':
+            # DARTS algorithm does not use controller now.
+            return
+        else:
+            raise NotImplementedError('This NAS algorithm {!r} is not implemented now'.format(nas_algo))

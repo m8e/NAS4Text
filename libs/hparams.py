@@ -109,6 +109,11 @@ def hparams_base():
         # About block child net.
         # Candidates: concat, add, last
         block_combine_op='concat',
+
+        # About NAS.
+        # Select the NAS algorithm.
+        # Candidates: None, darts
+        nas_algo=None,
     )
 
 

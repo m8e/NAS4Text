@@ -22,6 +22,7 @@ class ChildNetBase(nn.Module):
         super().__init__()
         self.net_code = net_code
         self.hparams = hparams
+        self.task = get_task(hparams.task)
 
     @classmethod
     def register_child_net(cls, subclass):
@@ -93,7 +94,7 @@ class EncDecChildNet(ChildNetBase):
         encoder_out = self.encoder(src_tokens, src_lengths)
         decoder_out = self.decoder(encoder_out, src_lengths, trg_tokens, trg_lengths)
 
-        return decoder_out  # [DEBUG]: Attention score diff after here
+        return decoder_out
 
     def encode(self, src_tokens, src_lengths):
         return self.encoder(src_tokens, src_lengths)
@@ -162,6 +163,10 @@ class ChildEncoderBase(nn.Module):
             learned=hparams.enc_learned_pos,
         )
         self.embed_scale = math.sqrt(hparams.src_embedding_size) if hparams.embed_scale else 1
+
+    def _mask_from_lengths(self, x, lengths, apply_subsequent_mask):
+        return common.pad_and_subsequent_mask(
+            lengths, in_encoder=True, apply_subsequent_mask=apply_subsequent_mask, maxlen=x.size(1))
 
 
 class ChildDecoderBase(nn.Module):
@@ -267,6 +272,10 @@ class ChildDecoderBase(nn.Module):
 
             self.apply(apply_set_beam_size)
             self._beam_size = beam_size
+
+    def _mask_from_lengths(self, x, lengths, apply_subsequent_mask):
+        return common.pad_and_subsequent_mask(
+            lengths, in_encoder=False, apply_subsequent_mask=apply_subsequent_mask, maxlen=x.size(1))
 
 
 class ChildIncrementalDecoderBase(ChildDecoderBase):

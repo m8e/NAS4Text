@@ -278,6 +278,33 @@ def subsequent_mask(size):
     return th.from_numpy(np.triu(np.ones([1, size, size]), k=1).astype('uint8')) == 0
 
 
+def pad_and_subsequent_mask(lengths, in_encoder, apply_subsequent_mask=False, maxlen=None):
+    if lengths is None:
+        return None
+
+    assert maxlen is not None
+
+    from .data_processing import LanguagePairDataset
+
+    left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
+    mask = mask_from_lengths(lengths, left_pad=left_pad, max_length=maxlen, cuda=True)
+
+    # Same mask applied to whole query sequence.
+    mask = mask.unsqueeze(1)
+
+    # Apply subsequent mask.
+    if apply_subsequent_mask:
+        mask = mask & make_variable(
+            subsequent_mask(maxlen),
+            cuda=True,
+        )
+
+    # Same mask applied to all h heads.
+    mask = mask.unsqueeze(1)
+
+    return mask
+
+
 def volatile_variable(*args, **kwargs):
     if hasattr(th, 'no_grad'):
         # volatile has been deprecated, use the no_grad context manager instead

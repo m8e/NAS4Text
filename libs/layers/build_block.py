@@ -11,7 +11,7 @@ from .base import ChildLayer, wrap_ppp
 from .ppp import push_prepostprocessors
 from .block_node_ops import BlockNodeOp, BlockCombineNodeOp
 from ..utils.search_space import CellSpace
-from ..layers.common import Linear
+from .common import Linear
 
 __author__ = 'fyabc'
 
@@ -50,15 +50,17 @@ class Node(ChildLayer):
     Node args: [..., preprocessors, postprocessors]
     """
 
-    def __init__(self, in1, in2, op1, op2, combine_op, input_shape, in_encoder=True, hparams=None, node_args=()):
-        super().__init__(hparams)
-        self.in_encoder = in_encoder
+    def __init__(self, in1, in2, op1, op2, combine_op, input_shape, **kwargs):
+        super().__init__(kwargs.pop('hparams', None))
+        self.in_encoder = kwargs.pop('in_encoder', True)
+        self.index = kwargs.pop('index', None)
+        self.controller = kwargs.pop('controller', None)
         self.in1_index = in1
         self.in2_index = in2
-        self.op1 = self._parse_op(op1, input_shape)
-        self.op2 = self._parse_op(op2, input_shape)
+        self.op1 = self._parse_op(op1, input_shape, in1)
+        self.op2 = self._parse_op(op2, input_shape, in2)
         self.combine_op = self._parse_combine_op(combine_op, input_shape)
-        self.node_args = node_args
+        self.node_args = kwargs.pop('node_args', ())
 
         push_prepostprocessors(self, self._get_node_arg(0, ''), self._get_node_arg(1, ''), input_shape, input_shape)
 
@@ -82,13 +84,17 @@ class Node(ChildLayer):
         except IndexError:
             return default
 
-    def _parse_op(self, op_code, input_shape):
+    def _parse_op(self, op_code, input_shape, input_index):
         op_code, op_args = self._normalize_op_code(op_code)
-        return BlockNodeOp.create(op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams)
+        return BlockNodeOp.create(
+            op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams,
+            controller=self.controller, index=self.index, input_index=input_index)
 
     def _parse_combine_op(self, op_code, input_shape):
         op_code, op_args = self._normalize_op_code(op_code, space=CellSpace.CombineOps)
-        return BlockCombineNodeOp.create(op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams)
+        return BlockCombineNodeOp.create(
+            op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams,
+            controller=self.controller, index=self.index)
 
     @wrap_ppp
     def forward(self, in1, in2, lengths=None, encoder_state=None, **kwargs):
@@ -151,7 +157,7 @@ class CombineNode(nn.Module):
 class BlockLayer(ChildLayer):
     """Block layer. Contains several nodes."""
 
-    def __init__(self, hparams, in_encoder=True):
+    def __init__(self, hparams, in_encoder=True, controller=None):
         super().__init__(hparams)
         self.in_encoder = in_encoder
         self.input_node_indices = []
@@ -159,6 +165,7 @@ class BlockLayer(ChildLayer):
         self.combine_node = CombineNode(self, in_encoder=in_encoder, hparams=hparams)
         self.topological_order = []
         self.block_params = {}
+        self.controller = controller
 
     def build(self, layer_code, input_shape):
         if isinstance(layer_code[-1], Mapping):
@@ -176,8 +183,9 @@ class BlockLayer(ChildLayer):
                 self.input_node_indices.append(i)
             else:
                 # This is a normal node.
-                self.nodes.append(Node(in1, in2, op1, op2, combine_op, input_shape,
-                                       in_encoder=self.in_encoder, hparams=self.hparams, node_args=node_args))
+                self.nodes.append(Node(
+                    in1, in2, op1, op2, combine_op, input_shape, index=i, hparams=self.hparams,
+                    controller=self.controller, in_encoder=self.in_encoder, node_args=node_args))
 
         if len(self.input_node_indices) != 2:
             raise RuntimeError('The block layer must have exactly two input nodes, but got {}'.format(
@@ -241,7 +249,7 @@ class BlockLayer(ChildLayer):
         return any(n.contains_lstm() for n in self.nodes)
 
 
-def build_block(layer_code, input_shape, hparams, in_encoder=True):
+def build_block(layer_code, input_shape, hparams, in_encoder=True, controller=None):
     """
 
     Args:
@@ -250,11 +258,12 @@ def build_block(layer_code, input_shape, hparams, in_encoder=True):
             Shape of input tensor, expect (batch_size, seq_len, input_size)
         hparams:
         in_encoder:
+        controller:
 
     Returns:
         tuple
     """
-    block = BlockLayer(hparams, in_encoder)
+    block = BlockLayer(hparams, in_encoder, controller=controller)
     output_shape = block.build(layer_code, input_shape)
 
     return block, output_shape

@@ -45,7 +45,8 @@ def attention_and_proj_mask(
 
     # Mask: (batch_size, 1, src_seq_len)
     if mask is None:
-        mask = _mask_from_lengths(query, src_lengths, layer, subsequent_mask=subsequent_mask, maxlen=key.size(1))
+        mask = common.pad_and_subsequent_mask(
+            src_lengths, layer.in_encoder, apply_subsequent_mask=subsequent_mask, maxlen=key.size(1))
     batch_size = query.size(0)
 
     # 1) Do all the linear projections in batch from d_model => h x d_head
@@ -228,6 +229,7 @@ class MultiHeadAttention(ChildLayer):
         x, self.attn = attention_and_proj_mask(
             self, query, key, value, src_lengths=src_lengths, subsequent_mask=self.subsequent_mask,
             target_embedding=kwargs.pop('target_embedding', None), attn_mean=self.attn_mean,
+            mask=kwargs.pop('mask', None),
         )
         return x
 
@@ -276,32 +278,6 @@ class MultiHeadAttention(ChildLayer):
         return '#heads={}, d_model={}, d_q={}, d_kv={}'.format(self.h, self.d_model, self.d_q, self.d_kv)
 
 
-def _mask_from_lengths(x, lengths, layer, subsequent_mask=False, maxlen=None):
-    if lengths is None:
-        return None
-
-    if maxlen is None:
-        maxlen = x.size(1)
-
-    left_pad = LanguagePairDataset.LEFT_PAD_SOURCE if layer.in_encoder else LanguagePairDataset.LEFT_PAD_TARGET
-    mask = common.mask_from_lengths(lengths, left_pad=left_pad, max_length=maxlen, cuda=True)
-
-    # Same mask applied to whole query sequence.
-    mask = mask.unsqueeze(1)
-
-    # Apply subsequent mask.
-    if subsequent_mask:
-        mask = mask & common.make_variable(
-            common.subsequent_mask(x.size(1)),
-            cuda=True,
-        )
-
-    # Same mask applied to all h heads.
-    mask = mask.unsqueeze(1)
-
-    return mask
-
-
 class PositionwiseFeedForward(ChildLayer):
     def __init__(self, d_model, d_ff, **kwargs):
         hparams = kwargs.pop('hparams', None)
@@ -315,7 +291,7 @@ class PositionwiseFeedForward(ChildLayer):
         self.dropout = nn.Dropout(kwargs.pop('dropout', 0.1))
 
     @wrap_ppp
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         return self.w_2(self.dropout(F.relu(self.w_1(x))))      # [DEBUG]: Same before here
 
 
@@ -384,14 +360,16 @@ class SelfAttention(ChildLayer):
             Each need to be preprocessed and postprocessed.
         """
 
-        attn_result = self.attention(x, x, x, src_lengths=lengths)
+        # [NOTE]: Use pre-computed mask for self attention layer if available.
+        attn_result = self.attention(x, x, x, src_lengths=lengths, mask=kwargs.get('mask', None))
 
         if self.encdec_attention is not None:
             encoder_out = kwargs['encoder_out']
             encdec_result = self.encdec_attention(
-                attn_result, key=encoder_out[0], value=encoder_out[1],
+                attn_result, key=encoder_out['x'], value=encoder_out['y'],
                 src_lengths=kwargs['src_lengths'],
                 target_embedding=kwargs['target_embedding'],
+                mask=encoder_out['src_mask'],
             )
             self.attn_scores = self.encdec_attention.attn
         else:

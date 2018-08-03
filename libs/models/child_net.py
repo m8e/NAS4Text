@@ -112,7 +112,10 @@ class ChildEncoder(ChildEncoderBase):
 
         x = self.embed_tokens(x) * self.embed_scale + self.embed_positions(x)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-        source_embedding = x  # [DEBUG]: Same here.
+        source_embedding = x
+
+        # Compute mask from length, shared between all encoder layers.
+        src_mask = self._mask_from_lengths(x, src_lengths, apply_subsequent_mask=False)
 
         # x = self.fc1(x)
 
@@ -120,7 +123,7 @@ class ChildEncoder(ChildEncoderBase):
         for i in range(self.num_layers):
             layer = self.get_layer(i)
 
-            x = layer(x, src_lengths)
+            x = layer(x, src_lengths, mask=src_mask)
 
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(x.shape)))
 
@@ -143,7 +146,11 @@ class ChildEncoder(ChildEncoderBase):
             y = x
 
         logging.debug('Encoder output shape: {} & {}'.format(list(x.shape), list(y.shape)))
-        return x, y
+        return {
+            'x': x,
+            'y': y,
+            'src_mask': src_mask,
+        }
 
     def reorder_encoder_out(self, encoder_out, new_order):
         # TODO: Implement this method.
@@ -252,6 +259,9 @@ class ChildDecoder(ChildIncrementalDecoderBase):
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
         target_embedding = x
 
+        # Compute mask from length, shared between all decoder layers.
+        trg_mask = self._mask_from_lengths(x, trg_lengths, apply_subsequent_mask=True)
+
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         avg_attn_scores = None
         num_attn_layers = self.num_layers  # TODO: Explain why include layers without attention (None)?
@@ -263,16 +273,16 @@ class ChildDecoder(ChildIncrementalDecoderBase):
                 x, trg_lengths,
                 encoder_state=encoder_state_mean, encoder_out=encoder_out,
                 target_embedding=target_embedding if self.hparams.connect_trg_emb else None,
-                src_lengths=src_lengths,
+                src_lengths=src_lengths, mask=trg_mask,
             )
 
             if attention is None:
                 attn_scores = layer.attn_scores
             else:
                 x, attn_scores = attention(
-                    x, key=encoder_out[0], value=encoder_out[1],
+                    x, key=encoder_out['x'], value=encoder_out['y'],
                     target_embedding=target_embedding if self.hparams.connect_trg_emb else None,
-                    src_lengths=src_lengths)
+                    src_lengths=src_lengths, mask=encoder_out['src_mask'])
 
             attn_scores = attn_scores / num_attn_layers
             if avg_attn_scores is None:
@@ -311,11 +321,11 @@ class ChildDecoder(ChildIncrementalDecoderBase):
         # transpose only once to speed up attention layers
         if self.hparams.enc_dec_attn_type == 'fairseq':
             # [NOTE]: Only do transpose here for fairseq attention
-            encoder_a, encoder_b = encoder_out
+            encoder_a, encoder_b = encoder_out['x'], encoder_out['y']
             encoder_a = encoder_a.transpose(1, 2).contiguous()
-            result = (encoder_a, encoder_b)
-        else:
-            result = encoder_out
+            encoder_out['x'] = encoder_a
+            encoder_out['y'] = encoder_b
+        result = encoder_out
 
         if incremental_state is not None:
             common.set_incremental_state(self, incremental_state, 'encoder_out', result)
@@ -342,8 +352,6 @@ class ChildDecoder(ChildIncrementalDecoderBase):
 class ChildNet(EncDecChildNet):
     def __init__(self, net_code, hparams):
         super().__init__(net_code, hparams)
-
-        self.task = get_task(hparams.task)
 
         src_embed_tokens, trg_embed_tokens = self._build_embed_tokens()
 

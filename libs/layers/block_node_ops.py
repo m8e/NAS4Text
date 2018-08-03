@@ -35,12 +35,15 @@ class BlockNodeOp(nn.Module):
         self.input_shape = input_shape
         self.hparams = kwargs.pop('hparams', None)
         self.in_encoder = kwargs.pop('in_encoder', True)
+        self.controller = kwargs.pop('controller', None)
+        self.index = kwargs.pop('index', None)
+        self.input_index = kwargs.pop('input_index', None)
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         raise NotImplementedError()
 
     @staticmethod
-    def create(op_code, op_args, input_shape, in_encoder=True, hparams=None):
+    def create(op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
         if op_code == ss.CellSpace.CellOps['LSTM']:
             op_type = LSTMOp
         elif op_code == ss.CellSpace.CellOps['CNN']:
@@ -61,7 +64,7 @@ class BlockNodeOp(nn.Module):
             op_type = EncoderAttentionOp
         else:
             raise RuntimeError('Unknown op code {}'.format(op_code))
-        return op_type(op_args, input_shape, hparams=hparams, in_encoder=in_encoder)
+        return op_type(op_args, input_shape, hparams=hparams, in_encoder=in_encoder, **kwargs)
 
 
 class BlockCombineNodeOp(nn.Module):
@@ -71,19 +74,21 @@ class BlockCombineNodeOp(nn.Module):
         self.input_shape = input_shape
         self.hparams = kwargs.pop('hparams', None)
         self.in_encoder = kwargs.pop('in_encoder', True)
+        self.controller = kwargs.pop('controller', None)
+        self.index = kwargs.pop('index', None)
 
     def forward(self, in1, in2, lengths=None, encoder_state=None):
         raise NotImplementedError()
 
     @staticmethod
-    def create(op_code, op_args, input_shape, in_encoder=True, hparams=None):
+    def create(op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
         if op_code == ss.CellSpace.CombineOps['Add']:
             op_type = AddOp
         elif op_code == ss.CellSpace.CombineOps['Concat']:
             op_type = ConcatOp
         else:
             raise RuntimeError('Unknown combine op code {}'.format(op_code))
-        return op_type(op_args, input_shape, hparams=hparams)
+        return op_type(op_args, input_shape, hparams=hparams, **kwargs)
 
 
 class IdentityOp(BlockNodeOp):
@@ -148,7 +153,7 @@ class PFFNOp(BlockNodeOp):
         push_prepostprocessors(self.pffn, preprocessors, postprocessors, input_shape, input_shape)
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
-        return self.pffn(x)
+        return self.pffn(x, **kwargs)
 
 
 class LSTMOp(BlockNodeOp):
@@ -186,7 +191,8 @@ class LSTMOp(BlockNodeOp):
         ).simplify()
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
-        return self.lstm(x, lengths=lengths, encoder_state=kwargs.get('encoder_state_mean', None))
+        encoder_state = kwargs.pop('encoder_state_mean', None)
+        return self.lstm(x, lengths=lengths, encoder_state=encoder_state, **kwargs)
 
 
 class ConvolutionOp(BlockNodeOp):
@@ -215,7 +221,7 @@ class ConvolutionOp(BlockNodeOp):
                               kernel_size=kernel_size, stride=stride, groups=groups).simplify()
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
-        return self.conv(x, lengths=lengths, encoder_state=encoder_state)
+        return self.conv(x, lengths=lengths, encoder_state=encoder_state, **kwargs)
 
 
 class SelfAttentionOp(BlockNodeOp):
@@ -243,7 +249,9 @@ class SelfAttentionOp(BlockNodeOp):
         )
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
-        return self.attention(x, x, x, lengths)
+        # [NOTE]: Override 'src_lengths' in kwargs with self lengths
+        kwargs['src_lengths'] = lengths
+        return self.attention(x, x, x, **kwargs)
 
 
 class EncoderAttentionOp(BlockNodeOp):
@@ -277,9 +285,10 @@ class EncoderAttentionOp(BlockNodeOp):
         """
         Args:
             x: (batch_size, trg_seq_len, conv_channels) of float32
-            encoder_state (tuple):
-                output: (batch_size, src_seq_len, src_emb_size) of float32
-                output add source embedding: same shape as output
+            encoder_state (dict):
+                'x': output, (batch_size, src_seq_len, src_emb_size) of float32
+                'y': output add source embedding, same shape as output
+                'src_mask':
             lengths: (batch_size,) of long
 
         Returns:
@@ -288,9 +297,11 @@ class EncoderAttentionOp(BlockNodeOp):
         """
         # assert encoder_state is not None
 
+        # [NOTE]: Use 'src_lengths' in kwargs, does not use self 'lengths'
+        # [NOTE]: Override 'mask' in kwargs with 'src_mask' of encoder state
+        kwargs['mask'] = encoder_state['src_mask']
         result = self.attention(
-            x, encoder_state[0], encoder_state[1], src_lengths=kwargs.get('src_lengths', None),
-            target_embedding=kwargs.get('target_embedding', None),
+            x, key=encoder_state['x'], value=encoder_state['y'], **kwargs,
         )
         self.attn_scores = self.attention.attn
 
