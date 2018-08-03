@@ -225,7 +225,7 @@ class ChildDecoderBase(nn.Module):
         if not self._contains_lstm():
             return None
 
-        enc_hidden = encoder_out[0]
+        enc_hidden = encoder_out['x']
 
         src_mask = common.mask_from_lengths(src_lengths, left_pad=False, max_length=enc_hidden.size(1), cuda=True)
 
