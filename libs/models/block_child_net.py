@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
-from ..tasks import get_task
 from ..layers.common import *
 from ..layers.build_block import build_block
 from ..layers.grad_multiply import GradMultiply
@@ -19,11 +18,7 @@ __author__ = 'fyabc'
 
 class BlockChildEncoder(ChildEncoderBase):
     def __init__(self, code, hparams, embed_tokens, controller=None):
-        super().__init__()
-
-        self.code = code
-        self.hparams = hparams
-        self.task = get_task(hparams.task)
+        super().__init__(code, hparams)
 
         # Encoder input shape (after embedding).
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.

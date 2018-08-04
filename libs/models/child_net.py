@@ -24,7 +24,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
-from ..tasks import get_task
 from ..utils.search_space import LayerTypes
 from ..utils import common
 from ..layers.common import *
@@ -52,11 +51,7 @@ def _code2layer(layer_code, input_shape, hparams, in_encoder=True):
 
 class ChildEncoder(ChildEncoderBase):
     def __init__(self, code, hparams, embed_tokens):
-        super().__init__()
-
-        self.code = code
-        self.hparams = hparams
-        self.task = get_task(hparams.task)
+        super().__init__(code, hparams)
 
         # Value from decoder
         self.num_attention_layers = None

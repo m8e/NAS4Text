@@ -139,6 +139,12 @@ class EncDecChildNet(ChildNetBase):
 
 
 class ChildEncoderBase(nn.Module):
+    def __init__(self, code, hparams):
+        super().__init__()
+        self.code = code
+        self.hparams = hparams
+        self.task = get_task(hparams.task)
+
     def reorder_encoder_out(self, encoder_out, new_order):
         """Reorder encoder output according to new_order.
 

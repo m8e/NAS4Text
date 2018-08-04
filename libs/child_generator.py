@@ -90,12 +90,14 @@ class ChildGenerator:
             print('Batch {}:'.format(i))
             for id_, src_tokens, trg_tokens, translated_tokens in zip(
                     sample['id'], sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
-                print('SOURCE:', src_dict.string(src_tokens, bpe_symbol=self.task.BPESymbol))
-                print('REF   :', trg_dict.string(trg_tokens, bpe_symbol=self.task.BPESymbol, escape_unk=True))
                 trans_str = trg_dict.string(translated_tokens, bpe_symbol=self.task.BPESymbol, escape_unk=True)
-                print('DECODE:', trans_str)
                 translated_strings[id_] = trans_str
-            print()
+                if not self.hparams.quiet:
+                    print('SOURCE:', src_dict.string(src_tokens, bpe_symbol=self.task.BPESymbol))
+                    print('REF   :', trg_dict.string(trg_tokens, bpe_symbol=self.task.BPESymbol, escape_unk=True))
+                    print('DECODE:', trans_str)
+            if not self.hparams.quiet:
+                print()
 
         logging.info('Translated {} sentences in {:.1f}s ({:.2f} sentences/s)'.format(
             gen_timer.n, gen_timer.sum, 1. / gen_timer.avg))
