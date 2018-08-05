@@ -300,6 +300,8 @@ def add_darts_search_args(parser):
                        help='Number of encoder layers in arch search, default is %(default)s')
     group.add_argument('--num-decoder-layers', default=2, type=int,
                        help='Number of decoder layers in arch search, default is %(default)s')
+    group.add_argument('--unrolled', action='store_true', default=False,
+                       help='Use one-step unrolled validation loss (compute hessian vector product)')
 
     return group
 

@@ -139,6 +139,9 @@ class DartsChildNet(EncDecChildNet):
         self.encoder = DartsChildEncoder(self.hparams, src_embed_tokens)
         self.decoder = DartsChildDecoder(self.hparams, trg_embed_tokens)
 
+    def arch_parameters(self):
+        return [self.encoder.alphas, self.decoder.alphas]
+
     def update_weights(self):
         pass
 
