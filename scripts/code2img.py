@@ -132,11 +132,11 @@ def _make_cell_subgraph(block_name, i, in1, in2, op1_code, op2_code, combine_op_
     op2, op2_args = op2_code
     combine_op, combine_op_args = combine_op_code
 
-    # [NOTE]: Maybe preprocessors on in1
-    in1_label_list = ss.PPPSpace.get_ops(_get_op_arg(cell_args, 0, '')) + ['in1']
+    # [NOTE]: Maybe preprocessors on in1 and in2
+    preprocessors = ss.PPPSpace.get_ops(_get_op_arg(cell_args, 0, ''))
 
-    c.node(i1_n, '{{{}}}'.format('|'.join(in1_label_list)), fillcolor='lightblue')
-    c.node(i2_n, 'in2', fillcolor='lightblue')
+    c.node(i1_n, '{{{}}}'.format('|'.join(preprocessors + ['in1'])), fillcolor='lightblue')
+    c.node(i2_n, '{{{}}}'.format('|'.join(preprocessors + ['in2'])), fillcolor='lightblue')
     c.node(op1_n, _get_op_label(op1, op1_args, hparams), fillcolor='green')
     c.node(op2_n, _get_op_label(op2, op2_args, hparams), fillcolor='green')
     c.node(combine_op_n,

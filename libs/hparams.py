@@ -111,9 +111,19 @@ def hparams_base():
         block_combine_op='concat',
 
         # About NAS.
+
         # Select the NAS algorithm.
-        # Candidates: None, darts
+        # Candidates: None, darts (unused now)
         nas_algo=None,
+
+        # # Stub for DARTS
+        # # Number of nodes in one block.
+        # num_nodes=4,
+        # # Number of nodes combined into output in one block.
+        # num_output_nodes=4,
+        # # Number of encoder and decoder layers in arch search.
+        # num_encoder_layers=6,
+        # num_decoder_layers=6,
     )
 
 

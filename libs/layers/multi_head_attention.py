@@ -224,7 +224,7 @@ class MultiHeadAttention(ChildLayer):
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
-    @wrap_ppp
+    @wrap_ppp(3)
     def forward(self, query, key, value, src_lengths, **kwargs):
         x, self.attn = attention_and_proj_mask(
             self, query, key, value, src_lengths=src_lengths, subsequent_mask=self.subsequent_mask,
@@ -366,7 +366,7 @@ class SelfAttention(ChildLayer):
         if self.encdec_attention is not None:
             encoder_out = kwargs['encoder_out']
             encdec_result = self.encdec_attention(
-                attn_result, key=encoder_out['x'], value=encoder_out['y'],
+                attn_result, encoder_out['x'], encoder_out['y'],
                 src_lengths=kwargs['src_lengths'],
                 target_embedding=kwargs['target_embedding'],
                 mask=encoder_out['src_mask'],

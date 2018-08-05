@@ -3,6 +3,8 @@
 
 """Block node ops of block child network."""
 
+# TODO: Add 1x1 conv in all ops to allow shape mismatch.
+
 import torch as th
 import torch.nn as nn
 
@@ -43,27 +45,31 @@ class BlockNodeOp(nn.Module):
         raise NotImplementedError()
 
     @staticmethod
-    def create(op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
-        if op_code == ss.CellSpace.CellOps['LSTM']:
-            op_type = LSTMOp
-        elif op_code == ss.CellSpace.CellOps['CNN']:
-            op_type = ConvolutionOp
-        elif op_code == ss.CellSpace.CellOps['SelfAttention']:
-            op_type = SelfAttentionOp
-        elif op_code == ss.CellSpace.CellOps['FFN']:
-            op_type = FFNOp
-        elif op_code == ss.CellSpace.CellOps['PFFN']:
-            op_type = PFFNOp
-        elif op_code == ss.CellSpace.CellOps['Identity']:
-            op_type = IdentityOp
-        elif op_code == ss.CellSpace.CellOps['GroupedLSTM']:
-            raise NotImplementedError()
-        elif op_code == ss.CellSpace.CellOps['EncoderAttention']:
-            if in_encoder:
-                raise RuntimeError('Encoder attention only available in decoder')
-            op_type = EncoderAttentionOp
-        else:
+    def supported_ops():
+        return {
+            'LSTM': LSTMOp,
+            'CNN': ConvolutionOp,
+            'SelfAttention': SelfAttentionOp,
+            'FFN': FFNOp,
+            'PFFN': PFFNOp,
+            'Identity': IdentityOp,
+            'EncoderAttention': EncoderAttentionOp,
+            'Zero': ZeroOp,
+        }
+
+    @classmethod
+    def create(cls, op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
+        op_str_code = ss.CellSpace.CellOpsReversed.get(op_code, None)
+        if op_str_code is None:
             raise RuntimeError('Unknown op code {}'.format(op_code))
+
+        supported_ops = cls.supported_ops()
+        op_type = supported_ops.get(op_str_code, None)
+        if op_type is None:
+            raise NotImplementedError('The op {!r} is not implemented now'.format(op_str_code))
+
+        # Add some special cases here.
+
         return op_type(op_args, input_shape, hparams=hparams, in_encoder=in_encoder, **kwargs)
 
 
@@ -81,14 +87,33 @@ class BlockCombineNodeOp(nn.Module):
         raise NotImplementedError()
 
     @staticmethod
-    def create(op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
-        if op_code == ss.CellSpace.CombineOps['Add']:
-            op_type = AddOp
-        elif op_code == ss.CellSpace.CombineOps['Concat']:
-            op_type = ConcatOp
-        else:
+    def supported_ops():
+        return {
+            'Add': AddOp,
+            'Concat': ConcatOp,
+        }
+
+    @classmethod
+    def create(cls, op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
+        op_str_code = ss.CellSpace.CombineOpsReversed.get(op_code, None)
+        if op_str_code is None:
             raise RuntimeError('Unknown combine op code {}'.format(op_code))
+        supported_ops = cls.supported_ops()
+        op_type = supported_ops.get(op_str_code, None)
+        if op_type is None:
+            raise NotImplementedError('The combine op {!r} is not implemented now'.format(op_str_code))
+
+        # Add some special cases here.
+
         return op_type(op_args, input_shape, hparams=hparams, **kwargs)
+
+
+class ZeroOp(BlockNodeOp):
+    """
+    op_args: []
+    """
+    def forward(self, x, lengths=None, encoder_state=None, **kwargs):
+        return x.mul(0.0)
 
 
 class IdentityOp(BlockNodeOp):
@@ -265,6 +290,9 @@ class EncoderAttentionOp(BlockNodeOp):
     def __init__(self, op_args, input_shape, **kwargs):
         super().__init__(op_args, input_shape, **kwargs)
 
+        if self.in_encoder:
+            raise RuntimeError('Encoder attention only available in decoder')
+
         space = ss.AttentionSpaces[self.hparams.attn_space]
         h = _get_op_arg(self, 0, 8, space=space.NumHeads)
         preprocessors = _get_op_arg(self, 1, "")
@@ -301,7 +329,7 @@ class EncoderAttentionOp(BlockNodeOp):
         # [NOTE]: Override 'mask' in kwargs with 'src_mask' of encoder state
         kwargs['mask'] = encoder_state['src_mask']
         result = self.attention(
-            x, key=encoder_state['x'], value=encoder_state['y'], **kwargs,
+            x, encoder_state['x'], encoder_state['y'], **kwargs,
         )
         self.attn_scores = self.attention.attn
 

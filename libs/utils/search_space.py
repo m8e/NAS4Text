@@ -156,17 +156,18 @@ AttentionSpaces = {
 }
 
 
-# Block cell.
-
 class CellSpace:
+    """Search spaces of block cell."""
     CellOps = {
         k: i for i, k in enumerate(
-            ['LSTM', 'CNN', 'SelfAttention', 'FFN', 'PFFN', 'Identity', 'GroupedLSTM', 'EncoderAttention'])
+            ['LSTM', 'CNN', 'SelfAttention', 'FFN', 'PFFN', 'Identity', 'GroupedLSTM', 'EncoderAttention', 'Zero'])
     }
+    CellOpsReversed = {i: k for k, i in CellOps.items()}
 
     Activations = {
         k: i for i, k in enumerate(['identity', 'tanh', 'relu', 'sigmoid'])
     }
+    ActivationsReversed = {i: k for k, i in Activations.items()}
 
     # Search space of hidden sizes. (Useless or not?)
     HiddenSizes = [32, 64, 128, 256, 512, 1024]
@@ -174,3 +175,11 @@ class CellSpace:
     CombineOps = {
         k: i for i, k in enumerate(['Add', 'Concat'])
     }
+    CombineOpsReversed = {i: k for k, i in CombineOps.items()}
+
+
+class DartsSpace:
+    """Search spaces of DARTS."""
+
+    CellOps = ['Zero', 'Identity', 'FFN', 'PFFN', 'SelfAttention', 'EncoderAttention']
+    CombineOps = ['Add', 'Concat']

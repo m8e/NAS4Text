@@ -39,18 +39,7 @@ class BlockChildEncoder(ChildEncoderBase):
 
             input_shape = output_shape
 
-        if hparams.enc_out_norm:
-            self.out_norm = LayerNorm(input_shape[2])
-        else:
-            self.out_norm = None
-
-        if hparams.enc_output_fc or input_shape[2] != hparams.src_embedding_size:
-            self.fc2 = Linear(input_shape[2], hparams.src_embedding_size, hparams=hparams)
-        else:
-            self.fc2 = None
-
-        # Encoder output shape
-        self.output_shape = th.Size([input_shape[0], input_shape[1], hparams.src_embedding_size])
+        self._init_post(input_shape)
 
     @property
     def num_layers(self):
@@ -67,19 +56,8 @@ class BlockChildEncoder(ChildEncoderBase):
             Output: (batch_size, src_seq_len, src_emb_size) of float32
             Output with embedding: (batch_size, src_seq_len, src_emb_size) of float32
         """
-        x = src_tokens
-        logging.debug('Encoder input shape: {}'.format(list(x.shape)))
+        x, src_mask, source_embedding = self._fwd_pre(src_tokens, src_lengths)
 
-        x = self.embed_tokens(x) * self.embed_scale + self.embed_positions(x)
-        x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-        source_embedding = x
-
-        # Compute mask from length, shared between all encoder layers.
-        src_mask = self._mask_from_lengths(x, src_lengths, apply_subsequent_mask=False)
-
-        # x = self.fc1(x)
-
-        logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         input_list = [x, x]
         for i in range(self.num_layers):
             layer = self.layers[i]
@@ -89,30 +67,7 @@ class BlockChildEncoder(ChildEncoderBase):
             logging.debug('Encoder layer {} output shape: {}'.format(i, list(output.shape)))
         x = input_list[-1]
 
-        # Output normalization
-        if self.out_norm is not None:
-            x = self.out_norm(x)
-
-        # project back to size of embedding
-        if self.fc2 is not None:
-            x = self.fc2(x)
-
-        if self.hparams.apply_grad_mul:
-            # scale gradients (this only affects backward, not forward)
-            x = GradMultiply.apply(x, 1.0 / (2.0 * self.num_attention_layers))
-
-        if self.hparams.connect_src_emb:
-            # add output to input embedding for attention
-            y = (x + source_embedding) * math.sqrt(0.5)
-        else:
-            y = x
-
-        logging.debug('Encoder output shape: {} & {}'.format(list(x.shape), list(y.shape)))
-        return {
-            'x': x,
-            'y': y,
-            'src_mask': src_mask,
-        }
+        return self._fwd_post(x, src_mask, source_embedding)
 
     def reorder_encoder_out(self, encoder_out, new_order):
         # TODO: Implement this method.
@@ -145,19 +100,7 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
 
             input_shape = output_shape
 
-        # Decoder output shape (before softmax)
-        self.output_shape = input_shape
-
-        if hparams.dec_out_norm:
-            self.out_norm = LayerNorm(self.output_shape[2])
-        else:
-            self.out_norm = None
-        if hparams.dec_output_fc or self.output_shape[2] != hparams.decoder_out_embedding_size:
-            self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
-        else:
-            self.fc2 = None
-
-        self._build_fc_last()
+        self._init_post(input_shape)
 
     @property
     def num_layers(self):
@@ -180,23 +123,10 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
             Attention scores: (batch_size, trg_seq_len, src_seq_len) of float32
         """
 
-        # TODO: Implement incremental state.
-        if not self.ApplyIncrementalState:
-            incremental_state = None
+        x, encoder_out, trg_mask, target_embedding, encoder_state_mean = self._fwd_pre(
+            encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state
+        )
 
-        encoder_state_mean = self._get_encoder_state_mean(encoder_out, src_lengths)
-
-        x = trg_tokens
-        logging.debug('Decoder input shape: {}'.format(list(x.shape)))
-
-        x = self._embed_tokens(x, incremental_state) * self.embed_scale + self.embed_positions(x, incremental_state)
-        x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-        target_embedding = x
-
-        # Compute mask from length, shared between all decoder layers.
-        trg_mask = self._mask_from_lengths(x, trg_lengths, apply_subsequent_mask=True)
-
-        logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         input_list = [x, x]
         for i in range(self.num_layers):
             layer = self.layers[i]
@@ -212,19 +142,7 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
             logging.debug('Decoder layer {} output shape: {}'.format(i, list(x.shape)))
         x = input_list[-1]
 
-        # Output normalization
-        if self.out_norm is not None:
-            x = self.out_norm(x)
-
-        # Project back to size of vocabulary
-        if self.fc2 is not None:
-            x = self.fc2(x)
-            x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-
-        x = self.fc_last(x)
-
-        logging.debug('Decoder output shape: {} & None'.format(list(x.shape)))
-        return x, None
+        return self._fwd_post(x, None)
 
     def _contains_lstm(self):
         return any(l.contains_lstm() for l in self.layers)

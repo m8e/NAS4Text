@@ -11,6 +11,7 @@ from .base import ChildLayer, wrap_ppp
 from .ppp import push_prepostprocessors
 from .block_node_ops import BlockNodeOp, BlockCombineNodeOp
 from ..utils.search_space import CellSpace
+from ..utils import functions as fns
 from .common import Linear
 
 __author__ = 'fyabc'
@@ -96,7 +97,7 @@ class Node(ChildLayer):
             op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams,
             controller=self.controller, index=self.index)
 
-    @wrap_ppp
+    @wrap_ppp(2)
     def forward(self, in1, in2, lengths=None, encoder_state=None, **kwargs):
         in1, in2 = self._process_inputs(in1, in2)
         return self.combine_op(
@@ -141,14 +142,7 @@ class CombineNode(nn.Module):
                 hidden_size * n, hidden_size, bias=True, dropout=self.hparams.dropout, hparams=self.hparams)
 
     def forward(self, node_output_list):
-        if self.op == 'add':
-            return th.stack([t for t in node_output_list if t is not None]).mean(dim=0)
-        elif self.op == 'concat':
-            return self.linear(th.cat([t for t in node_output_list if t is not None], dim=-1))
-        elif self.op == 'last':
-            return node_output_list[-1]
-        else:
-            raise ValueError('Unknown block combine op {!r}'.format(self.op))
+        return fns.combine_outputs(self.op, node_output_list, linear=self.linear)
 
     def extra_repr(self):
         return 'op={}'.format(self.op)
@@ -200,7 +194,7 @@ class BlockLayer(ChildLayer):
 
         return input_shape
 
-    @wrap_ppp
+    @wrap_ppp(2)
     def forward(self, input_, prev_input, lengths=None, encoder_state=None, **kwargs):
         """
 

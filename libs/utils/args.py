@@ -287,3 +287,34 @@ def get_generator_args(args=None):
     parsed_args = parser.parse_args(args)
 
     return parsed_args
+
+
+def add_darts_search_args(parser):
+    group = parser.add_argument_group('DARTS search options')
+
+    group.add_argument('--num-nodes', default=4, type=int,
+                       help='Number of nodes in one block, default is %(default)s')
+    group.add_argument('--num-output-nodes', default=4, type=int,
+                       help='Number of nodes combined into output in one block, default is %(default)s')
+    group.add_argument('--num-encoder-layers', default=2, type=int,
+                       help='Number of encoder layers in arch search, default is %(default)s')
+    group.add_argument('--num-decoder-layers', default=2, type=int,
+                       help='Number of decoder layers in arch search, default is %(default)s')
+
+    return group
+
+
+def get_darts_search_args(args=None):
+    parser = argparse.ArgumentParser(description='DARTS search Script.')
+    add_general_args(parser)
+    add_dataset_args(parser, train=True)
+    add_hparams_args(parser)
+    add_train_args(parser)
+    add_distributed_args(parser)
+    add_darts_search_args(parser)
+
+    parsed_args = parser.parse_args(args)
+
+    _parse_extra_options(parsed_args)
+
+    return parsed_args

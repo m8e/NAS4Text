@@ -55,11 +55,40 @@ class ChildLayer(nn.Module):
         return self
 
 
-def wrap_ppp(forward_fn):
-    @functools.wraps(forward_fn)
-    def forward(self, input_, *args, **kwargs):
-        input_before = input_
-        input_ = self.preprocess(input_)
-        result = forward_fn(self, input_, *args, **kwargs)  # [DEBUG]: Same after here
-        return self.postprocess(result, input_before)
-    return forward
+def wrap_ppp(forward_fn_or_i):
+    """Wrap the forward function with ppp.
+
+    Usage:
+        class C(nn.Module):
+            @wrap_ppp
+            def forward(self, input_, a, b, c):
+                pass
+
+        # Multiple inputs (e.g. residual connection)
+        class C(nn.Module):
+            @wrap_ppp(2)
+            def forward(self, input_, prev_input, a, b, c):
+                pass
+
+    [NOTE]: When use multiple input, All inputs will be preprocessed by same preprocessors,
+        But only the first input will be used in postprocessors.
+    """
+    def wrapper(forward_fn):
+        @functools.wraps(forward_fn)
+        def forward(self, *args, **kwargs):
+            args = list(args)
+            first_input_before = args[0]
+            for i in range(num_inputs):
+                args[i] = self.preprocess(args[i])
+            result = forward_fn(self, *args, **kwargs)
+            return self.postprocess(result, first_input_before)
+
+        return forward
+
+    if callable(forward_fn_or_i):
+        num_inputs = 1
+        return wrapper(forward_fn_or_i)
+    else:
+        assert isinstance(forward_fn_or_i, int), 'Must pass an int to the decorator'
+        num_inputs = forward_fn_or_i
+        return wrapper
