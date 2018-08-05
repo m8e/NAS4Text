@@ -2,16 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import math
 
 import torch as th
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
-from ..layers.common import *
 from ..layers.build_block import build_block
-from ..layers.grad_multiply import GradMultiply
 
 __author__ = 'fyabc'
 
@@ -75,9 +71,6 @@ class BlockChildEncoder(ChildEncoderBase):
 
     def upgrade_state_dict(self, state_dict):
         return state_dict
-
-    def max_positions(self):
-        return self.embed_positions.max_positions()
 
 
 class BlockChildDecoder(ChildIncrementalDecoderBase):

@@ -111,9 +111,6 @@ class ChildEncoder(ChildEncoderBase):
     def upgrade_state_dict(self, state_dict):
         return state_dict
 
-    def max_positions(self):
-        return self.embed_positions.max_positions()
-
     def get_layer(self, i):
         return getattr(self, 'layer_{}'.format(i))
 

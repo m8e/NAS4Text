@@ -179,7 +179,14 @@ class CellSpace:
 
 
 class DartsSpace:
-    """Search spaces of DARTS."""
+    """Search spaces of DARTS and default op args."""
 
-    CellOps = ['Zero', 'Identity', 'FFN', 'PFFN', 'SelfAttention', 'EncoderAttention']
+    CellOps = {
+        'Zero': [],
+        'Identity': [],
+        'FFN': ['relu', True],
+        'PFFN': ['', 'd'],
+        'SelfAttention': [1, '', 'd'],
+        'EncoderAttention': [1, '', 'd'],
+    }
     CombineOps = ['Add', 'Concat']

@@ -8,17 +8,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
-from ..layers.common import *
 from ..layers.darts_layer import DartsLayer
-from ..layers.build_block import build_block
-from ..layers.grad_multiply import GradMultiply
+from ..utils import common
 
 __author__ = 'fyabc'
 
 
-def _init_alphas(in_encoder):
-    # TODO: Build alphas.
-    pass
+def _init_alphas(darts_layer: DartsLayer):
+    I = darts_layer.num_input_nodes
+    N = darts_layer.num_nodes
+    num_edges = I * N + N * (N - 1) // 2
+    num_ops = len(darts_layer.supported_ops(darts_layer.in_encoder))
+
+    return common.make_variable(1e-3 * th.randn(num_edges, num_ops), volatile=False, cuda=True)
 
 
 class DartsChildEncoder(ChildEncoderBase):
@@ -37,12 +39,12 @@ class DartsChildEncoder(ChildEncoderBase):
         self.layers = nn.ModuleList()
         input_shape = self.input_shape
 
-        # [NOTE]: Alphas are shared between all layers.
-        self.alphas = _init_alphas(in_encoder=True)
-
-        for i in range(hparams.num_nodes):
+        for i in range(hparams.num_encoder_layers):
             # [NOTE]: Shape not changed here.
             self.layers.append(DartsLayer(hparams, input_shape, in_encoder=True))
+
+        # [NOTE]: Alphas are shared between all layers.
+        self.alphas = _init_alphas(self.layers[0])
 
         self._init_post(input_shape)
 
@@ -87,14 +89,17 @@ class DartsChildDecoder(ChildIncrementalDecoderBase):
         self.layers = nn.ModuleList()
         input_shape = self.input_shape
 
-        # [NOTE]: Alphas are shared between all layers.
-        self.alphas = _init_alphas(in_encoder=False)
-
-        for i in range(hparams.num_nodes):
+        for i in range(hparams.num_decoder_layers):
             # [NOTE]: Shape not changed here.
             self.layers.append(DartsLayer(hparams, input_shape, in_encoder=False))
 
+        self.alphas = _init_alphas(self.layers[0])
+
         self._init_post(input_shape)
+
+    @property
+    def num_layers(self):
+        return len(self.layers)
 
     def forward(self, encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state=None):
         x, encoder_out, trg_mask, target_embedding, encoder_state_mean = self._fwd_pre(
@@ -119,6 +124,9 @@ class DartsChildDecoder(ChildIncrementalDecoderBase):
         x = input_list[-1]
 
         return self._fwd_post(x, None)
+
+    def _contains_lstm(self):
+        return 'LSTM' in DartsLayer.supported_ops(in_encoder=False)
 
 
 @ChildNetBase.register_child_net

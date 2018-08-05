@@ -234,6 +234,9 @@ class ChildEncoderBase(nn.Module):
         return common.pad_and_subsequent_mask(
             lengths, in_encoder=True, apply_subsequent_mask=apply_subsequent_mask, maxlen=x.size(1))
 
+    def max_positions(self):
+        return self.embed_positions.max_positions()
+
 
 class ChildDecoderBase(nn.Module):
     # A temporary flag to mark using incremental state or not.

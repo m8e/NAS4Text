@@ -311,6 +311,7 @@ def get_darts_search_args(args=None):
     add_hparams_args(parser)
     add_train_args(parser)
     add_distributed_args(parser)
+    add_checkpoint_args(parser)
     add_darts_search_args(parser)
 
     parsed_args = parser.parse_args(args)

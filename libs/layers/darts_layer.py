@@ -7,6 +7,7 @@ from .base import ChildLayer, wrap_ppp
 from .block_node_ops import BlockNodeOp
 from ..utils.search_space import DartsSpace
 from ..utils import functions as fns
+from ..layers.ppp import push_prepostprocessors
 
 __author__ = 'fyabc'
 
@@ -21,18 +22,17 @@ class DartsMixedOp(nn.Module):
 
         # Build all ops.
         supported_ops = self.supported_ops(self.in_encoder)
-        for op_type in supported_ops.values():
-            op_args = []
+        for op_type, op_args in supported_ops.values():
             self.ops.append(op_type(op_args, input_shape, hparams=hparams, in_encoder=in_encoder, **kwargs))
 
     @staticmethod
     def supported_ops(in_encoder=True):
-        """Get supported ops. Only support a subset of block ops."""
-        # TODO: Support more op args (e.g. ppp)? Add default args in supported ops?
+        """Get supported ops and related op args. Only support a subset of block ops."""
+        darts_ops = DartsSpace.CellOps
         result = {
-            k: v
+            k: (v, darts_ops[k])
             for k, v in BlockNodeOp.supported_ops().items()
-            if k in DartsSpace.CellOps
+            if k in darts_ops
         }
         if in_encoder:
             result.pop('EncoderAttention')
@@ -61,10 +61,20 @@ class DartsLayer(ChildLayer):
         # [NOTE]: Last N nodes will be combined to the block output.
         self.num_output_nodes = hparams.num_output_nodes
 
-        self.node_combine_op = 'add'    # FIXME: Node combine op is fixed now.
+        # FIXME: Some hyperparameters are fixed now.
+
+        self.node_combine_op = 'add'
         self.block_combine_op = hparams.block_combine_op.lower()
 
         assert self.num_input_nodes == 2, 'Number of input nodes != 2 is not supported now'
+
+        # [NOTE]: Does NOT use residual in block ppp and node ppp.
+        self.ppp_code = ['', '']
+        push_prepostprocessors(self, self.ppp_code[0], self.ppp_code[1], input_shape, input_shape)
+
+        self.node_ppp_code = ['', 'n']  # PPP of each node.
+        # The list of empty layers to store ppp.
+        self.node_ppp_list = nn.ModuleList()
 
         self.mixed_ops = nn.ModuleList()
         self.offsets = {}   # Map edge to offset.
@@ -81,6 +91,12 @@ class DartsLayer(ChildLayer):
     def _build_nodes(self, input_shape):
         offset = 0
         for j in range(self.num_input_nodes, self.num_total_nodes):
+            # Node ppp
+            node_ppp = ChildLayer(self.hparams)
+            push_prepostprocessors(node_ppp, self.node_ppp_code[0], self.node_ppp_code[1], input_shape, input_shape)
+            self.node_ppp_list.append(node_ppp)
+
+            # Edges
             for i in range(j):
                 # Mixed op of edge i -> j
                 self.mixed_ops.append(DartsMixedOp(
@@ -111,15 +127,18 @@ class DartsLayer(ChildLayer):
         node_output_list[1] = prev_input
 
         for j in range(self.num_input_nodes, self.num_total_nodes):
+            node_ppp = self.node_ppp_list[j - self.num_input_nodes]
             results = []
-            # TODO: How to add node ppp? (Especially residual?)
             for i in range(j):
                 offset = self.offsets[(i, j)]
                 mixed_op = self.mixed_ops[offset]
                 mixed_op_weights = weights[offset]
+                edge_input = node_ppp.preprocess(node_output_list[i])
                 results.append(mixed_op(
-                    node_output_list[i], mixed_op_weights,
+                    edge_input, mixed_op_weights,
                     lengths=lengths, encoder_state=encoder_state, **kwargs,
                 ))
-            node_output_list[j] = fns.combine_outputs(self.node_combine_op, results, linear=None)
+            node_output = fns.combine_outputs(self.node_combine_op, results, linear=None)
+            # [NOTE]: Only use first node to compute postprocess, usually omit it (does NOT use residual).
+            node_output_list[j] = node_ppp.postprocess(node_output, node_output_list[0])
         return fns.combine_outputs(self.block_combine_op, node_output_list[-self.num_output_nodes:], linear=None)
