@@ -22,12 +22,13 @@ class DartsMixedOp(nn.Module):
         # Build all ops.
         supported_ops = self.supported_ops(self.in_encoder)
         for op_type in supported_ops.values():
-            op_args = []    # TODO: Support more op args (e.g. ppp)? Add default args in supported ops?
+            op_args = []
             self.ops.append(op_type(op_args, input_shape, hparams=hparams, in_encoder=in_encoder, **kwargs))
 
     @staticmethod
     def supported_ops(in_encoder=True):
         """Get supported ops. Only support a subset of block ops."""
+        # TODO: Support more op args (e.g. ppp)? Add default args in supported ops?
         result = {
             k: v
             for k, v in BlockNodeOp.supported_ops().items()
