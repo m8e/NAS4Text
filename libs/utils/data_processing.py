@@ -64,14 +64,15 @@ class LanguageDatasets:
     def train_dataloader(self, split, max_tokens=None,
                          max_sentences=None, max_positions=(1024, 1024),
                          seed=None, epoch=1, sample_without_replacement=0,
-                         sort_by_source_size=False, shard_id=0, num_shards=1):
+                         sort_by_source_size=False, shard_id=0, num_shards=1,
+                         start=None, end=None):
         dataset = self.get_dataset(split)
 
         batch_sampler = dataset.shuffled_batches_by_size(
             max_tokens=max_tokens,
             max_sentences=max_sentences, epoch=epoch,
             sample=sample_without_replacement, max_positions=max_positions,
-            sort_by_source_size=sort_by_source_size, seed=seed)
+            sort_by_source_size=sort_by_source_size, seed=seed, start=start, end=end)
         batch_sampler = mask_batches(batch_sampler, shard_id=shard_id, num_shards=num_shards)
 
         return DataLoader(
@@ -196,6 +197,7 @@ class LanguagePairDataset(Dataset):
         self.pad_id = pad_id
         self.eos_id = eos_id
 
+        self.frozen_batches_dict = {}
         self.frozen_batches = None
 
     def __len__(self):
@@ -230,7 +232,7 @@ class LanguagePairDataset(Dataset):
 
     def shuffled_batches_by_size(self, max_tokens=None, max_sentences=None,
                                  epoch=1, sample=0, max_positions=(1024, 1024),
-                                 sort_by_source_size=False, seed=1):
+                                 sort_by_source_size=False, seed=1, start=None, end=None):
         """Returns batches of indices, bucketed by size and then shuffled. Batches
         may contain sequences of different lengths."""
         if max_tokens is None:
@@ -238,20 +240,26 @@ class LanguagePairDataset(Dataset):
         if max_sentences is None:
             max_sentences = float('Inf')
 
-        if self.frozen_batches is None:
+        if start is None:
+            start = 0
+        if end is None:
+            end = len(self.src)
+
+        if self.frozen_batches_dict.get((start, end), None) is None:
             with numpy_seed(seed):
-                indices = np.random.permutation(len(self.src))
+                indices = np.random.permutation(end - start) + start
 
             # sort by sizes
             indices = indices[np.argsort(self.trg.sizes[indices], kind='mergesort')]
             indices = indices[np.argsort(self.src.sizes[indices], kind='mergesort')]
 
-            self.frozen_batches = list(_make_batches(
+            self.frozen_batches_dict[(start, end)] = list(_make_batches(
                 self.src, self.trg, indices, max_tokens, max_sentences, max_positions,
                 ignore_invalid_inputs=True, allow_different_src_lens=True))
+        frozen_batches = self.frozen_batches_dict[(start, end)]
 
         with numpy_seed(seed + epoch):
-            batches = list(self.frozen_batches)
+            batches = list(frozen_batches)
             if not sort_by_source_size:
                 np.random.shuffle(batches)
 

@@ -302,6 +302,19 @@ def add_darts_search_args(parser):
                        help='Number of decoder layers in arch search, default is %(default)s')
     group.add_argument('--unrolled', action='store_true', default=False,
                        help='Use one-step unrolled validation loss (compute hessian vector product)')
+    group.add_argument('--train-portion', default=0.5, type=float,
+                       help='Portion of training data, default is %(default)s')
+    group.add_argument('--arch-clip-norm', default=10.0, type=float,
+                       help='Clip threshold of gradients in arch search, default is %(default)s')
+
+    # FIXME: Same as DARTS, use single lr for simple.
+    group.add_argument('--arch-lr', '--arch-learning-rate', default=3e-4, type=float,
+                       help='Arch search learning rate, default is %(default)s')
+    group.add_argument('--arch-optimizer', default='adam', help='Arch optimizer, default is %(default)s')
+    group.add_argument('--arch-adam-betas', default='(0.5, 0.999)',
+                       help='Adam betas for arch optimizer, default is %(default)s')
+    group.add_argument('--arch-weight-decay', default=1e-3, type=float,
+                       help='Weight decay for arch optimizer, default is %(default)s')
 
     return group
 

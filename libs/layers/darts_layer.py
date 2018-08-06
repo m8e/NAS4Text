@@ -1,6 +1,8 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+from collections import OrderedDict
+
 import torch.nn as nn
 
 from .base import ChildLayer, wrap_ppp
@@ -13,6 +15,8 @@ __author__ = 'fyabc'
 
 
 class DartsMixedOp(nn.Module):
+    _SupportedOps = {}
+
     def __init__(self, hparams, input_shape, in_encoder=True, **kwargs):
         super().__init__()
         self.hparams = hparams
@@ -25,17 +29,24 @@ class DartsMixedOp(nn.Module):
         for op_type, op_args in supported_ops.values():
             self.ops.append(op_type(op_args, input_shape, hparams=hparams, in_encoder=in_encoder, **kwargs))
 
-    @staticmethod
-    def supported_ops(in_encoder=True):
-        """Get supported ops and related op args. Only support a subset of block ops."""
-        darts_ops = DartsSpace.CellOps
-        result = {
-            k: (v, darts_ops[k])
-            for k, v in BlockNodeOp.supported_ops().items()
-            if k in darts_ops
-        }
-        if in_encoder:
-            result.pop('EncoderAttention')
+    @classmethod
+    def supported_ops(cls, in_encoder=True):
+        """Get supported ops and related op args. Only support a subset of block ops.
+
+        [NOTE]: Supported ops are in alphabetical order.
+        """
+
+        result = cls._SupportedOps.get(in_encoder, None)
+        if result is None:
+            darts_ops = DartsSpace.CellOps
+            result = OrderedDict(sorted(
+                (k, (v, darts_ops[k]))
+                for k, v in BlockNodeOp.supported_ops().items()
+                if k in darts_ops
+            ))
+            if in_encoder:
+                result.pop('EncoderAttention')
+            cls._SupportedOps[in_encoder] = result
         return result
 
     def forward(self, x, weights, lengths=None, encoder_state=None, **kwargs):
@@ -63,8 +74,8 @@ class DartsLayer(ChildLayer):
 
         # FIXME: Some hyperparameters are fixed now.
 
-        self.node_combine_op = 'add'
-        self.block_combine_op = hparams.block_combine_op.lower()
+        self.node_combine_op = 'Add'
+        self.block_combine_op = hparams.block_combine_op
 
         assert self.num_input_nodes == 2, 'Number of input nodes != 2 is not supported now'
 
@@ -76,7 +87,7 @@ class DartsLayer(ChildLayer):
         # The list of empty layers to store ppp.
         self.node_ppp_list = nn.ModuleList()
 
-        self.mixed_ops = nn.ModuleList()
+        self.edges = nn.ModuleList()
         self.offsets = {}   # Map edge to offset.
         self._build_nodes(input_shape)
 
@@ -99,7 +110,7 @@ class DartsLayer(ChildLayer):
             # Edges
             for i in range(j):
                 # Mixed op of edge i -> j
-                self.mixed_ops.append(DartsMixedOp(
+                self.edges.append(DartsMixedOp(
                     self.hparams, input_shape, in_encoder=self.in_encoder,
                     controller=None, index=j, input_index=i,
                 ))
@@ -131,7 +142,7 @@ class DartsLayer(ChildLayer):
             results = []
             for i in range(j):
                 offset = self.offsets[(i, j)]
-                mixed_op = self.mixed_ops[offset]
+                mixed_op = self.edges[offset]
                 mixed_op_weights = weights[offset]
                 edge_input = node_ppp.preprocess(node_output_list[i])
                 results.append(mixed_op(
@@ -142,3 +153,51 @@ class DartsLayer(ChildLayer):
             # [NOTE]: Only use first node to compute postprocess, usually omit it (does NOT use residual).
             node_output_list[j] = node_ppp.postprocess(node_output, node_output_list[0])
         return fns.combine_outputs(self.block_combine_op, node_output_list[-self.num_output_nodes:], linear=None)
+
+    def dump_net_code(self, weights, branch=2):
+        result = []
+        result.extend([[None for _ in range(2 * self.num_input_nodes + 1)] for _ in range(self.num_input_nodes)])
+
+        supported_ops = self.supported_ops(in_encoder=self.in_encoder)
+        ignored_ops = ['Zero']
+
+        for j in range(self.num_input_nodes, self.num_total_nodes):
+            in_offsets = [self.offsets[(i, j)] for i in range(j)]
+            in_weights = weights[in_offsets]
+
+            def _key_strength(idx):
+                return -max(
+                    in_weights[idx][op_idx_]
+                    for op_idx_, op_ in enumerate(supported_ops)
+                    if op_ not in ignored_ops
+                )
+
+            # Get top-k input edges.
+            edges = sorted(range(j), key=_key_strength)[:branch]
+
+            # Get best op for each input edge.
+            ops = []
+            for i in edges:
+                in_op_weights = in_weights[i]
+                best_op, best_op_idx = None, None
+                for op_idx, op in enumerate(supported_ops):
+                    if op in ignored_ops:
+                        continue
+                    if best_op is None or in_op_weights[op_idx] > in_op_weights[best_op_idx]:
+                        best_op, best_op_idx = op, op_idx
+                # Op type string + op args.
+                ops.append([best_op] + supported_ops[best_op][1])
+
+            result.append(
+                edges +
+                ops +
+                [self.node_combine_op] +
+                self.node_ppp_code
+            )
+
+        result.append({
+            'preprocessors': self.ppp_code[0],
+            'postprocessors': self.ppp_code[1],
+        })
+
+        return result

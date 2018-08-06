@@ -180,9 +180,7 @@ class SimpleTrainer:
 
 
 def annotated_train_main(hparams):
-    components = main_entry(hparams, train=True, net_code=False)
-
-    hparams.net_code_file = 'annotated_transformer'
+    components = main_entry(hparams, train=True, net_code='annotated_transformer')
 
     datasets = components['datasets']
 

@@ -43,7 +43,8 @@ def main_entry(hparams, **kwargs):
             :key load_dataset (bool): Load dataset or not. (True)
             :key datasets (LanguageDatasets): Preload datasets or None. (None)
             :key train (bool): In training or generation. (True)
-            :key net_code (bool): Get net code or not. (True)
+            :key net_code (bool or str): Get net code or not. (True)
+                If it is a string, use this string as net code filename to store models and translated outputs.
 
     Returns:
         dict: Contains several components.
@@ -64,10 +65,13 @@ def main_entry(hparams, **kwargs):
 
     # Get net code.
     # [NOTE]: Must before hparams postprocessing because of the hparams priority.
-    if kwargs.pop('net_code', True):
+    net_code = kwargs.pop('net_code', True)
+    if net_code is True:
         code = get_net_code(hparams, modify_hparams=True)
     else:
         code = None
+        if isinstance(net_code, str):
+            hparams.net_code_file = net_code
 
     # Postprocess hparams.
     _set_default_hparams(hparams)

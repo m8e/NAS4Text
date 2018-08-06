@@ -56,7 +56,6 @@ def single_process_main(hparams, datasets=None):
     epoch, batch_offset = mu.prepare_checkpoint(hparams, trainer)
 
     # Send a dummy batch to warm the caching allocator
-    # [DEBUG]: Dummy batch different because of random states.
     dummy_batch = datasets.get_dataset('train').get_dummy_batch(hparams.max_tokens, trainer.get_model().max_positions())
     trainer.dummy_train_step(dummy_batch)
 

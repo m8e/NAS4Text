@@ -7,6 +7,7 @@ __author__ = 'fyabc'
 
 
 def combine_outputs(op, output_list, **kwargs):
+    op = op.lower()
     if op == 'add':
         return th.stack([t for t in output_list if t is not None]).mean(dim=0)
     elif op == 'concat':

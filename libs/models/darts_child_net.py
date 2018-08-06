@@ -15,12 +15,21 @@ __author__ = 'fyabc'
 
 
 def _init_alphas(darts_layer: DartsLayer):
+    """
+
+    [NOTE]: Alphas are Variables, so they will NOT be registered into the module as parameters.
+
+    :param darts_layer:
+    :return:
+    """
     I = darts_layer.num_input_nodes
     N = darts_layer.num_nodes
     num_edges = I * N + N * (N - 1) // 2
     num_ops = len(darts_layer.supported_ops(darts_layer.in_encoder))
 
-    return common.make_variable(1e-3 * th.randn(num_edges, num_ops), volatile=False, cuda=True)
+    # # FIXME: Return parameter or variable here?
+    # return nn.Parameter(1e-3 * th.randn(num_edges, num_ops))
+    return common.make_variable(1e-3 * th.randn(num_edges, num_ops), volatile=False, cuda=True, requires_grad=True)
 
 
 class DartsChildEncoder(ChildEncoderBase):
@@ -72,6 +81,9 @@ class DartsChildEncoder(ChildEncoderBase):
         x = input_list[-1]
 
         return self._fwd_post(x, src_mask, source_embedding)
+
+    def dump_net_code(self, branch=2):
+        return self.layers[0].dump_net_code(F.softmax(self.alphas, dim=-1).data.cpu().numpy(), branch)
 
 
 class DartsChildDecoder(ChildIncrementalDecoderBase):
@@ -128,6 +140,9 @@ class DartsChildDecoder(ChildIncrementalDecoderBase):
     def _contains_lstm(self):
         return 'LSTM' in DartsLayer.supported_ops(in_encoder=False)
 
+    def dump_net_code(self, branch=2):
+        return self.layers[0].dump_net_code(F.softmax(self.alphas, dim=-1).data.cpu().numpy(), branch)
+
 
 @ChildNetBase.register_child_net
 class DartsChildNet(EncDecChildNet):
@@ -149,8 +164,15 @@ class DartsChildNet(EncDecChildNet):
         pass
 
     def dump_net_code(self, branch=2):
-        pass
-
-
-class DartsNet:
-    pass
+        return {
+            'Type': 'BlockChildNet',
+            'Global': {},
+            'Blocks': {
+                'enc1': self.encoder.dump_net_code(branch),
+                'dec1': self.decoder.dump_net_code(branch),
+            },
+            'Layers': [
+                ['enc1' for _ in range(self.encoder.num_layers)],
+                ['dec1' for _ in range(self.decoder.num_layers)],
+            ],
+        }

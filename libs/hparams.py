@@ -4,6 +4,8 @@
 # TODO: Support user-defined hparams.
 
 from argparse import Namespace
+from contextlib import contextmanager
+from copy import deepcopy
 
 from .utils.registry_utils import camel2snake
 
@@ -44,6 +46,20 @@ def get_hparams(name):
 
     """
     return AllHParams[name]()
+
+
+_sentinel = None
+
+
+@contextmanager
+def hparams_env(hparams, **kwargs):
+    new_hparams = deepcopy(hparams)
+    for k, v in kwargs.items():
+        setattr(new_hparams, k, v)
+    try:
+        yield new_hparams
+    finally:
+        pass
 
 
 @register_hparams('base')
@@ -124,6 +140,18 @@ def hparams_base():
         # # Number of encoder and decoder layers in arch search.
         # num_encoder_layers=6,
         # num_decoder_layers=6,
+        # # Portion of training data.
+        # train_portion=0.5,
+        # # Clip threshold of gradients in arch search.
+        # arch_clip_norm=10.0,
+        # # Arch learning rate.
+        # arch_lr=3e-4,
+        # # Arch search optimizer.
+        # arch_optimizer='adam',
+        # # Arch Adam betas.
+        # arch_adam_betas='(0.5, 0.999)',
+        # # Arch weight decay.
+        # arch_weight_decay=1e-3,
     )
 
 

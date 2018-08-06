@@ -313,7 +313,7 @@ def volatile_variable(*args, **kwargs):
         return Variable(*args, **kwargs, volatile=True)
 
 
-def make_variable(sample, volatile=False, cuda=False):
+def make_variable(sample, volatile=False, cuda=False, requires_grad=False):
     """Wrap input tensors in Variable class."""
 
     if len(sample) == 0:
@@ -324,9 +324,9 @@ def make_variable(sample, volatile=False, cuda=False):
             if cuda and th.cuda.is_available():
                 maybe_tensor = maybe_tensor.cuda()
             if volatile:
-                return volatile_variable(maybe_tensor)
+                return volatile_variable(maybe_tensor, requires_grad=requires_grad)
             else:
-                return Variable(maybe_tensor)
+                return Variable(maybe_tensor, requires_grad=requires_grad)
         elif isinstance(maybe_tensor, dict):
             return {
                 key: _make_variable(value)

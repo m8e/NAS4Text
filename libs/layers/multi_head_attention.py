@@ -12,7 +12,6 @@ import torch.nn.functional as F
 from .base import ChildLayer, wrap_ppp
 from .common import Linear
 from ..utils import common
-from ..utils.data_processing import LanguagePairDataset
 from .ppp import push_prepostprocessors
 
 __author__ = 'fyabc'
