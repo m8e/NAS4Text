@@ -24,7 +24,10 @@ __author__ = 'fyabc'
 
 
 def _set_default_hparams(hparams):
-    """Set default value of hparams."""
+    """Set default value of hparams.
+
+    [NOTE]: Only set default value for hparams that default value in args is ``None``.
+    """
     base_hparams = get_hparams(hparams.hparams_set)
 
     for name, value in base_hparams.__dict__.items():

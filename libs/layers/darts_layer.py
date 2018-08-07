@@ -77,6 +77,8 @@ class DartsLayer(ChildLayer):
         self.node_combine_op = 'Add'
         self.block_combine_op = hparams.block_combine_op
 
+        assert self.block_combine_op != 'last', 'Block combine op should be "add" or "concat".'
+
         assert self.num_input_nodes == 2, 'Number of input nodes != 2 is not supported now'
 
         # [NOTE]: Does NOT use residual in block ppp and node ppp.
@@ -149,10 +151,10 @@ class DartsLayer(ChildLayer):
                     edge_input, mixed_op_weights,
                     lengths=lengths, encoder_state=encoder_state, **kwargs,
                 ))
-            node_output = fns.combine_outputs(self.node_combine_op, results, linear=None)
+            node_output = fns.combine_outputs(self.node_combine_op, results, reduce_op=None)
             # [NOTE]: Only use first node to compute postprocess, usually omit it (does NOT use residual).
             node_output_list[j] = node_ppp.postprocess(node_output, node_output_list[0])
-        return fns.combine_outputs(self.block_combine_op, node_output_list[-self.num_output_nodes:], linear=None)
+        return fns.combine_outputs(self.block_combine_op, node_output_list[-self.num_output_nodes:], reduce_op=None)
 
     def dump_net_code(self, weights, branch=2):
         result = []

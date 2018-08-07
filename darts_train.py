@@ -9,8 +9,10 @@ import logging
 import math
 import os
 
+import numpy as np
 import torch as th
 import torch.nn as nn
+from torch import autograd
 
 from libs.models.darts_child_net import DartsChildNet
 from libs.optimizers import build_optimizer
@@ -26,11 +28,19 @@ from libs.child_trainer import ChildTrainer
 __author__ = 'fyabc'
 
 
+th_grad = autograd.grad
+
+
+def _concat(xs):
+    return th.cat([x.view(-1) for x in xs])
+
+
 class DartsTrainer(ChildTrainer):
     def __init__(self, hparams, model, criterion):
         super().__init__(hparams, model, criterion)
 
-        # [NOTE]: In DARTS, optimizer is fixed to Momemtum SGD, and lr scheduler is fixed to CosineAnnealingLR.
+        # [NOTE]: In DARTS, optimizer is fixed to Momentum SGD, and lr scheduler is fixed to CosineAnnealingLR.
+        assert hparams.optimizer == 'sgd', 'DARTS training must use SGD as optimizer'
 
         # [NOTE]: In DARTS, arch optimizer is fixed to adam, and no arch lr scheduler.
         with hparams_env(
@@ -39,8 +49,10 @@ class DartsTrainer(ChildTrainer):
             weight_decay=hparams.arch_weight_decay,
         ) as arch_hparams:
             self.arch_optimizer = build_optimizer(arch_hparams, self.model.arch_parameters())
+            logging.info('Arch optimizer: {}'.format(self.arch_optimizer.__class__.__name__))
 
-    # TODO: Implement train_step and valid_step, add DARTS training method and arch dumping.
+        self.network_momentum = hparams.momentum
+        self.network_weight_decay = hparams.weight_decay
 
     def search_step(self, sample, search_sample):
         self.model.train()
@@ -51,19 +63,92 @@ class DartsTrainer(ChildTrainer):
             return 0.0
 
         if self.hparams.unrolled:
-            raise NotImplementedError('Unrolled search update not implemented')
+            self._backward_step_unrolled(sample, search_sample)
         else:
-            search_sample = self._prepare_sample(search_sample, volatile=False)
-            loss, sample_size, logging_output_ = self.criterion(self.model, search_sample)
-            for v in self.model.arch_parameters():
-                if v.grad is not None:
-                    v.grad.data.zero_()
-            loss.backward()
+            self._backward_step(search_sample)
 
         grad_norm = nn.utils.clip_grad_norm_(self.model.arch_parameters(), self.hparams.arch_clip_norm)
         # FIXME: Add number of updates or not?
         self.arch_optimizer.step()
-        return grad_norm
+        return grad_norm.item()
+
+    def _backward_step_unrolled(self, sample, search_sample):
+        sample = self._prepare_sample(sample, volatile=False)
+        search_sample = self._prepare_sample(search_sample, volatile=False)
+
+        model_unrolled = self._compute_unrolled_model(sample)
+        loss, sample_size, logging_output_ = self.criterion(model_unrolled, search_sample)
+        grads = th_grad(loss, model_unrolled.arch_parameters(), retain_graph=True)
+        
+        theta = model_unrolled.parameters()
+        d_theta = th_grad(loss, model_unrolled.parameters())
+        vector = [dt.add(self.network_weight_decay, t).data for dt, t in zip(d_theta, theta)]
+        implicit_grads = self._hessian_vector_product(model_unrolled, vector, sample)
+
+        for g, ig in zip(grads, implicit_grads):
+            g.data.sub_(self.get_lr(), ig.data)
+
+        for v, g in zip(self.model.arch_parameters(), grads):
+            if v.grad is None:
+                v.grad = autograd.Variable(g.data)
+            else:
+                v.grad.data.copy_(g.data)
+
+    def _backward_step(self, search_sample):
+        search_sample = self._prepare_sample(search_sample, volatile=False)
+        loss, sample_size, logging_output_ = self.criterion(self.model, search_sample)
+        for v in self.model.arch_parameters():
+            if v.grad is not None:
+                v.grad.data.zero_()
+        loss.backward()
+
+    def _compute_unrolled_model(self, sample):
+        loss, sample_size, logging_output_ = self.criterion(self.model, sample)
+        theta = _concat(self.model.parameters()).data
+        try:
+            state = self.optimizer.optimizer.state
+            moment = _concat(state[v]['momentum_buffer'] for v in self.model.parameters()).mul_(self.network_momentum)
+        except KeyError:
+            moment = th.zeros_like(theta)
+        d_theta = _concat(th_grad(loss, self.model.parameters())).data + \
+            self.network_weight_decay * theta
+        return self._construct_model_from_theta(theta.sub(self.get_lr(), moment + d_theta))
+    
+    def _construct_model_from_theta(self, theta):
+        model_clone = DartsChildNet(self.hparams)
+        
+        for x, y in zip(model_clone.arch_parameters(), self.model.arch_parameters()):
+            x.data.copy_(y.data)
+        model_dict = self.model.state_dict()
+
+        params, offset = {}, 0
+        for k, v in self.model.named_parameters():
+            v_length = np.prod(v.size())
+            params[k] = theta[offset: offset + v_length].view(v.size())
+            offset += v_length
+
+        assert offset == len(theta)
+        model_dict.update(params)
+        model_clone.load_state_dict(model_dict)
+        
+        return model_clone.cuda()
+    
+    def _hessian_vector_product(self, model, vector, sample, r=1e-2):
+        R = r / _concat(vector).norm()
+        for p, v in zip(model.parameters(), vector):
+            p.data.add_(R, v)
+        loss, _, _ = self.criterion(model, sample)
+        grads_p = th_grad(loss, model.arch_parameters())
+        
+        for p, v in zip(model.parameters(), vector):
+            p.data.sub_(2 * R, v)
+        loss, _, _ = self.criterion(model, sample)
+        grads_n = th_grad(loss, model.arch_parameters())
+
+        for p, v in zip(model.parameters(), vector):
+            p.data.add_(R, v)
+
+        return [(x - y).div_(2 * R) for x, y in zip(grads_p, grads_n)]
 
 
 def darts_search_main(hparams):
@@ -197,7 +282,7 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
         search_sample = next(iter(search_itr))
 
         arch_grad_norm = trainer.search_step(sample, search_sample)
-        extra_meters['arch_grad_norm'].update(arch_grad_norm)
+        extra_meters['arch_gnorm'].update(arch_grad_norm)
 
         log_output = trainer.train_step(sample)
 

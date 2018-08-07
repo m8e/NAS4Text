@@ -69,9 +69,6 @@ class BlockChildEncoder(ChildEncoderBase):
         # TODO: Implement this method.
         return encoder_out
 
-    def upgrade_state_dict(self, state_dict):
-        return state_dict
-
 
 class BlockChildDecoder(ChildIncrementalDecoderBase):
     def __init__(self, code, hparams, embed_tokens, controller=None):

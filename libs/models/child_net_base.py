@@ -237,6 +237,9 @@ class ChildEncoderBase(nn.Module):
     def max_positions(self):
         return self.embed_positions.max_positions()
 
+    def upgrade_state_dict(self, state_dict):
+        return state_dict
+
 
 class ChildDecoderBase(nn.Module):
     # A temporary flag to mark using incremental state or not.

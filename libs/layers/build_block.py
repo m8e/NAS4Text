@@ -134,15 +134,19 @@ class CombineNode(nn.Module):
         self.op = hparams.block_combine_op.lower()
         assert self.op in ('add', 'concat', 'last'), 'Unknown block combine op {!r}'.format(self.op)
 
-        self.linear = None
+        self.reduce_op = None
 
     def build(self, hidden_size, n):
         if self.op == 'concat':
-            self.linear = Linear(
-                hidden_size * n, hidden_size, bias=True, dropout=self.hparams.dropout, hparams=self.hparams)
+            self.reduce_op = nn.Conv1d(
+                hidden_size * n,
+                hidden_size,
+                kernel_size=1,
+                padding=0,
+            )
 
     def forward(self, node_output_list):
-        return fns.combine_outputs(self.op, node_output_list, linear=self.linear)
+        return fns.combine_outputs(self.op, node_output_list, reduce_op=self.reduce_op)
 
     def extra_repr(self):
         return 'op={}'.format(self.op)

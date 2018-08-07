@@ -108,9 +108,6 @@ class ChildEncoder(ChildEncoderBase):
         # TODO: Implement this method.
         return encoder_out
 
-    def upgrade_state_dict(self, state_dict):
-        return state_dict
-
     def get_layer(self, i):
         return getattr(self, 'layer_{}'.format(i))
 

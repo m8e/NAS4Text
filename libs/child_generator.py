@@ -107,7 +107,7 @@ class ChildGenerator:
             output_path = get_translate_output_path(self.hparams)
             os.makedirs(output_path, exist_ok=True)
             full_path = os.path.join(output_path, self.hparams.output_file)
-            with open(full_path, 'w') as f:
+            with open(full_path, 'w', encoding='utf-8') as f:
                 for line in translated_strings:
                     assert line is not None, 'There is a sentence not being translated'
                     print(line, file=f)

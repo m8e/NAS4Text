@@ -183,7 +183,7 @@ class PFFNOp(BlockNodeOp):
 
 class LSTMOp(BlockNodeOp):
     """
-    op_args: [hidden_size(?), reversed: bool = False]
+    op_args: [hidden_size(?), reversed: bool = False, preprocessors = "", postprocessors = ""]
 
     [NOTE]: Unlike default network:
         The LSTM op is left-to-right (bidirectional = False).
@@ -198,9 +198,11 @@ class LSTMOp(BlockNodeOp):
         input_size = input_shape[-1]
 
         reversed_ = _get_op_arg(self, 1, False)
+        preprocessors = _get_op_arg(self, 2, '')
+        postprocessors = _get_op_arg(self, 3, '')
 
-        if reversed_ and not self.in_encoder:
-            raise RuntimeError('R2L LSTM layer only available in encoder')
+        # if reversed_ and not self.in_encoder:
+        #     raise RuntimeError('R2L LSTM layer only available in encoder')
 
         self.lstm = LSTMLayer(
             hparams=self.hparams,
@@ -213,7 +215,8 @@ class LSTMOp(BlockNodeOp):
             bidirectional=False,
             in_encoder=self.in_encoder,
             reversed=reversed_,
-        ).simplify()
+        )
+        push_prepostprocessors(self.lstm, preprocessors, postprocessors, input_shape, input_shape)
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         encoder_state = kwargs.pop('encoder_state_mean', None)
@@ -222,7 +225,8 @@ class LSTMOp(BlockNodeOp):
 
 class ConvolutionOp(BlockNodeOp):
     """
-    op_args: [out_channels(?), kernel_size: index = 3, stride: index = 1, groups: index = 1]
+    op_args: [out_channels(?), kernel_size: index = 3, stride: index = 1, groups: index = 1,
+              preprocessors = "", postprocessors = ""]
 
     [NOTE]: Unlike default network:
         The hidden size is same as input size now.
@@ -236,6 +240,8 @@ class ConvolutionOp(BlockNodeOp):
         kernel_size = _get_op_arg(self, 1, 3, space=space.KernelSizes)
         stride = _get_op_arg(self, 2, 1, space=space.Strides)
         groups = _get_op_arg(self, 3, 1, space=space.Groups)
+        preprocessors = _get_op_arg(self, 4, '')
+        postprocessors = _get_op_arg(self, 5, '')
 
         if self.in_encoder:
             conv_type = EncoderConvLayer
@@ -243,7 +249,8 @@ class ConvolutionOp(BlockNodeOp):
             conv_type = DecoderConvLayer
 
         self.conv = conv_type(self.hparams, in_channels=input_size, out_channels=input_size,
-                              kernel_size=kernel_size, stride=stride, groups=groups).simplify()
+                              kernel_size=kernel_size, stride=stride, groups=groups)
+        push_prepostprocessors(self.conv, preprocessors, postprocessors, input_shape, input_shape)
 
     def forward(self, x, lengths=None, encoder_state=None, **kwargs):
         return self.conv(x, lengths=lengths, encoder_state=encoder_state, **kwargs)
@@ -353,7 +360,7 @@ class ConcatOp(BlockCombineNodeOp):
         super().__init__(op_args, input_shape, **kwargs)
         input_size = input_shape[-1]
 
-        self.linear = Linear(2 * input_size, input_size, bias=True, dropout=self.hparams.dropout, hparams=self.hparams)
+        self.reduce_op = nn.Conv1d(2 * input_size, input_size, kernel_size=1, padding=0)
 
     def forward(self, in1, in2, lengths=None, encoder_state=None):
-        return self.linear(th.cat([in1, in2], dim=-1))
+        return self.reduce_op(th.cat([in1, in2], dim=-1).transpose(1, 2)).transpose(1, 2)

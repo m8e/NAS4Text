@@ -367,3 +367,12 @@ def hparams_transformer_de_en_iwslt_bpe2_fairseq():
     hparams.block_combine_op = 'last'
 
     return hparams
+
+
+@register_hparams('de_en_iwslt_darts')
+def hparams_de_en_iwslt_bpe2_darts():
+    hparams = hparams_transformer_de_en_iwslt_bpe2_fairseq()
+
+    hparams.block_combine_op = 'add'
+
+    return hparams
