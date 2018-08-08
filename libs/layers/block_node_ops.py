@@ -201,9 +201,6 @@ class LSTMOp(BlockNodeOp):
         preprocessors = _get_op_arg(self, 2, '')
         postprocessors = _get_op_arg(self, 3, '')
 
-        # if reversed_ and not self.in_encoder:
-        #     raise RuntimeError('R2L LSTM layer only available in encoder')
-
         self.lstm = LSTMLayer(
             hparams=self.hparams,
             input_size=input_size,

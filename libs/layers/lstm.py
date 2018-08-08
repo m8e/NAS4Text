@@ -38,6 +38,9 @@ class LSTMLayer(ChildLayer):
         self.in_encoder = kwargs.pop('in_encoder')
         self.reversed = kwargs.pop('reversed', False)
 
+        if self.reversed and not self.in_encoder:
+            raise RuntimeError('R2L LSTM layer only available in encoder')
+
         self.lstm = nn.LSTM(*args, **kwargs)
         self._init_lstm_params()
 
