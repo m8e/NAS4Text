@@ -12,6 +12,7 @@ import os
 import numpy as np
 import torch as th
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import autograd
 
 from libs.models.darts_child_net import DartsChildNet
@@ -317,6 +318,12 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
     for k, meter in extra_meters.items():
         stats[k] = meter.avg
     progress.print(stats)
+
+    print('Alphas after epoch {}:\n{}'.format(
+        epoch, '\n'.join(
+            str(F.softmax(a)) for a in trainer.get_model().arch_parameters())
+        ),
+    )
 
 
 def save_net_code(trainer, hparams, epoch, batch_offset, val_loss=None):
