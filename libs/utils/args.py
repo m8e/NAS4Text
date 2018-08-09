@@ -292,6 +292,8 @@ def get_generator_args(args=None):
 def add_darts_search_args(parser):
     group = parser.add_argument_group('DARTS search options')
 
+    group.add_argument('--cell-op-space', default='default',
+                       help='The search space of cell ops, default is %(default)r')
     group.add_argument('--num-nodes', default=4, type=int,
                        help='Number of nodes in one block, default is %(default)s')
     group.add_argument('--num-output-nodes', default=4, type=int,

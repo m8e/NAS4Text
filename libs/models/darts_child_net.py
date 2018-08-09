@@ -25,7 +25,7 @@ def _init_alphas(darts_layer: DartsLayer):
     I = darts_layer.num_input_nodes
     N = darts_layer.num_nodes
     num_edges = I * N + N * (N - 1) // 2
-    num_ops = len(darts_layer.supported_ops(darts_layer.in_encoder))
+    num_ops = len(darts_layer.supported_ops())
 
     # # FIXME: Return parameter or variable here?
     # return nn.Parameter(1e-3 * th.randn(num_edges, num_ops))
@@ -138,7 +138,7 @@ class DartsChildDecoder(ChildIncrementalDecoderBase):
         return self._fwd_post(x, None)
 
     def _contains_lstm(self):
-        return 'LSTM' in DartsLayer.supported_ops(in_encoder=False)
+        return any(o[0] == 'LSTM' for o in self.layers[0].supported_ops())
 
     def dump_net_code(self, branch=2):
         return self.layers[0].dump_net_code(F.softmax(self.alphas, dim=-1).data.cpu().numpy(), branch)

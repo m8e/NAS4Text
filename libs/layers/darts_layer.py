@@ -25,28 +25,33 @@ class DartsMixedOp(nn.Module):
         self.ops = nn.ModuleList()
 
         # Build all ops.
-        supported_ops = self.supported_ops(self.in_encoder)
-        for op_type, op_args in supported_ops.values():
+        supported_ops = self.supported_ops()
+        for op_name, op_type, op_args in supported_ops:
             self.ops.append(op_type(op_args, input_shape, hparams=hparams, in_encoder=in_encoder, **kwargs))
 
-    @classmethod
-    def supported_ops(cls, in_encoder=True):
+    def supported_ops(self):
         """Get supported ops and related op args. Only support a subset of block ops.
 
-        [NOTE]: Supported ops are in alphabetical order.
+        Returns:
+            list: Each item is [op_name, op_type, op_args].
         """
 
-        result = cls._SupportedOps.get(in_encoder, None)
+        in_encoder = self.in_encoder
+
+        name2ops = BlockNodeOp.supported_ops()
+
+        result = self._SupportedOps.get(in_encoder, None)
         if result is None:
-            darts_ops = DartsSpace.CellOps
-            result = OrderedDict(sorted(
-                (k, (v, darts_ops[k]))
-                for k, v in BlockNodeOp.supported_ops().items()
-                if k in darts_ops
-            ))
-            if in_encoder:
-                result.pop('EncoderAttention')
-            cls._SupportedOps[in_encoder] = result
+            result = DartsSpace.CellOpSpaces[self.hparams.cell_op_space]
+
+            def bad_condition(o):
+                if in_encoder:
+                    return o[0] == 'EncoderAttention'
+                else:
+                    return o[0] == 'LSTM' and o[1][1] is True
+
+            result = [[o[0], name2ops[o[0]], o[1]] for o in result if not bad_condition(o)]
+            self._SupportedOps[in_encoder] = result
         return result
 
     def forward(self, x, weights, lengths=None, encoder_state=None, **kwargs):
@@ -90,12 +95,11 @@ class DartsLayer(ChildLayer):
         self.node_ppp_list = nn.ModuleList()
 
         self.edges = nn.ModuleList()
-        self.offsets = {}   # Map edge to offset.
+        self.offsets = {}  # Map edge to offset.
         self._build_nodes(input_shape)
 
-    @staticmethod
-    def supported_ops(in_encoder=True):
-        return DartsMixedOp.supported_ops(in_encoder)
+    def supported_ops(self):
+        return self.edges[0].supported_ops()
 
     @property
     def num_total_nodes(self):
@@ -160,7 +164,7 @@ class DartsLayer(ChildLayer):
         result = []
         result.extend([[None for _ in range(2 * self.num_input_nodes + 1)] for _ in range(self.num_input_nodes)])
 
-        supported_ops = self.supported_ops(in_encoder=self.in_encoder)
+        supported_ops = self.supported_ops()
         ignored_ops = ['Zero']
 
         for j in range(self.num_input_nodes, self.num_total_nodes):
@@ -170,8 +174,8 @@ class DartsLayer(ChildLayer):
             def _key_strength(idx):
                 return -max(
                     in_weights[idx][op_idx_]
-                    for op_idx_, op_ in enumerate(supported_ops)
-                    if op_ not in ignored_ops
+                    for op_idx_, (op_name_, _, _) in enumerate(supported_ops)
+                    if op_name_ not in ignored_ops
                 )
 
             # Get top-k input edges.
@@ -181,14 +185,14 @@ class DartsLayer(ChildLayer):
             ops = []
             for i in edges:
                 in_op_weights = in_weights[i]
-                best_op, best_op_idx = None, None
-                for op_idx, op in enumerate(supported_ops):
-                    if op in ignored_ops:
+                best_op_idx = None, None
+                for op_idx, (op_name, _, _) in enumerate(supported_ops):
+                    if op_name in ignored_ops:
                         continue
-                    if best_op is None or in_op_weights[op_idx] > in_op_weights[best_op_idx]:
-                        best_op, best_op_idx = op, op_idx
+                    if best_op_idx is None or in_op_weights[op_idx] > in_op_weights[best_op_idx]:
+                        best_op_idx = op_idx
                 # Op type string + op args.
-                ops.append([best_op] + supported_ops[best_op][1])
+                ops.append([supported_ops[best_op_idx][0]] + supported_ops[best_op_idx][1])
 
             result.append(
                 edges +

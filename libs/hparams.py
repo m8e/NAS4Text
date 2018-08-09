@@ -133,6 +133,8 @@ def hparams_base():
         nas_algo=None,
 
         # # Stub for DARTS
+        # # Cell op space.
+        # cell_op_space='default'
         # # Number of nodes in one block.
         # num_nodes=4,
         # # Number of nodes combined into output in one block.

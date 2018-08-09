@@ -321,7 +321,7 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
 
     print('Alphas after epoch {}:\n{}'.format(
         epoch, '\n'.join(
-            str(F.softmax(a)) for a in trainer.get_model().arch_parameters())
+            str(F.softmax(a, dim=-1)) for a in trainer.get_model().arch_parameters())
         ),
     )
 

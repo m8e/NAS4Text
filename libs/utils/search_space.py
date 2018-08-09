@@ -181,12 +181,34 @@ class CellSpace:
 class DartsSpace:
     """Search spaces of DARTS and default op args."""
 
-    CellOps = {
-        'Zero': [],
-        'Identity': [],
-        'FFN': ['relu', True],
-        'PFFN': ['', 'd'],
-        'SelfAttention': [1, '', 'd'],
-        'EncoderAttention': [1, '', 'd'],
+    # TODO: Support same op with different args
+    AllCellOps = [
+        ('Zero', []),
+        ('Identity', []),
+        ('FFN', ['relu', True]),
+        ('PFFN', '', 'd'),
+        ('SelfAttention', [1, '', 'd']),
+        ('EncoderAttention', [1, '', 'd']),
+        ('CNN', [None, 1, 0, 0, '', 'd']),
+        ('LSTM', [None, False, '', 'd']),
+    ]
+    DefaultCellOps = [
+        ('Zero', []),
+        ('Identity', []),
+        ('FFN', ['relu', True]),
+        ('PFFN', '', 'd'),
+        ('SelfAttention', [1, '', 'd']),
+        ('EncoderAttention', [1, '', 'd']),
+        ('CNN', [None, 1, 0, 0, '', 'd']),
+        ('LSTM', [None, False, '', 'd']),
+    ]
+
+    CellOpSpaces = {
+        'all': AllCellOps,
+        'default': DefaultCellOps,
     }
+    CellOpSpaces['with-r-lstm'] = CellOpSpaces['default'] + [('LSTM', [None, True, '', 'd'])]
+    CellOpSpaces['no-conv-lstm'] = [o for o in CellOpSpaces['default'] if o[0] not in ('CNN', 'LSTM')]
+    CellOpSpaces['no-lstm'] = [o for o in CellOpSpaces['default'] if o[0] not in ('LSTM',)]
+
     CombineOps = ['Add', 'Concat']
