@@ -189,11 +189,10 @@ class DartsLayer(ChildLayer):
                 for op_idx, (op_name, _, _) in enumerate(supported_ops):
                     if op_name in ignored_ops:
                         continue
-                    print(op_idx, best_op_idx, op_name, in_op_weights)
                     if best_op_idx is None or in_op_weights[op_idx] > in_op_weights[best_op_idx]:
                         best_op_idx = op_idx
                 # Op type string + op args.
-                ops.append([supported_ops[best_op_idx][0]] + supported_ops[best_op_idx][1])
+                ops.append([supported_ops[best_op_idx][0]] + supported_ops[best_op_idx][2])
 
             result.append(
                 edges +
