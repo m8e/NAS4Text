@@ -435,22 +435,22 @@ class ChildIncrementalDecoderBase(ChildDecoderBase):
     pass
 
 
-def _forward_call(method_name):
+def forward_call(method_name):
     def _method(self, *args, **kwargs):
         return getattr(self.module, method_name)(*args, **kwargs)
     return _method
 
 
 class ParalleledChildNet(nn.DataParallel):
-    encode = _forward_call('encode')
-    decode = _forward_call('decode')
-    get_normalized_probs = _forward_call('get_normalized_probs')
-    get_targets = _forward_call('get_targets')
-    max_encoder_positions = _forward_call('max_encoder_positions')
-    max_decoder_positions = _forward_call('max_decoder_positions')
-    max_positions = _forward_call('max_positions')
-    upgrade_state_dict = _forward_call('upgrade_state_dict')
-    num_parameters = _forward_call('num_parameters')
+    encode = forward_call('encode')
+    decode = forward_call('decode')
+    get_normalized_probs = forward_call('get_normalized_probs')
+    get_targets = forward_call('get_targets')
+    max_encoder_positions = forward_call('max_encoder_positions')
+    max_decoder_positions = forward_call('max_decoder_positions')
+    max_positions = forward_call('max_positions')
+    upgrade_state_dict = forward_call('upgrade_state_dict')
+    num_parameters = forward_call('num_parameters')
 
 
 __all__ = [
@@ -460,6 +460,8 @@ __all__ = [
     'ChildEncoderBase',
     'ChildDecoderBase',
     'ChildIncrementalDecoderBase',
+
+    'forward_call',
 
     'ParalleledChildNet',
 ]

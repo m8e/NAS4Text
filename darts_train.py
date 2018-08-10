@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import autograd
 
-from libs.models.darts_child_net import DartsChildNet
+from libs.models.darts_child_net import DartsChildNet, ParalleledDartsChildNet
 from libs.optimizers import build_optimizer
 from libs.criterions import build_criterion
 from libs.hparams import hparams_env
@@ -30,6 +30,9 @@ __author__ = 'fyabc'
 
 
 th_grad = autograd.grad
+
+
+UseParallel = False     # [NOTE]: A debug flag.
 
 
 def _concat(xs):
@@ -117,13 +120,20 @@ class DartsTrainer(ChildTrainer):
     
     def _construct_model_from_theta(self, theta):
         model_clone = DartsChildNet(self.hparams)
-        
-        for x, y in zip(model_clone.arch_parameters(), self.model.arch_parameters()):
+
+        # TODO: Fix the problem of grad computation and updates in parallel training.
+
+        if isinstance(self.model, ParalleledDartsChildNet):
+            model = self.model.module
+        else:
+            model = self.model
+
+        for x, y in zip(model_clone.arch_parameters(), model.arch_parameters()):
             x.data.copy_(y.data)
-        model_dict = self.model.state_dict()
+        model_dict = model.state_dict()
 
         params, offset = {}, 0
-        for k, v in self.model.named_parameters():
+        for k, v in model.named_parameters():
             v_length = np.prod(v.size())
             params[k] = theta[offset: offset + v_length].view(v.size())
             offset += v_length
@@ -159,6 +169,9 @@ def darts_search_main(hparams):
     logging.info('Building model')
     model = DartsChildNet(hparams)
     # TODO: Add ParalleledChildNet here.
+    if UseParallel:
+        model = ParalleledDartsChildNet(model, output_device=hparams.device_id)
+
     # [NOTE]: In DARTS, criterion is fixed to CrossEntropyLoss.
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
     mu.logging_model_criterion(model, criterion)

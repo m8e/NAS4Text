@@ -7,7 +7,8 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
+from .child_net_base import ChildNetBase, EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase, \
+    forward_call, ParalleledChildNet
 from ..layers.darts_layer import DartsLayer
 from ..utils import common
 
@@ -157,12 +158,6 @@ class DartsChildNet(EncDecChildNet):
     def arch_parameters(self):
         return [self.encoder.alphas, self.decoder.alphas]
 
-    def update_weights(self):
-        pass
-
-    def update_alphas(self):
-        pass
-
     def dump_net_code(self, branch=2):
         return {
             'Type': 'BlockChildNet',
@@ -176,3 +171,8 @@ class DartsChildNet(EncDecChildNet):
                 ['dec1' for _ in range(self.decoder.num_layers)],
             ],
         }
+
+
+class ParalleledDartsChildNet(ParalleledChildNet):
+    arch_parameters = forward_call('arch_parameters')
+    dump_net_code = forward_call('dump_net_code')

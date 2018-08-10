@@ -185,10 +185,11 @@ class DartsLayer(ChildLayer):
             ops = []
             for i in edges:
                 in_op_weights = in_weights[i]
-                best_op_idx = None, None
+                best_op_idx = None
                 for op_idx, (op_name, _, _) in enumerate(supported_ops):
                     if op_name in ignored_ops:
                         continue
+                    print(op_idx, best_op_idx, op_name, in_op_weights)
                     if best_op_idx is None or in_op_weights[op_idx] > in_op_weights[best_op_idx]:
                         best_op_idx = op_idx
                 # Op type string + op args.
