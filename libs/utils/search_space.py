@@ -6,8 +6,6 @@
 Layer code format can be seen in each base search space.
 """
 
-from operator import getitem
-
 __author__ = 'fyabc'
 
 
@@ -144,6 +142,7 @@ class AttentionSpaceBase:
     NumHeads = [2, 4, 8, 16]
     Preprocessors = PPPSpace.Preprocessors
     Postprocessors = PPPSpace.Postprocessors
+    FFNSize = [256, 512, 768, 1024, 1536, 2048]
 
 
 class AttentionSpaceLarge(AttentionSpaceBase):
@@ -206,6 +205,18 @@ class DartsSpace:
     CellOpSpaces = {
         'all': AllCellOps,
         'default': DefaultCellOps,
+        'only-attn': [
+            ('Zero', []),
+            ('Identity', []),
+            ('PFFN', ['', 'd', 0]),
+            ('PFFN', ['', 'd', 1]),                 # Default (512) in fairseq
+            ('PFFN', ['', 'd', 2]),
+            ('PFFN', ['', 'd', 3]),
+            ('SelfAttention', [1, '', 'd']),        # Default (4) in fairseq
+            ('SelfAttention', [2, '', 'd']),
+            ('EncoderAttention', [1, '', 'd']),     # Default (4) in fairseq
+            ('EncoderAttention', [2, '', 'd']),
+        ],
     }
     CellOpSpaces['with-r-lstm'] = CellOpSpaces['default'] + [('LSTM', [None, True, '', 'd'])]
     CellOpSpaces['no-conv-lstm'] = [o for o in CellOpSpaces['default'] if o[0] not in ('CNN', 'LSTM')]

@@ -157,7 +157,7 @@ class FFNOp(BlockNodeOp):
 
 class PFFNOp(BlockNodeOp):
     """
-    op_args: [..., preprocessors = "", postprocessors = ""]
+    op_args: [preprocessors = "", postprocessors = "", dim: index = None]
     """
 
     # TODO: Other args?
@@ -168,9 +168,10 @@ class PFFNOp(BlockNodeOp):
 
         preprocessors = _get_op_arg(self, 0, "")
         postprocessors = _get_op_arg(self, 1, "")
+        d_ff = _get_op_arg(self, 2, self.hparams.attn_d_ff, space=ss.AttentionSpaces[self.hparams.attn_space].FFNSize)
 
         self.pffn = PositionwiseFeedForward(
-            input_size, self.hparams.attn_d_ff,
+            input_size, d_ff,
             dropout=self.hparams.ffn_dropout,
             hparams=self.hparams,
             linear_bias=self.hparams.attn_linear_bias,
