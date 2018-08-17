@@ -37,7 +37,8 @@ class ChildTrainer:
         self.hparams = hparams
 
         # Copy model and criterion to current device
-        self.model = model.cuda()
+        if model is not None:
+            self.model = model.cuda()
         self.criterion = criterion.cuda()
 
         # Initialize optimizer and LR scheduler

@@ -19,7 +19,6 @@ from libs.models.darts_child_net import DartsChildNet, ParalleledDartsChildNet
 from libs.optimizers import build_optimizer
 from libs.criterions import build_criterion
 from libs.hparams import hparams_env
-from libs.utils.args import get_darts_search_args
 from libs.utils import main_utils as mu
 from libs.utils.meters import StopwatchMeter, AverageMeter
 from libs.utils.progress_bar import build_progress_bar
@@ -168,7 +167,6 @@ def darts_search_main(hparams):
 
     logging.info('Building model')
     model = DartsChildNet(hparams)
-    # TODO: Add ParalleledChildNet here.
     if UseParallel:
         model = ParalleledDartsChildNet(model, output_device=hparams.device_id)
 
@@ -198,7 +196,6 @@ def darts_search_main(hparams):
         # Evaluate on validate set
         if epoch % hparams.validate_interval == 0:
             for k, subset in enumerate(hparams.valid_subset.split(',')):
-                # TODO: Replace with my validate
                 val_loss = mu.validate(hparams, trainer, datasets, subset, epoch)
                 if k == 0:
                     # Only use first validation loss to update the learning schedule
@@ -206,7 +203,6 @@ def darts_search_main(hparams):
 
                     # save checkpoint and net code
                     if not hparams.no_save:
-                        # TODO: Replace with my save_checkpoint (or not?)
                         mu.save_checkpoint(trainer, hparams, epoch, 0, val_loss)
                         save_net_code(trainer, hparams, epoch, 0, val_loss)
         else:
@@ -370,6 +366,57 @@ def save_net_code(trainer, hparams, epoch, batch_offset, val_loss=None):
     with open(last_filename, 'w', encoding='utf-8') as f:
         json.dump(net_code, f, indent=4)
     logging.info('Save net code to {} (epoch {})'.format(last_filename, epoch))
+
+
+def add_darts_search_args(parser):
+    group = parser.add_argument_group('DARTS search options')
+
+    group.add_argument('--cell-op-space', default='default',
+                       help='The search space of cell ops, default is %(default)r')
+    group.add_argument('--num-nodes', default=4, type=int,
+                       help='Number of nodes in one block, default is %(default)s')
+    group.add_argument('--num-output-nodes', default=4, type=int,
+                       help='Number of nodes combined into output in one block, default is %(default)s')
+    group.add_argument('--num-encoder-layers', default=2, type=int,
+                       help='Number of encoder layers in arch search, default is %(default)s')
+    group.add_argument('--num-decoder-layers', default=2, type=int,
+                       help='Number of decoder layers in arch search, default is %(default)s')
+    group.add_argument('--unrolled', action='store_true', default=False,
+                       help='Use one-step unrolled validation loss (compute hessian vector product)')
+    group.add_argument('--train-portion', default=0.5, type=float,
+                       help='Portion of training data, default is %(default)s')
+    group.add_argument('--arch-clip-norm', default=10.0, type=float,
+                       help='Clip threshold of gradients in arch search, default is %(default)s')
+
+    # FIXME: Same as DARTS, use single lr for simple.
+    group.add_argument('--arch-lr', '--arch-learning-rate', default=3e-4, type=float,
+                       help='Arch search learning rate, default is %(default)s')
+    group.add_argument('--arch-optimizer', default='adam', help='Arch optimizer, default is %(default)s')
+    group.add_argument('--arch-adam-betas', default='(0.5, 0.999)',
+                       help='Adam betas for arch optimizer, default is %(default)s')
+    group.add_argument('--arch-weight-decay', default=1e-3, type=float,
+                       help='Weight decay for arch optimizer, default is %(default)s')
+
+    return group
+
+
+def get_darts_search_args(args=None):
+    import argparse
+    from libs.utils import args as utils_args
+    parser = argparse.ArgumentParser(description='DARTS search Script.')
+    utils_args.add_general_args(parser)
+    utils_args.add_dataset_args(parser, train=True)
+    utils_args.add_hparams_args(parser)
+    utils_args.add_train_args(parser)
+    utils_args.add_distributed_args(parser)
+    utils_args.add_checkpoint_args(parser)
+    add_darts_search_args(parser)
+
+    parsed_args = parser.parse_args(args)
+
+    utils_args.parse_extra_options(parsed_args)
+
+    return parsed_args
 
 
 def main(args=None):

@@ -250,7 +250,7 @@ def add_generation_args(parser):
     return group
 
 
-def _parse_extra_options(parsed_args):
+def parse_extra_options(parsed_args):
     _extra_dict = eval('dict({})'.format(parsed_args.extra_options))
     for name, value in _extra_dict.items():
         setattr(parsed_args, name, value)
@@ -270,7 +270,7 @@ def get_args(args=None):
 
     parsed_args = parser.parse_args(args)
 
-    _parse_extra_options(parsed_args)
+    parse_extra_options(parsed_args)
 
     return parsed_args
 
@@ -285,54 +285,5 @@ def get_generator_args(args=None):
     # TODO: Add other args.
 
     parsed_args = parser.parse_args(args)
-
-    return parsed_args
-
-
-def add_darts_search_args(parser):
-    group = parser.add_argument_group('DARTS search options')
-
-    group.add_argument('--cell-op-space', default='default',
-                       help='The search space of cell ops, default is %(default)r')
-    group.add_argument('--num-nodes', default=4, type=int,
-                       help='Number of nodes in one block, default is %(default)s')
-    group.add_argument('--num-output-nodes', default=4, type=int,
-                       help='Number of nodes combined into output in one block, default is %(default)s')
-    group.add_argument('--num-encoder-layers', default=2, type=int,
-                       help='Number of encoder layers in arch search, default is %(default)s')
-    group.add_argument('--num-decoder-layers', default=2, type=int,
-                       help='Number of decoder layers in arch search, default is %(default)s')
-    group.add_argument('--unrolled', action='store_true', default=False,
-                       help='Use one-step unrolled validation loss (compute hessian vector product)')
-    group.add_argument('--train-portion', default=0.5, type=float,
-                       help='Portion of training data, default is %(default)s')
-    group.add_argument('--arch-clip-norm', default=10.0, type=float,
-                       help='Clip threshold of gradients in arch search, default is %(default)s')
-
-    # FIXME: Same as DARTS, use single lr for simple.
-    group.add_argument('--arch-lr', '--arch-learning-rate', default=3e-4, type=float,
-                       help='Arch search learning rate, default is %(default)s')
-    group.add_argument('--arch-optimizer', default='adam', help='Arch optimizer, default is %(default)s')
-    group.add_argument('--arch-adam-betas', default='(0.5, 0.999)',
-                       help='Adam betas for arch optimizer, default is %(default)s')
-    group.add_argument('--arch-weight-decay', default=1e-3, type=float,
-                       help='Weight decay for arch optimizer, default is %(default)s')
-
-    return group
-
-
-def get_darts_search_args(args=None):
-    parser = argparse.ArgumentParser(description='DARTS search Script.')
-    add_general_args(parser)
-    add_dataset_args(parser, train=True)
-    add_hparams_args(parser)
-    add_train_args(parser)
-    add_distributed_args(parser)
-    add_checkpoint_args(parser)
-    add_darts_search_args(parser)
-
-    parsed_args = parser.parse_args(args)
-
-    _parse_extra_options(parsed_args)
 
     return parsed_args

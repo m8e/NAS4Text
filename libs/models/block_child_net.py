@@ -14,7 +14,7 @@ __author__ = 'fyabc'
 
 class BlockChildEncoder(ChildEncoderBase):
     def __init__(self, code, hparams, embed_tokens, controller=None):
-        super().__init__(code, hparams)
+        super().__init__(code, hparams, controller=controller)
 
         # Encoder input shape (after embedding).
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
@@ -72,7 +72,7 @@ class BlockChildEncoder(ChildEncoderBase):
 
 class BlockChildDecoder(ChildIncrementalDecoderBase):
     def __init__(self, code, hparams, embed_tokens, controller=None):
-        super().__init__(code, hparams)
+        super().__init__(code, hparams, controller=controller)
 
         # Decoder input shape (after embedding)
         # [NOTE]: The shape[0] (batch_size) and shape[1] (seq_length) is variable and useless.
@@ -140,23 +140,15 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
 
 @ChildNetBase.register_child_net
 class BlockChildNet(EncDecChildNet):
-    def __init__(self, net_code, hparams):
+    def __init__(self, net_code, hparams, controller=None):
         super().__init__(net_code, hparams)
 
-        self.controller = None
-        self._build_nas_controller()
+        self.controller = controller
 
-        src_embed_tokens, trg_embed_tokens = self._build_embed_tokens()
+        if self.controller is None:
+            src_embed_tokens, trg_embed_tokens = self._build_embed_tokens()
+        else:
+            src_embed_tokens, trg_embed_tokens = None, None
 
         self.encoder = BlockChildEncoder(net_code[0], hparams, src_embed_tokens, controller=self.controller)
         self.decoder = BlockChildDecoder(net_code[1], hparams, trg_embed_tokens, controller=self.controller)
-
-    def _build_nas_controller(self):
-        nas_algo = self.hparams.nas_algo
-        if nas_algo is None:
-            return
-        elif nas_algo == 'darts':
-            # DARTS algorithm does not use controller now.
-            return
-        else:
-            raise NotImplementedError('This NAS algorithm {!r} is not implemented now'.format(nas_algo))

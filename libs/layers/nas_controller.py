@@ -5,11 +5,10 @@ __author__ = 'fyabc'
 
 
 class NASController:
-    def __init__(self, net_code, hparams):
+    def __init__(self, hparams):
         self.hparams = hparams
-        self.net_code = net_code
 
-    def get_weight(self, index, input_index, op_type, **kwargs):
+    def get_weight(self, in_encoder, layer_id, index, input_index, op_type, **kwargs):
         raise NotImplementedError()
 
 

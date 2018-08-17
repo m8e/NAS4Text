@@ -128,10 +128,6 @@ def hparams_base():
 
         # About NAS.
 
-        # Select the NAS algorithm.
-        # Candidates: None, darts (unused now)
-        nas_algo=None,
-
         # # Stub for DARTS
         # # Cell op space.
         # cell_op_space='default'
@@ -154,6 +150,19 @@ def hparams_base():
         # arch_adam_betas='(0.5, 0.999)',
         # # Arch weight decay.
         # arch_weight_decay=1e-3,
+
+        # # Stub for NAO
+        # # Number of max controller steps.
+        # max_ctrl_step=1000,
+        # # Number of seed arches.
+        # num_seed_arch=1000,
+        # # Number of nodes in one block.
+        # num_nodes=5,
+        # # Cell op space.
+        # cell_op_space='default'
+        # # Number of encoder and decoder layers in arch search.
+        # num_encoder_layers=6,
+        # num_decoder_layers=6,
     )
 
 

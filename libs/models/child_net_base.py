@@ -141,11 +141,12 @@ class EncDecChildNet(ChildNetBase):
 
 
 class ChildEncoderBase(nn.Module):
-    def __init__(self, code, hparams):
+    def __init__(self, code, hparams, controller=None):
         super().__init__()
         self.code = code
         self.hparams = hparams
         self.task = get_task(hparams.task)
+        self.controller = controller
 
     def _init_post(self, input_shape):
         hparams = self.hparams
@@ -245,12 +246,13 @@ class ChildDecoderBase(nn.Module):
     # A temporary flag to mark using incremental state or not.
     ApplyIncrementalState = False
 
-    def __init__(self, code, hparams):
+    def __init__(self, code, hparams, controller=None):
         super().__init__()
 
         self.code = code
         self.hparams = hparams
         self.task = get_task(hparams.task)
+        self.controller = controller
 
         self.embed_tokens = None
         self.embed_position = None

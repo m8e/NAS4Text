@@ -1,8 +1,6 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-from collections import OrderedDict
-
 import torch.nn as nn
 
 from .base import ChildLayer, wrap_ppp
