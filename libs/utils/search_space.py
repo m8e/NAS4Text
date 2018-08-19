@@ -177,8 +177,8 @@ class CellSpace:
     CombineOpsReversed = {i: k for k, i in CombineOps.items()}
 
 
-class DartsSpace:
-    """Search spaces of DARTS and default op args."""
+class SearchSpace:
+    """Search spaces of DARTS and other NAS search algorithms and default op args."""
 
     # TODO: Support same op with different args
     AllCellOps = [

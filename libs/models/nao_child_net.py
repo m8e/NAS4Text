@@ -94,10 +94,11 @@ class NAOController(NASController):
         # The model which contains shared weights.
         self.shared_weights = NAOChildNet(hparams)
 
-    # TODO: Get embedding, get_fc_last, ...?
+    # TODO: Apply shared weights into ppp of layer, node, op.
+    # TODO: Apply shared weights into ops.
 
     def get_weight(self, in_encoder, layer_id, index, input_index, op_type, **kwargs):
-        # TODO: ENAS sharing: different index share same weights.
+        # [NOTE]: ENAS sharing style.
         pass
 
     def cuda(self, device=None):

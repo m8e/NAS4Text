@@ -149,6 +149,14 @@ class ChildEncoderBase(nn.Module):
         self.controller = controller
 
     def _init_post(self, input_shape):
+        controller = self.controller
+        if controller is not None:
+            s_encoder = controller.shared_weights.encoder
+            self.out_norm = s_encoder.out_norm
+            self.fc2 = s_encoder.fc2
+            self.output_shape = s_encoder.output_shape
+            return
+
         hparams = self.hparams
 
         if hparams.enc_out_norm:
@@ -219,6 +227,14 @@ class ChildEncoderBase(nn.Module):
         raise NotImplementedError()
 
     def _build_embedding(self, embed_tokens):
+        controller = self.controller
+        if controller is not None:
+            s_encoder = controller.shared_weights.encoder
+            self.embed_tokens = s_encoder.embed_tokens
+            self.embed_positions = s_encoder.embed_positions
+            self.embed_scale = s_encoder.embed_scale
+            return
+
         hparams = self.hparams
         self.embed_tokens = embed_tokens
         self.embed_positions = PositionalEmbedding(
@@ -255,27 +271,42 @@ class ChildDecoderBase(nn.Module):
         self.controller = controller
 
         self.embed_tokens = None
-        self.embed_position = None
+        self.embed_positions = None
         self.fc_last = None
 
     def _init_post(self, input_shape):
-        hparams = self.hparams
-
-        # Decoder output shape (before softmax)
-        self.output_shape = input_shape
-
-        if hparams.dec_out_norm:
-            self.out_norm = LayerNorm(self.output_shape[2])
+        controller = self.controller
+        if controller is not None:
+            s_decoder = controller.shared_weights.decoder
+            self.output_shape = s_decoder.output_shape
+            self.out_norm = s_decoder.out_norm
+            self.fc2 = s_decoder.fc2
         else:
-            self.out_norm = None
-        if hparams.dec_output_fc or self.output_shape[2] != hparams.decoder_out_embedding_size:
-            self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
-        else:
-            self.fc2 = None
+            hparams = self.hparams
+
+            # Decoder output shape (before softmax)
+            self.output_shape = input_shape
+
+            if hparams.dec_out_norm:
+                self.out_norm = LayerNorm(self.output_shape[2])
+            else:
+                self.out_norm = None
+            if hparams.dec_output_fc or self.output_shape[2] != hparams.decoder_out_embedding_size:
+                self.fc2 = Linear(self.output_shape[2], hparams.decoder_out_embedding_size, hparams=hparams)
+            else:
+                self.fc2 = None
 
         self._build_fc_last()
 
     def _build_embedding(self, embed_tokens):
+        controller = self.controller
+        if controller is not None:
+            s_decoder = controller.shared_weights.decoder
+            self.embed_tokens = s_decoder.embed_tokens
+            self.embed_positions = s_decoder.embed_positions
+            self.embed_scale = s_decoder.embed_scale
+            return
+
         hparams = self.hparams
 
         self.embed_tokens = embed_tokens
@@ -290,6 +321,12 @@ class ChildDecoderBase(nn.Module):
         self.embed_scale = math.sqrt(hparams.trg_embedding_size) if hparams.embed_scale else 1
 
     def _build_fc_last(self):
+        controller = self.controller
+        if controller is not None:
+            s_decoder = controller.shared_weights.decoder
+            self.fc_last = s_decoder.fc_last
+            return
+
         hparams = self.hparams
 
         if hparams.share_input_output_embedding:
