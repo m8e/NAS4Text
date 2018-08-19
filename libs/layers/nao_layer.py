@@ -10,6 +10,15 @@ from ..layers.ppp import push_prepostprocessors
 __author__ = 'fyabc'
 
 
+class NAOMixedOp(MixedOp):
+    def __init__(self, hparams, input_shape, in_encoder=True, **kwargs):
+        super().__init__(self, hparams, input_shape, in_encoder=in_encoder, **kwargs)
+        # TODO: Add combine ops.
+
+    def forward(self, *input):
+        raise RuntimeError('This method must not be called')
+
+
 class NAOLayer(ChildLayer):
     def __init__(self, hparams, input_shape, in_encoder=True):
         super().__init__(hparams)
@@ -18,6 +27,8 @@ class NAOLayer(ChildLayer):
         self.num_input_nodes = 2
 
         # FIXME: Some hyperparameters are fixed now.
+
+        self.node_combine_op = 'Add'
 
         assert self.num_input_nodes == 2, 'Number of input nodes != 2 is not supported now'
 

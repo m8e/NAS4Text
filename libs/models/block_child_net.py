@@ -30,7 +30,7 @@ class BlockChildEncoder(ChildEncoderBase):
         # input_shape = th.Size([1, 1, 128])
         for i, layer_code in enumerate(code):
             layer, output_shape = build_block(layer_code, input_shape, self.hparams,
-                                              in_encoder=True, controller=controller)
+                                              in_encoder=True, controller=controller, layer_id=i)
             self.layers.append(layer)
 
             input_shape = output_shape
@@ -85,7 +85,7 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
         input_shape = self.input_shape
         for i, layer_code in enumerate(code):
             layer, output_shape = build_block(layer_code, input_shape, self.hparams,
-                                              in_encoder=False, controller=controller)
+                                              in_encoder=False, controller=controller, layer_id=i)
             self.layers.append(layer)
 
             input_shape = output_shape

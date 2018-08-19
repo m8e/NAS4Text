@@ -46,9 +46,9 @@ class NAOTrainer(ChildTrainer):
         if self.arch_pool:
             return
         num_seed_arch = self.hparams.num_seed_arch
-        num_nodes = self.hparams.num_nodes
         self.arch_pool_prob = None
-        # TODO: Init arch pool.
+
+        self.controller.generate_arch(num_seed_arch)
 
     def _sample_arch_from_pool(self):
         prob = self.arch_pool_prob
@@ -181,7 +181,7 @@ def add_nao_search_args(parser):
                        help='Number of max controller steps in arch search, default is %(default)s')
     group.add_argument('--num-seed-arch', default=1000, type=int,
                        help='Number of seed arches, default is %(default)s')
-    group.add_argument('--num-nodes', default=5, type=int,
+    group.add_argument('--num-nodes', default=4, type=int,
                        help='Number of nodes in one block, default is %(default)s')
     group.add_argument('--cell-op-space', default='default',
                        help='The search space of cell ops, default is %(default)r')

@@ -56,6 +56,7 @@ class Node(ChildLayer):
         self.in_encoder = kwargs.pop('in_encoder', True)
         self.index = kwargs.pop('index', None)
         self.controller = kwargs.pop('controller', None)
+        self.layer_id = kwargs.pop('layer_id', None)
         self.in1_index = in1
         self.in2_index = in2
         self.op1 = self._parse_op(op1, input_shape, in1)
@@ -87,12 +88,20 @@ class Node(ChildLayer):
 
     def _parse_op(self, op_code, input_shape, input_index):
         op_code, op_args = self._normalize_op_code(op_code)
+        controller = self.controller
+        if controller is not None:
+            return controller.get_weight(
+                self.in_encoder, self.layer_id, self.index, input_index, op_code, op_args=op_args)
         return BlockNodeOp.create(
             op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams,
             controller=self.controller, index=self.index, input_index=input_index)
 
     def _parse_combine_op(self, op_code, input_shape):
         op_code, op_args = self._normalize_op_code(op_code, space=CellSpace.CombineOps)
+        controller = self.controller
+        if controller is not None:
+            # TODO: Get combine weight.
+            pass
         return BlockCombineNodeOp.create(
             op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams,
             controller=self.controller, index=self.index)
@@ -136,7 +145,8 @@ class CombineNode(nn.Module):
 
         self.reduce_op = None
 
-    def build(self, hidden_size, n):
+    def build(self, hidden_size, n, controller=None, layer_id=None):
+        # TODO: Use controller shared weights.
         if self.op == 'concat':
             self.reduce_op = nn.Conv1d(
                 hidden_size * n,
@@ -165,7 +175,7 @@ class BlockLayer(ChildLayer):
         self.block_params = {}
         self.controller = controller
 
-    def build(self, layer_code, input_shape):
+    def build(self, layer_code, input_shape, layer_id):
         if isinstance(layer_code[-1], Mapping):
             # The last item of the block code can be block params.
             self.block_params = dict(layer_code[-1])
@@ -183,12 +193,13 @@ class BlockLayer(ChildLayer):
                 # This is a normal node.
                 self.nodes.append(Node(
                     in1, in2, op1, op2, combine_op, input_shape, index=i, hparams=self.hparams,
-                    controller=self.controller, in_encoder=self.in_encoder, node_args=node_args))
+                    controller=self.controller, in_encoder=self.in_encoder, node_args=node_args, layer_id=layer_id))
 
         if len(self.input_node_indices) != 2:
             raise RuntimeError('The block layer must have exactly two input nodes, but got {}'.format(
                 len(self.input_node_indices)))
-        self.combine_node.build(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices))
+        self.combine_node.build(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices),
+                                controller=self.controller, layer_id=layer_id)
 
         push_prepostprocessors(
             self, self.block_params.get('preprocessors', ''),
@@ -247,7 +258,7 @@ class BlockLayer(ChildLayer):
         return any(n.contains_lstm() for n in self.nodes)
 
 
-def build_block(layer_code, input_shape, hparams, in_encoder=True, controller=None):
+def build_block(layer_code, input_shape, hparams, in_encoder=True, controller=None, layer_id=None):
     """
 
     Args:
@@ -257,12 +268,13 @@ def build_block(layer_code, input_shape, hparams, in_encoder=True, controller=No
         hparams:
         in_encoder:
         controller:
+        layer_id:
 
     Returns:
         tuple
     """
     block = BlockLayer(hparams, in_encoder, controller=controller)
-    output_shape = block.build(layer_code, input_shape)
+    output_shape = block.build(layer_code, input_shape, layer_id)
 
     return block, output_shape
 

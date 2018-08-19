@@ -9,6 +9,7 @@ import torch.nn as nn
 from .child_net_base import EncDecChildNet, ChildIncrementalDecoderBase, ChildEncoderBase
 from ..layers.nao_layer import NAOLayer
 from ..layers.nas_controller import NASController
+from ..layers.net_code import NetCode
 
 
 class NAOChildEncoder(ChildEncoderBase):
@@ -93,17 +94,85 @@ class NAOController(NASController):
 
         # The model which contains shared weights.
         self.shared_weights = NAOChildNet(hparams)
+        self._supported_ops_cache = {
+            True: self._reversed_supported_ops(self.shared_weights.encoder.layers[0].supported_ops()),
+            False: self._reversed_supported_ops(self.shared_weights.decoder.layers[0].supported_ops()),
+        }
 
     # TODO: Apply shared weights into ppp of layer, node, op.
     # TODO: Apply shared weights into ops.
 
-    def get_weight(self, in_encoder, layer_id, index, input_index, op_type, **kwargs):
-        # [NOTE]: ENAS sharing style.
+    @staticmethod
+    def _reversed_supported_ops(supported_ops):
+        return {
+            (op_name, tuple(op_args)): i
+            for i, (op_name, op_type, op_args) in enumerate(supported_ops)
+        }
+
+    def get_weight(self, in_encoder, layer_id, index, input_index, op_code, **kwargs):
+        # [NOTE]: ENAS sharing style, same as DARTS sharing style.
+        op_args = kwargs.pop('op_args', [])
+        op_idx = self._supported_ops_cache[in_encoder].get((op_code, tuple(op_args)), None)
+        if op_idx is None:
+            raise RuntimeError('The op type {} and op args {} does not exist in the controller'.format(
+                op_code, op_args))
+        codec = self.shared_weights.encoder if in_encoder else self.shared_weights.decoder
+        layer = codec.layers[layer_id]
+
+        return layer.edges[layer.offsets[(input_index, index)]].ops[op_idx]
+
+    def get_combine_weight(self, in_encoder, layer_id, index, op_code, **kwargs):
+        # TODO
+        op_args = kwargs.pop('op_args', [])
         pass
 
     def cuda(self, device=None):
         self.shared_weights.cuda(device)
         return self
 
-    def generate_arch(self, n, num_nodes):
-        pass
+    def _generate_block(self, layer: NAOLayer):
+        result = []
+        num_input_nodes = layer.num_input_nodes
+        num_total_nodes = layer.num_total_nodes
+
+        result.extend([[None for _ in range(2 * num_input_nodes + 1)] for _ in range(num_input_nodes)])
+
+        for j in range(num_input_nodes, num_total_nodes):
+            # TODO: Build each node code.
+            edges = []
+            ops = []
+
+            result.append(
+                edges +
+                ops +
+                [layer.node_combine_op] +
+                layer.node_ppp_code
+            )
+
+        result.append({
+            'preprocessors': layer.ppp_code[0],
+            'postprocessors': layer.ppp_code[1],
+        })
+
+        return result
+
+    def generate_arch(self, n):
+        enc0 = self.shared_weights.encoder.layers[0]
+        dec0 = self.shared_weights.decoder.layers[0]
+
+        def _template(e, d):
+            return NetCode({
+                'Type': 'BlockChildNet',
+                'Global': {},
+                'Blocks': {
+                    'enc1': e,
+                    'dec1': d,
+                },
+                'Layers': [
+                    ['enc1' for _ in range(self.shared_weights.encoder.num_layers)],
+                    ['dec1' for _ in range(self.shared_weights.decoder.num_layers)],
+                ]
+            })
+
+        # TODO: Make unique
+        return [_template(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]

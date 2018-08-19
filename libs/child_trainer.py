@@ -39,13 +39,16 @@ class ChildTrainer:
         # Copy model and criterion to current device
         if model is not None:
             self.model = model.cuda()
+        else:
+            self.model = None
         self.criterion = criterion.cuda()
 
         # Initialize optimizer and LR scheduler
-        self.optimizer = build_optimizer(self.hparams, self.model.parameters())
-        self.lr_scheduler = build_lr_scheduler(self.hparams, self.optimizer)
-        logging.info('Optimizer: {}'.format(self.optimizer.__class__.__name__))
-        logging.info('LR Scheduler: {}'.format(self.lr_scheduler.__class__.__name__))
+        if model is not None:
+            self.optimizer = build_optimizer(self.hparams, self.model.parameters())
+            self.lr_scheduler = build_lr_scheduler(self.hparams, self.optimizer)
+            logging.info('Optimizer: {}'.format(self.optimizer.__class__.__name__))
+            logging.info('LR Scheduler: {}'.format(self.lr_scheduler.__class__.__name__))
 
         # Initialize meters
         self.meters = OrderedDict()
