@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import collections
+from contextlib import contextmanager
 import itertools
 import logging
 import math
@@ -16,6 +17,7 @@ from torch import autograd
 from libs.models.block_child_net import BlockChildNet
 from libs.models.nao_child_net import NAOController
 from libs.optimizers import build_optimizer
+from libs.optimizers.lr_schedulers import build_lr_scheduler
 from libs.criterions import build_criterion
 from libs.hparams import hparams_env
 from libs.utils import main_utils as mu
@@ -28,6 +30,9 @@ __author__ = 'fyabc'
 
 
 class NAOTrainer(ChildTrainer):
+    # [NOTE]: Flag. Train different arch on different GPUs.
+    ArchDist = False
+
     def __init__(self, hparams, criterion):
         super().__init__(hparams, None, criterion)
         # [NOTE]: Model is a "shared" model here.
@@ -39,8 +44,11 @@ class NAOTrainer(ChildTrainer):
         self.performance_pool = []
         self.num_gpus = hparams.distributed_world_size
 
-    def new_model(self, net_code):
-        return BlockChildNet(net_code, self.hparams, self.controller)
+    def new_model(self, net_code, device=None, cuda=True):
+        result = BlockChildNet(net_code, self.hparams, self.controller)
+        if cuda:
+            result = result.cuda(device)
+        return result
 
     def init_arch_pool(self):
         if self.arch_pool:
@@ -48,7 +56,10 @@ class NAOTrainer(ChildTrainer):
         num_seed_arch = self.hparams.num_seed_arch
         self.arch_pool_prob = None
 
-        self.controller.generate_arch(num_seed_arch)
+        self.arch_pool = self.controller.generate_arch(num_seed_arch)
+
+        print('###')
+        print(a.blocks for a in self.arch_pool[:10])
 
     def _sample_arch_from_pool(self):
         prob = self.arch_pool_prob
@@ -59,21 +70,61 @@ class NAOTrainer(ChildTrainer):
             index = th.multinomial(prob).item()
         return self.arch_pool[index]
 
-    def train_children(self):
-        # Set seed based on args.seed and the epoch number so that we get
-        # reproducible results when resuming from checkpoints
-        seed = self.hparams.seed
-        th.manual_seed(seed)
+    def train_children(self, datasets):
+        # self.set_seed()
 
-        # Random sample one arch per card to train.
-        for device in range(self.num_gpus):
+        eval_freq = self.hparams.child_eval_freq
+
+        if self.single_gpu:
             arch = self._sample_arch_from_pool()
+            child = self.new_model(arch)
 
-            # TODO: Distributed training on all GPU cards.
+            # Train the child model for some epochs.
+            with self.child_train_env(child):
+                self._init_meters()
+                for epoch in range(eval_freq):
+                    # TODO: Need test here.
+                    mu.train(self.hparams, self, datasets, epoch, 0)
 
-    def eval_children(self):
-        # Eval all arches in the pool.
-        return []
+            return
+
+        if self.ArchDist:
+            # # Random sample one arch per card to train.
+            # for device in range(self.num_gpus):
+            #     arch = self._sample_arch_from_pool()
+            #     child = self.new_model(arch, device)
+            #
+            #     # TODO: How to distributed training on all GPU cards async?
+            raise NotImplementedError('Arch dist multi-gpu training not supported yet')
+        else:
+            raise NotImplementedError('Non-arch dist multi-gpu training not supported yet')
+
+    def eval_children(self, datasets):
+        """Eval all arches in the pool."""
+        eval_freq = self.hparams.child_eval_freq
+
+        val_loss_list = []
+        val_acc_list = []
+        valid_time = StopwatchMeter()
+        for arch in self.arch_pool:
+            child = self.new_model(arch)
+            # TODO: Need test.
+            with self.child_train_env(child):
+                val_loss = mu.validate(self.hparams, self, datasets, 'dev', eval_freq)
+                val_loss_list.append(val_loss)
+                val_acc_list.append(0.0)    # TODO: Also compute the valid accuracy (BLEU).
+
+        valid_time.stop()
+        logging.info('''\
+Evaluation on valid data
+Totally validated {} architectures
+loss={:<6f}
+valid_accuracy={:<8.6f}
+secs={:<10.2f}'''.format(
+            len(self.arch_pool), np.mean(val_loss_list), np.mean(val_acc_list),
+            valid_time.sum,
+        ))
+        return val_acc_list
 
     def _get_train_itr(self, datasets, seed, epoch=1, batch_offset=0):
         hparams = self.hparams
@@ -126,6 +177,32 @@ class NAOTrainer(ChildTrainer):
     def train_step(self, sample, update_params=True):
         raise RuntimeError('This method must not be called')
 
+    @contextmanager
+    def child_train_env(self, model):
+        optimizer = build_optimizer(self.hparams, model.parameters())
+        lr_scheduler = build_lr_scheduler(self.hparams, optimizer)
+        logging.info('Creating child train environment')
+        logging.info('Child optimizer: {}'.format(optimizer.__class__.__name__))
+        logging.info('Child LR Scheduler: {}'.format(lr_scheduler.__class__.__name__))
+
+        old_model = self.model
+        old_optimizer = self.optimizer
+        old_lr_scheduler = self.lr_scheduler
+        self.model = model
+        self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
+
+        try:
+            yield
+        finally:
+            self.model = old_model
+            self.optimizer = old_optimizer
+            self.lr_scheduler = old_lr_scheduler
+            logging.info('Trainer restored')
+
+    def child_train_step(self, sample, update_params=True):
+        return super().train_step(sample, update_params=update_params)
+
     def controller_train_step(self):
         pass
 
@@ -154,10 +231,10 @@ def nao_search_main(hparams):
         # Train child model.
         trainer.init_arch_pool()
 
-        trainer.train_children()
+        trainer.train_children(datasets)
 
         # Evaluate seed arches.
-        valid_acc_list = trainer.eval_children()
+        valid_acc_list = trainer.eval_children(datasets)
 
         # Output arches and evaluated error rate.
         old_arches = trainer.arch_pool
@@ -189,6 +266,8 @@ def add_nao_search_args(parser):
                        help='Number of encoder layers in arch search, default is %(default)s')
     group.add_argument('--num-decoder-layers', default=2, type=int,
                        help='Number of decoder layers in arch search, default is %(default)s')
+    group.add_argument('--child-eval-freq', default=10, type=int,
+                       help='Number of epochs to run in between evaluations, default is %(default)s')
 
     # TODO
 

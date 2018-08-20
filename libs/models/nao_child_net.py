@@ -3,6 +3,7 @@
 
 import logging
 
+import numpy as np
 import torch as th
 import torch.nn as nn
 
@@ -109,6 +110,12 @@ class NAOController(NASController):
             for i, (op_name, op_type, op_args) in enumerate(supported_ops)
         }
 
+    def _codec(self, in_encoder):
+        return self.shared_weights.encoder if in_encoder else self.shared_weights.decoder
+
+    def _layer(self, in_encoder, layer_id):
+        return self._codec(in_encoder).layers[layer_id]
+
     def get_weight(self, in_encoder, layer_id, index, input_index, op_code, **kwargs):
         # [NOTE]: ENAS sharing style, same as DARTS sharing style.
         op_args = kwargs.pop('op_args', [])
@@ -116,15 +123,26 @@ class NAOController(NASController):
         if op_idx is None:
             raise RuntimeError('The op type {} and op args {} does not exist in the controller'.format(
                 op_code, op_args))
-        codec = self.shared_weights.encoder if in_encoder else self.shared_weights.decoder
-        layer = codec.layers[layer_id]
+        layer = self._layer(in_encoder, layer_id)
 
         return layer.edges[layer.offsets[(input_index, index)]].ops[op_idx]
 
-    def get_combine_weight(self, in_encoder, layer_id, index, op_code, **kwargs):
-        # TODO
-        op_args = kwargs.pop('op_args', [])
-        pass
+    def get_node_ppp(self, in_encoder, layer_id, index, **kwargs):
+        layer = self._layer(in_encoder, layer_id)
+        ppp = layer.node_ppp_list[index - layer.num_input_nodes]
+        return {
+            'pre': ppp.preprocessors,
+            'post': ppp.postprocessors,
+            'residual_projection': ppp.residual_projection,
+        }
+
+    def get_block_ppp(self, in_encoder, layer_id, **kwargs):
+        layer = self._layer(in_encoder, layer_id)
+        return {
+            'pre': layer.preprocessors,
+            'post': layer.postprocessors,
+            'residual_projection': layer.residual_projection,
+        }
 
     def cuda(self, device=None):
         self.shared_weights.cuda(device)
@@ -134,13 +152,17 @@ class NAOController(NASController):
         result = []
         num_input_nodes = layer.num_input_nodes
         num_total_nodes = layer.num_total_nodes
+        in_encoder = layer.in_encoder
+        supported_ops = list(self._supported_ops_cache[in_encoder].keys())
 
         result.extend([[None for _ in range(2 * num_input_nodes + 1)] for _ in range(num_input_nodes)])
 
         for j in range(num_input_nodes, num_total_nodes):
-            # TODO: Build each node code.
-            edges = []
+            edges = [np.random.randint(0, j) for _ in range(2)]
             ops = []
+            for _ in range(2):
+                op_name, op_args = np.random.choice(supported_ops)
+                ops.append([op_name] + list(op_args))
 
             result.append(
                 edges +

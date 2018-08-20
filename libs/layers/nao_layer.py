@@ -6,6 +6,8 @@ import torch.nn as nn
 from .base import ChildLayer
 from .mixed_op import MixedOp
 from ..layers.ppp import push_prepostprocessors
+from ..layers.block_node_ops import BlockCombineNodeOp
+from ..utils.search_space import SearchSpace
 
 __author__ = 'fyabc'
 
@@ -13,6 +15,7 @@ __author__ = 'fyabc'
 class NAOMixedOp(MixedOp):
     def __init__(self, hparams, input_shape, in_encoder=True, **kwargs):
         super().__init__(self, hparams, input_shape, in_encoder=in_encoder, **kwargs)
+
         # TODO: Add combine ops.
 
     def forward(self, *input):
@@ -27,8 +30,9 @@ class NAOLayer(ChildLayer):
         self.num_input_nodes = 2
 
         # FIXME: Some hyperparameters are fixed now.
-
         self.node_combine_op = 'Add'
+
+        assert hparams.block_combine_op == 'add', 'Block combine op search is not supported now'
 
         assert self.num_input_nodes == 2, 'Number of input nodes != 2 is not supported now'
 

@@ -5,6 +5,7 @@ from collections import OrderedDict, defaultdict
 import logging
 import math
 
+import numpy as np
 import torch as th
 import torch.nn as nn
 
@@ -72,6 +73,9 @@ class ChildTrainer:
         self.meters['gnorm'] = AverageMeter()  # gradient norm
         self.meters['clip'] = AverageMeter()  # % of updates clipped
         self.meters['oom'] = AverageMeter()  # out of memory
+
+        self._max_bsz_seen = 0
+        self._num_updates = 0
 
         self._flat_grads = None
 
@@ -312,6 +316,14 @@ class ChildTrainer:
         self.train_step(dummy_batch, update_params=False)
         self.zero_grad()
 
+    def set_seed(self):
+        """Set seed based on args.seed and the epoch number so that
+        we get reproducible results when resuming from checkpoints.
+        """
+        seed = self.hparams.seed
+        th.manual_seed(seed)
+        np.random.seed(seed)
+
     def get_lr(self):
         """Get the current learning rate."""
         return self.optimizer.get_lr()
@@ -338,3 +350,7 @@ class ChildTrainer:
                 th.cuda.empty_cache()
 
         return common.make_variable(sample, volatile=volatile, cuda=True)
+
+    @property
+    def single_gpu(self):
+        return self.hparams.num_gpus == 1

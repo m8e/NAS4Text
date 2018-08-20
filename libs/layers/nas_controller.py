@@ -11,7 +11,10 @@ class NASController:
     def get_weight(self, in_encoder, layer_id, index, input_index, op_code, **kwargs):
         raise NotImplementedError()
 
-    def get_combine_weight(self, in_encoder, layer_id, index, op_code, **kwargs):
+    def get_node_ppp(self, in_encoder, layer_id, index, **kwargs):
+        raise NotImplementedError()
+
+    def get_block_ppp(self, in_encoder, layer_id, **kwargs):
         raise NotImplementedError()
 
 

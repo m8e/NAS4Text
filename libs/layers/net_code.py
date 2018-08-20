@@ -71,6 +71,17 @@ class NetCode:
             self.layers_code == other.layers_code and \
             self.type == other.type
 
+    def fast_eq(self, other):
+        """Fast equal test for NAO generated net code.
+
+        Assume that:
+            Block type same
+            Global same
+            Blocks are all "enc1" and "dec1"
+            #Layers are same
+        """
+        return self.blocks['enc1'] == other.blocks['enc1'] and self.blocks['dec1'] == other.blocks['dec1']
+
     def check_correctness(self):
         # TODO
         pass

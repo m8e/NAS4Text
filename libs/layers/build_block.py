@@ -64,7 +64,12 @@ class Node(ChildLayer):
         self.combine_op = self._parse_combine_op(combine_op, input_shape)
         self.node_args = kwargs.pop('node_args', ())
 
-        push_prepostprocessors(self, self._get_node_arg(0, ''), self._get_node_arg(1, ''), input_shape, input_shape)
+        if self.controller is None:
+            push_prepostprocessors(self, self._get_node_arg(0, ''), self._get_node_arg(1, ''), input_shape, input_shape)
+        else:
+            node_ppp = self.controller.get_node_ppp(self.in_encoder, self.layer_id, self.index)
+            self.preprocessors, self.postprocessors, self.residual_projection = \
+                node_ppp['pre'], node_ppp['post'], node_ppp['residual_projection']
 
     @staticmethod
     def _normalize_op_code(op_code, space=CellSpace.CellOps):
@@ -100,7 +105,7 @@ class Node(ChildLayer):
         op_code, op_args = self._normalize_op_code(op_code, space=CellSpace.CombineOps)
         controller = self.controller
         if controller is not None:
-            # TODO: Get combine weight.
+            # TODO: Support node combine op search in future.
             pass
         return BlockCombineNodeOp.create(
             op_code, op_args, input_shape, self.in_encoder, hparams=self.hparams,
@@ -146,7 +151,7 @@ class CombineNode(nn.Module):
         self.reduce_op = None
 
     def build(self, hidden_size, n, controller=None, layer_id=None):
-        # TODO: Use controller shared weights.
+        # TODO: Support block combine op search in future.
         if self.op == 'concat':
             self.reduce_op = nn.Conv1d(
                 hidden_size * n,
@@ -201,11 +206,16 @@ class BlockLayer(ChildLayer):
         self.combine_node.build(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices),
                                 controller=self.controller, layer_id=layer_id)
 
-        push_prepostprocessors(
-            self, self.block_params.get('preprocessors', ''),
-            self.block_params.get('postprocessors', ''),
-            input_shape, input_shape,
-        )
+        if self.controller is None:
+            push_prepostprocessors(
+                self, self.block_params.get('preprocessors', ''),
+                self.block_params.get('postprocessors', ''),
+                input_shape, input_shape,
+            )
+        else:
+            block_ppp = self.controller.get_block_ppp(self.in_encoder, layer_id)
+            self.preprocessors, self.postprocessors, self.residual_projection = \
+                block_ppp['pre'], block_ppp['post'], block_ppp['residual_projection']
 
         return input_shape
 
