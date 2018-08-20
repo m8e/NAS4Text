@@ -36,6 +36,7 @@ class ChildTrainer:
             raise NotImplementedError('Training on CPU is not supported')
 
         self.hparams = hparams
+        self.num_gpus = hparams.distributed_world_size
 
         # Copy model and criterion to current device
         if model is not None:
@@ -50,6 +51,9 @@ class ChildTrainer:
             self.lr_scheduler = build_lr_scheduler(self.hparams, self.optimizer)
             logging.info('Optimizer: {}'.format(self.optimizer.__class__.__name__))
             logging.info('LR Scheduler: {}'.format(self.lr_scheduler.__class__.__name__))
+        else:
+            self.optimizer = None
+            self.lr_scheduler = None
 
         # Initialize meters
         self.meters = OrderedDict()
@@ -353,4 +357,4 @@ class ChildTrainer:
 
     @property
     def single_gpu(self):
-        return self.hparams.num_gpus == 1
+        return self.num_gpus == 1

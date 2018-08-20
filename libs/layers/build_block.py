@@ -72,16 +72,16 @@ class Node(ChildLayer):
                 node_ppp['pre'], node_ppp['post'], node_ppp['residual_projection']
 
     @staticmethod
-    def _normalize_op_code(op_code, space=CellSpace.CellOps):
+    def _normalize_op_code(op_code, space=CellSpace.CellOpsReversed):
         if isinstance(op_code, Sequence) and not isinstance(op_code, str):
             # [op_code, op_arg1, op_arg2, ...]
             op_code, *op_args = op_code
         else:
             op_args = tuple()
 
-        if isinstance(op_code, str):
+        if isinstance(op_code, int):
             op_code = space[op_code]
-        assert isinstance(op_code, int)
+        assert isinstance(op_code, str)
 
         return op_code, op_args
 
@@ -102,7 +102,7 @@ class Node(ChildLayer):
             controller=self.controller, index=self.index, input_index=input_index)
 
     def _parse_combine_op(self, op_code, input_shape):
-        op_code, op_args = self._normalize_op_code(op_code, space=CellSpace.CombineOps)
+        op_code, op_args = self._normalize_op_code(op_code, space=CellSpace.CombineOpsReversed)
         controller = self.controller
         if controller is not None:
             # TODO: Support node combine op search in future.

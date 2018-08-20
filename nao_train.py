@@ -42,7 +42,6 @@ class NAOTrainer(ChildTrainer):
         self.arch_pool_prob = None
         self.eval_arch_pool = []
         self.performance_pool = []
-        self.num_gpus = hparams.distributed_world_size
 
     def new_model(self, net_code, device=None, cuda=True):
         result = BlockChildNet(net_code, self.hparams, self.controller)
@@ -59,7 +58,7 @@ class NAOTrainer(ChildTrainer):
         self.arch_pool = self.controller.generate_arch(num_seed_arch)
 
         print('###')
-        print(a.blocks for a in self.arch_pool[:10])
+        print([a.blocks for a in self.arch_pool[:10]])
 
     def _sample_arch_from_pool(self):
         prob = self.arch_pool_prob
@@ -174,9 +173,6 @@ secs={:<10.2f}'''.format(
 
         return itr
 
-    def train_step(self, sample, update_params=True):
-        raise RuntimeError('This method must not be called')
-
     @contextmanager
     def child_train_env(self, model):
         optimizer = build_optimizer(self.hparams, model.parameters())
@@ -199,9 +195,6 @@ secs={:<10.2f}'''.format(
             self.optimizer = old_optimizer
             self.lr_scheduler = old_lr_scheduler
             logging.info('Trainer restored')
-
-    def child_train_step(self, sample, update_params=True):
-        return super().train_step(sample, update_params=update_params)
 
     def controller_train_step(self):
         pass

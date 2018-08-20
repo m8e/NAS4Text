@@ -11,6 +11,7 @@ from .child_net_base import EncDecChildNet, ChildIncrementalDecoderBase, ChildEn
 from ..layers.nao_layer import NAOLayer
 from ..layers.nas_controller import NASController
 from ..layers.net_code import NetCode
+from ..utils.search_space import CellSpace
 
 
 class NAOChildEncoder(ChildEncoderBase):
@@ -154,6 +155,7 @@ class NAOController(NASController):
         num_total_nodes = layer.num_total_nodes
         in_encoder = layer.in_encoder
         supported_ops = list(self._supported_ops_cache[in_encoder].keys())
+        supported_ops_idx = list(range(len(supported_ops)))
 
         result.extend([[None for _ in range(2 * num_input_nodes + 1)] for _ in range(num_input_nodes)])
 
@@ -161,7 +163,7 @@ class NAOController(NASController):
             edges = [np.random.randint(0, j) for _ in range(2)]
             ops = []
             for _ in range(2):
-                op_name, op_args = np.random.choice(supported_ops)
+                op_name, op_args = supported_ops[np.random.choice(supported_ops_idx)]
                 ops.append([op_name] + list(op_args))
 
             result.append(

@@ -59,14 +59,24 @@ class BlockNodeOp(nn.Module):
 
     @classmethod
     def create(cls, op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
-        op_str_code = ss.CellSpace.CellOpsReversed.get(op_code, None)
-        if op_str_code is None:
-            raise RuntimeError('Unknown op code {}'.format(op_code))
+        """
+
+        Args:
+            op_code: String op code.
+            op_args:
+            input_shape:
+            in_encoder:
+            hparams:
+            **kwargs:
+
+        Returns:
+
+        """
 
         supported_ops = cls.supported_ops()
-        op_type = supported_ops.get(op_str_code, None)
+        op_type = supported_ops.get(op_code, None)
         if op_type is None:
-            raise NotImplementedError('The op {!r} is not implemented now'.format(op_str_code))
+            raise NotImplementedError('The op {!r} is not implemented now'.format(op_code))
 
         # Add some special cases here.
 
@@ -95,13 +105,23 @@ class BlockCombineNodeOp(nn.Module):
 
     @classmethod
     def create(cls, op_code, op_args, input_shape, in_encoder=True, hparams=None, **kwargs):
-        op_str_code = ss.CellSpace.CombineOpsReversed.get(op_code, None)
-        if op_str_code is None:
-            raise RuntimeError('Unknown combine op code {}'.format(op_code))
+        """
+
+        Args:
+            op_code: String op code.
+            op_args:
+            input_shape:
+            in_encoder:
+            hparams:
+            **kwargs:
+
+        Returns:
+
+        """
         supported_ops = cls.supported_ops()
-        op_type = supported_ops.get(op_str_code, None)
+        op_type = supported_ops.get(op_code, None)
         if op_type is None:
-            raise NotImplementedError('The combine op {!r} is not implemented now'.format(op_str_code))
+            raise NotImplementedError('The combine op {!r} is not implemented now'.format(op_code))
 
         # Add some special cases here.
 
