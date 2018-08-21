@@ -6,6 +6,10 @@ import math
 import os
 
 import torch as th
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
 
 from .utils.main_utils import main_entry
 from .utils.paths import get_model_path, get_translate_output_path
@@ -18,8 +22,16 @@ from .models.child_net_base import ChildIncrementalDecoderBase
 __author__ = 'fyabc'
 
 
+_sentinel = object()
+
+
 class ChildGenerator:
-    def __init__(self, hparams, datasets, models, maxlen=None):
+    def __init__(
+            self, hparams, datasets, models, maxlen=None,
+            subset=_sentinel, quiet=_sentinel, output_file=_sentinel, use_task_maxlen=_sentinel,
+            maxlen_a=_sentinel, maxlen_b=_sentinel, max_tokens=_sentinel, max_sentences=_sentinel,
+            lenpen=_sentinel, beam=_sentinel,
+    ):
         """
 
         Args:
@@ -33,21 +45,33 @@ class ChildGenerator:
         self.models = models
         self.is_cuda = False
 
+        # Settings, default is from hparams.
+        self.subset = hparams.gen_subset if subset is _sentinel else subset
+        self.quiet = hparams.quiet if quiet is _sentinel else quiet
+        self.output_file = hparams.output_file if output_file is _sentinel else output_file
+        self.use_task_maxlen = hparams.use_task_maxlen if use_task_maxlen is _sentinel else use_task_maxlen
+        self.maxlen_a = hparams.maxlen_a if maxlen_a is _sentinel else maxlen_a
+        self.maxlen_b = hparams.maxlen_b if maxlen_b is _sentinel else maxlen_b
+        self.max_tokens = hparams.max_tokens if max_tokens is _sentinel else max_tokens
+        self.max_sentences = hparams.max_sentences if max_sentences is _sentinel else max_sentences
+
         max_decoder_len = min(m.max_decoder_positions() for m in self.models)
         max_decoder_len -= 1  # we define maxlen not including the EOS marker
         self.maxlen = max_decoder_len if maxlen is None else min(maxlen, max_decoder_len)
 
         self.stop_early = not hparams.no_early_stop
         self.normalize_scores = not hparams.unnormalized
+        self.lenpen = hparams.lenpen if lenpen is _sentinel else lenpen
+        self.beam = hparams.beam if beam is _sentinel else beam
 
         # Options support in future
         self.retain_dropout = False
 
     def _get_input_iter(self):
         itr = self.datasets.eval_dataloader(
-            self.hparams.gen_subset,
-            max_tokens=self.hparams.max_tokens,
-            max_sentences=self.hparams.max_sentences,
+            self.subset,
+            max_tokens=self.max_tokens,
+            max_sentences=self.max_sentences,
             max_positions=min(model.max_encoder_positions() for model in self.models),
             skip_invalid_size_inputs_valid_test=self.hparams.skip_invalid_size_inputs_valid_test,
         )
@@ -59,9 +83,9 @@ class ChildGenerator:
 
         return itr
 
-    def cuda(self):
+    def cuda(self, device=None):
         for model in self.models:
-            model.cuda()
+            model.cuda(device=device)
         self.is_cuda = True
         return self
 
@@ -70,7 +94,7 @@ class ChildGenerator:
 
     def beam_search(self):
         # TODO: Fix the problems in beam search.
-        return self.decoding(beam=self.hparams.beam)
+        return self.decoding(beam=self.beam)
 
     def decoding(self, beam=None):
         itr = self._get_input_iter()
@@ -79,45 +103,50 @@ class ChildGenerator:
 
         src_dict, trg_dict = self.datasets.source_dict, self.datasets.target_dict
 
-        gen_subset_len = len(self.datasets.get_dataset(self.hparams.gen_subset))
+        gen_subset_len = len(self.datasets.get_dataset(self.subset))
 
         translated_strings = [None for _ in range(gen_subset_len)]
+        if self.quiet and tqdm is not None:
+            itr = tqdm(itr)
         for i, sample in enumerate(itr):
             if beam is None or beam <= 0:
                 batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
             else:
                 batch_translated_tokens = self._beam_search_slow(sample, beam, gen_timer)
-            print('Batch {}:'.format(i))
+            if not self.quiet:
+                print('Batch {}:'.format(i))
             for id_, src_tokens, trg_tokens, translated_tokens in zip(
                     sample['id'], sample['net_input']['src_tokens'], sample['target'], batch_translated_tokens):
                 trans_str = trg_dict.string(translated_tokens, bpe_symbol=self.task.BPESymbol, escape_unk=True)
                 translated_strings[id_] = trans_str
-                if not self.hparams.quiet:
+                if not self.quiet:
                     print('SOURCE:', src_dict.string(src_tokens, bpe_symbol=self.task.BPESymbol))
                     print('REF   :', trg_dict.string(trg_tokens, bpe_symbol=self.task.BPESymbol, escape_unk=True))
                     print('DECODE:', trans_str)
-            if not self.hparams.quiet:
+            if not self.quiet:
                 print()
 
         logging.info('Translated {} sentences in {:.1f}s ({:.2f} sentences/s)'.format(
             gen_timer.n, gen_timer.sum, 1. / gen_timer.avg))
 
         # Dump decoding outputs.
-        if self.hparams.output_file is not None:
+        if self.output_file is not None:
             output_path = get_translate_output_path(self.hparams)
             os.makedirs(output_path, exist_ok=True)
-            full_path = os.path.join(output_path, self.hparams.output_file)
+            full_path = os.path.join(output_path, self.output_file)
             with open(full_path, 'w', encoding='utf-8') as f:
                 for line in translated_strings:
                     assert line is not None, 'There is a sentence not being translated'
                     print(line, file=f)
             logging.info('Decode output write to {}.'.format(full_path))
 
+        return translated_strings
+
     def _get_maxlen(self, srclen):
-        if self.hparams.use_task_maxlen:
+        if self.use_task_maxlen:
             a, b = self.task.get_maxlen_a_b()
         else:
-            a, b = self.hparams.maxlen_a, self.hparams.maxlen_b
+            a, b = self.maxlen_a, self.maxlen_b
         maxlen = max(1, int(a * srclen + b))
         return maxlen
 
@@ -314,7 +343,7 @@ class ChildGenerator:
 
             # normalize sentence-level scores
             if self.normalize_scores:
-                eos_scores /= (step + 1) ** self.hparams.lenpen
+                eos_scores /= (step + 1) ** self.lenpen
 
             sents_seen = set()
             for i, (idx, score) in enumerate(zip(bbsz_idx.tolist(), eos_scores.tolist())):

@@ -320,11 +320,11 @@ class ChildTrainer:
         self.train_step(dummy_batch, update_params=False)
         self.zero_grad()
 
-    def set_seed(self):
+    def set_seed(self, epoch=0):
         """Set seed based on args.seed and the epoch number so that
         we get reproducible results when resuming from checkpoints.
         """
-        seed = self.hparams.seed
+        seed = self.hparams.seed + epoch
         th.manual_seed(seed)
         np.random.seed(seed)
 

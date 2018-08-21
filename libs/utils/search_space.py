@@ -221,5 +221,6 @@ class SearchSpace:
     CellOpSpaces['with-r-lstm'] = CellOpSpaces['default'] + [('LSTM', [None, True, '', 'd'])]
     CellOpSpaces['no-conv-lstm'] = [o for o in CellOpSpaces['default'] if o[0] not in ('CNN', 'LSTM')]
     CellOpSpaces['no-lstm'] = [o for o in CellOpSpaces['default'] if o[0] not in ('LSTM',)]
+    CellOpSpaces['no-zero'] = [o for o in CellOpSpaces['default'] if o[0] != 'Zero']
 
     CombineOps = ['Add', 'Concat']

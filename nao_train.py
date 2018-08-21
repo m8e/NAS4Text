@@ -1,8 +1,8 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-import collections
 from contextlib import contextmanager
+import copy
 import itertools
 import logging
 import math
@@ -10,21 +10,17 @@ import os
 
 import numpy as np
 import torch as th
-import torch.nn as nn
-import torch.nn.functional as F
-from torch import autograd
 
 from libs.models.block_child_net import BlockChildNet
 from libs.models.nao_child_net import NAOController
 from libs.optimizers import build_optimizer
 from libs.optimizers.lr_schedulers import build_lr_scheduler
 from libs.criterions import build_criterion
-from libs.hparams import hparams_env
 from libs.utils import main_utils as mu
-from libs.utils.meters import StopwatchMeter, AverageMeter
-from libs.utils.progress_bar import build_progress_bar
+from libs.utils.meters import StopwatchMeter
 from libs.utils.paths import get_model_path
 from libs.child_trainer import ChildTrainer
+from libs.child_generator import ChildGenerator
 
 __author__ = 'fyabc'
 
@@ -42,6 +38,7 @@ class NAOTrainer(ChildTrainer):
         self.arch_pool_prob = None
         self.eval_arch_pool = []
         self.performance_pool = []
+        self.branch_length = 2  # TODO: Change this hparams.
 
     def new_model(self, net_code, device=None, cuda=True):
         result = BlockChildNet(net_code, self.hparams, self.controller)
@@ -57,10 +54,8 @@ class NAOTrainer(ChildTrainer):
 
         self.arch_pool = self.controller.generate_arch(num_seed_arch)
 
-        print('###')
-        print([a.blocks for a in self.arch_pool[:10]])
-
     def _sample_arch_from_pool(self):
+        # TODO: Sample by model size?
         prob = self.arch_pool_prob
         if prob is None:
             pool_size = len(self.arch_pool)
@@ -70,8 +65,7 @@ class NAOTrainer(ChildTrainer):
         return self.arch_pool[index]
 
     def train_children(self, datasets):
-        # self.set_seed()
-
+        logging.info('Training children, arch pool size = {}'.format(len(self.arch_pool)))
         eval_freq = self.hparams.child_eval_freq
 
         if self.single_gpu:
@@ -80,9 +74,11 @@ class NAOTrainer(ChildTrainer):
 
             # Train the child model for some epochs.
             with self.child_train_env(child):
+                logging.info('Number of child model parameters: {}'.format(child.num_parameters()))
+                print('Architecture:', arch.blocks['enc1'], arch.blocks['dec1'], sep='\n\t')
+
                 self._init_meters()
-                for epoch in range(eval_freq):
-                    # TODO: Need test here.
+                for epoch in range(1, eval_freq + 1):
                     mu.train(self.hparams, self, datasets, epoch, 0)
 
             return
@@ -98,7 +94,7 @@ class NAOTrainer(ChildTrainer):
         else:
             raise NotImplementedError('Non-arch dist multi-gpu training not supported yet')
 
-    def eval_children(self, datasets):
+    def eval_children(self, datasets, ret_acc=True):
         """Eval all arches in the pool."""
         eval_freq = self.hparams.child_eval_freq
 
@@ -107,23 +103,28 @@ class NAOTrainer(ChildTrainer):
         valid_time = StopwatchMeter()
         for arch in self.arch_pool:
             child = self.new_model(arch)
-            # TODO: Need test.
-            with self.child_train_env(child):
+            with self.child_train_env(child, train=False):
                 val_loss = mu.validate(self.hparams, self, datasets, 'dev', eval_freq)
-                val_loss_list.append(val_loss)
-                val_acc_list.append(0.0)    # TODO: Also compute the valid accuracy (BLEU).
+            val_loss_list.append(val_loss)
+
+            # TODO: How to compute BLEU? Generation too slow?
+            if ret_acc:
+                val_translations = self._generate_on_dev(child, datasets)
+                val_acc_list.append(0.0)
+            else:
+                val_acc_list.append(math.nan)
 
         valid_time.stop()
         logging.info('''\
-Evaluation on valid data
-Totally validated {} architectures
-loss={:<6f}
-valid_accuracy={:<8.6f}
-secs={:<10.2f}'''.format(
+Evaluation on valid data: totally validated {} architectures
+Metrics: loss={:<6f}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             len(self.arch_pool), np.mean(val_loss_list), np.mean(val_acc_list),
             valid_time.sum,
         ))
-        return val_acc_list
+        if ret_acc:
+            return val_acc_list
+        else:
+            return val_loss_list
 
     def _get_train_itr(self, datasets, seed, epoch=1, batch_offset=0):
         hparams = self.hparams
@@ -174,38 +175,75 @@ secs={:<10.2f}'''.format(
         return itr
 
     @contextmanager
-    def child_train_env(self, model):
-        optimizer = build_optimizer(self.hparams, model.parameters())
-        lr_scheduler = build_lr_scheduler(self.hparams, optimizer)
-        logging.info('Creating child train environment')
-        logging.info('Child optimizer: {}'.format(optimizer.__class__.__name__))
-        logging.info('Child LR Scheduler: {}'.format(lr_scheduler.__class__.__name__))
+    def child_train_env(self, model, train=True):
+        logging.info('Creating child {} environment'.format('train' if train else 'valid'))
+        if train:
+            optimizer = build_optimizer(self.hparams, model.parameters())
+            lr_scheduler = build_lr_scheduler(self.hparams, optimizer)
+            logging.info('Child optimizer: {}'.format(optimizer.__class__.__name__))
+            logging.info('Child LR Scheduler: {}'.format(lr_scheduler.__class__.__name__))
 
         old_model = self.model
-        old_optimizer = self.optimizer
-        old_lr_scheduler = self.lr_scheduler
         self.model = model
-        self.optimizer = optimizer
-        self.lr_scheduler = lr_scheduler
+        if train:
+            old_optimizer = self.optimizer
+            old_lr_scheduler = self.lr_scheduler
+            self.optimizer = optimizer
+            self.lr_scheduler = lr_scheduler
 
         try:
             yield
         finally:
             self.model = old_model
-            self.optimizer = old_optimizer
-            self.lr_scheduler = old_lr_scheduler
+            if train:
+                self.optimizer = old_optimizer
+                self.lr_scheduler = old_lr_scheduler
             logging.info('Trainer restored')
 
-    def controller_train_step(self):
+    def _generate_on_dev(self, model, datasets, device=None):
+        logging.info('Generate on dev set')
+        generator = ChildGenerator(
+            self.hparams, datasets, [model], subset='dev', quiet=True, output_file=None,
+            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None, max_sentences=128,
+            beam=5, lenpen=1.2,
+        )
+        generator.cuda(device)
+        translated_strings = generator.greedy_decoding()
+
+        return translated_strings
+
+    def _parse_arch_to_seq(self, arch):
+        # TODO
         pass
 
-    def controller_generate_step(self):
-        pass
+    def _normalized_perf(self, perf_list):
+        max_val, min_val = np.max(perf_list), np.min(perf_list)
+        return [(v - min_val) / (max_val - min_val) for v in perf_list]
+
+    def controller_train_step(self, old_arches, old_arches_perf):
+        encoder_input = [self._parse_arch_to_seq(arch) for arch in old_arches]
+        encoder_target = self._normalized_perf(old_arches_perf)
+        decoder_target = copy.deepcopy(encoder_target)
+
+        # TODO: Train the epd.
+
+    def controller_generate_step(self, old_arches):
+        old_arches = old_arches[:self.hparams.num_remain_top]
+        new_arches = []
+        predict_lambda = 0
+        topk_arches = [self._parse_arch_to_seq(arch) for arch in old_arches[:self.hparams.num_pred_top]]
+
+        while len(new_arches) + len(old_arches) < self.hparams.num_seed_arch:
+            # TODO: Generate new arches.
+            predict_lambda += 1
+            pass
 
     # TODO: Train step, etc.
 
 
 def nao_search_main(hparams):
+    RetAcc = False  # FIXME: Flag. Return accuracy or loss. Standard is True.
+
     components = mu.main_entry(hparams, train=True, net_code='nao')
     datasets = components['datasets']
 
@@ -221,27 +259,63 @@ def nao_search_main(hparams):
     train_meter = StopwatchMeter()
     train_meter.start()
     while ctrl_step <= max_ctrl_step:
+        logging.info('Training step {}'.format(ctrl_step))
+        trainer.set_seed(ctrl_step)
+
         # Train child model.
         trainer.init_arch_pool()
 
         trainer.train_children(datasets)
 
         # Evaluate seed arches.
-        valid_acc_list = trainer.eval_children(datasets)
+        valid_acc_list = trainer.eval_children(datasets, ret_acc=RetAcc)
 
         # Output arches and evaluated error rate.
         old_arches = trainer.arch_pool
-        old_arches_perf = [1.0 - i for i in valid_acc_list]
+        if RetAcc:
+            # Error rate list.
+            old_arches_perf = [1.0 - i for i in valid_acc_list]
+        else:
+            old_arches_perf = valid_acc_list[:]
+
+        # Sort old arches.
+        old_arches_sorted_indices = np.argsort(old_arches_perf)
+        old_arches = np.array(old_arches)[old_arches_sorted_indices].tolist()
+        old_arches_perf = np.array(old_arches_perf)[old_arches_sorted_indices].tolist()
+
+        # Save old arches in order.
+        save_arches(hparams, ctrl_step, old_arches, old_arches_perf)
 
         # Train encoder-predictor-decoder.
-        trainer.controller_train_step()
+        trainer.controller_train_step(old_arches, old_arches_perf)
 
         # Generate new arches.
-        trainer.controller_generate_step()
+        trainer.controller_generate_step(old_arches)
 
         ctrl_step += 1
     train_meter.stop()
     logging.info('Training done in {:.1f} seconds'.format(train_meter.sum))
+
+
+def save_arches(hparams, ctrl_step, arches, arches_perf):
+    import json
+
+    save_dir = get_model_path(hparams)
+    net_code_list = [n.original_code for n in arches]
+
+    def _save(code_filename, perf_filename):
+        full_code_filename = os.path.join(save_dir, code_filename)
+        with open(full_code_filename, 'w', encoding='utf-8') as f:
+            json.dump(net_code_list, f)
+            logging.info('Save arches into {} (epoch {})'.format(full_code_filename, ctrl_step))
+        full_perf_filename = os.path.join(save_dir, perf_filename)
+        with open(full_perf_filename, 'w', encoding='utf-8') as f:
+            for perf in arches_perf:
+                print(perf, file=f)
+            logging.info('Save performance into {} (epoch {})'.format(full_perf_filename, ctrl_step))
+
+    _save('arch_pool{}.json'.format(ctrl_step), 'arch_perf{}.txt'.format(ctrl_step))
+    _save('arch_pool_last.json', 'arch_perf_last.txt')
 
 
 def add_nao_search_args(parser):
@@ -251,9 +325,13 @@ def add_nao_search_args(parser):
                        help='Number of max controller steps in arch search, default is %(default)s')
     group.add_argument('--num-seed-arch', default=1000, type=int,
                        help='Number of seed arches, default is %(default)s')
+    group.add_argument('--num-remain-top', default=500, type=int,
+                       help='Number of remaining top-k best arches, default is %(default)s')
+    group.add_argument('--num-pred-top', default=100, type=int,
+                       help='Number of top-k best arches used in prediction, default is %(default)s')
     group.add_argument('--num-nodes', default=4, type=int,
                        help='Number of nodes in one block, default is %(default)s')
-    group.add_argument('--cell-op-space', default='default',
+    group.add_argument('--cell-op-space', default='no-zero',
                        help='The search space of cell ops, default is %(default)r')
     group.add_argument('--num-encoder-layers', default=2, type=int,
                        help='Number of encoder layers in arch search, default is %(default)s')
@@ -272,11 +350,12 @@ def get_nao_search_args(args=None):
     from libs.utils import args as utils_args
     parser = argparse.ArgumentParser(description='NAO search Script.')
     utils_args.add_general_args(parser)
-    utils_args.add_dataset_args(parser, train=True)
+    utils_args.add_dataset_args(parser, train=True, gen=True)
     utils_args.add_hparams_args(parser)
     utils_args.add_train_args(parser)
     utils_args.add_distributed_args(parser)
     utils_args.add_checkpoint_args(parser)
+    utils_args.add_generation_args(parser)  # For BLEU scorer.
     add_nao_search_args(parser)
 
     parsed_args = parser.parse_args(args)

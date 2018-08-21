@@ -90,6 +90,14 @@ class NAOChildNet(EncDecChildNet):
         self.decoder = NAOChildDecoder(hparams, trg_embed_tokens)
 
 
+class NAO_EPD(nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.hparams = hparams
+
+    # TODO
+
+
 class NAOController(NASController):
     def __init__(self, hparams):
         super().__init__(hparams)
@@ -101,8 +109,8 @@ class NAOController(NASController):
             False: self._reversed_supported_ops(self.shared_weights.decoder.layers[0].supported_ops()),
         }
 
-    # TODO: Apply shared weights into ppp of layer, node, op.
-    # TODO: Apply shared weights into ops.
+        # EPD.
+        self.epd = NAO_EPD(hparams)
 
     @staticmethod
     def _reversed_supported_ops(supported_ops):
@@ -147,6 +155,7 @@ class NAOController(NASController):
 
     def cuda(self, device=None):
         self.shared_weights.cuda(device)
+        self.epd.cuda(device)
         return self
 
     def _generate_block(self, layer: NAOLayer):

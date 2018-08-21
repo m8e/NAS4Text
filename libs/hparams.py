@@ -156,13 +156,17 @@ def hparams_base():
         # max_ctrl_step=1000,
         # # Number of seed arches.
         # num_seed_arch=1000,
+        # # Number of remaining top-k best arches.
+        # num_remain_top=500,
         # # Number of nodes in one block.
-        # num_nodes=5,
+        # num_nodes=4,
         # # Cell op space.
         # cell_op_space='default'
         # # Number of encoder and decoder layers in arch search.
         # num_encoder_layers=6,
         # num_decoder_layers=6,
+        # # Number of epochs to run in between evaluations.
+        # child_eval_freq=10,
     )
 
 
