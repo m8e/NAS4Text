@@ -83,14 +83,15 @@ class LanguageDatasets:
     def eval_dataloader(self, split, num_workers=0, max_tokens=None,
                         max_sentences=None, max_positions=(1024, 1024),
                         skip_invalid_size_inputs_valid_test=False,
-                        descending=False, shard_id=0, num_shards=1):
+                        descending=False, shard_id=0, num_shards=1,
+                        repeat=1, sort_by_length=True):
         dataset = self.get_dataset(split)
 
         batch_sampler = dataset.batches_by_size(
             max_tokens=max_tokens, max_sentences=max_sentences,
             max_positions=max_positions,
             ignore_invalid_inputs=skip_invalid_size_inputs_valid_test,
-            descending=descending)
+            descending=descending, repeat=repeat, sort_by_length=sort_by_length)
         batch_sampler = mask_batches(batch_sampler, shard_id=shard_id, num_shards=num_shards)
 
         return DataLoader(
@@ -215,7 +216,7 @@ class LanguagePairDataset(Dataset):
 
     def batches_by_size(self, max_tokens=None, max_sentences=None,
                         max_positions=(1024, 1024), ignore_invalid_inputs=False,
-                        descending=False):
+                        descending=False, repeat=1, sort_by_length=True):
         """Returns batches of indices sorted by size. Sequences with different
         source lengths are not allowed in the same batch.
         """
@@ -223,12 +224,21 @@ class LanguagePairDataset(Dataset):
             max_tokens = float('Inf')
         if max_sentences is None:
             max_sentences = float('Inf')
-        indices = np.argsort(self.src.sizes, kind='mergesort')
+        if sort_by_length:
+            indices = np.argsort(self.src.sizes, kind='mergesort')
+        else:
+            indices = np.arange(len(self), dtype=np.int64)
         if descending:
             indices = np.flip(indices, 0)
-        return list(_make_batches(
+
+        allow_different_src_lens = False if sort_by_length else True
+        single_result = list(_make_batches(
             self.src, self.trg, indices, max_tokens, max_sentences, max_positions,
-            ignore_invalid_inputs, allow_different_src_lens=False))
+            ignore_invalid_inputs, allow_different_src_lens=allow_different_src_lens))
+        result = single_result
+        for _ in range(repeat - 1):
+            result.extend(single_result)
+        return result
 
     def shuffled_batches_by_size(self, max_tokens=None, max_sentences=None,
                                  epoch=1, sample=0, max_positions=(1024, 1024),

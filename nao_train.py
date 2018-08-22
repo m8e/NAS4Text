@@ -10,6 +10,10 @@ import os
 
 import numpy as np
 import torch as th
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
 
 from libs.models.block_child_net import BlockChildNet
 from libs.models.nao_child_net import NAOController
@@ -19,6 +23,7 @@ from libs.criterions import build_criterion
 from libs.utils import main_utils as mu
 from libs.utils.meters import StopwatchMeter
 from libs.utils.paths import get_model_path
+from libs.utils.generator_utils import batch_bleu
 from libs.child_trainer import ChildTrainer
 from libs.child_generator import ChildGenerator
 
@@ -55,7 +60,7 @@ class NAOTrainer(ChildTrainer):
         self.arch_pool = self.controller.generate_arch(num_seed_arch)
 
     def _sample_arch_from_pool(self):
-        # TODO: Sample by model size?
+        # TODO: Sample by model size. (Except shared parts (embedding, etc.)
         prob = self.arch_pool_prob
         if prob is None:
             pool_size = len(self.arch_pool)
@@ -73,7 +78,7 @@ class NAOTrainer(ChildTrainer):
             child = self.new_model(arch)
 
             # Train the child model for some epochs.
-            with self.child_train_env(child):
+            with self.child_env(child):
                 logging.info('Number of child model parameters: {}'.format(child.num_parameters()))
                 print('Architecture:', arch.blocks['enc1'], arch.blocks['dec1'], sep='\n\t')
 
@@ -94,88 +99,57 @@ class NAOTrainer(ChildTrainer):
         else:
             raise NotImplementedError('Non-arch dist multi-gpu training not supported yet')
 
-    def eval_children(self, datasets, ret_acc=True):
+    def eval_children(self, datasets, compute_loss=False):
         """Eval all arches in the pool."""
-        eval_freq = self.hparams.child_eval_freq
+
+        # Prepare the generator.
+        generator = ChildGenerator(
+            self.hparams, datasets, [self.model], subset='dev', quiet=True, output_file=None,
+            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None, max_sentences=128,
+            beam=5, lenpen=1.2,
+        )
+        sort_by_length = True
+        itr = generator.get_input_iter(sort_by_length=sort_by_length)
+        itr_chain = [itr]
+        # [NOTE]: Make sure that each arch can process one batch. Use multiple iterators.
+        repeat_number = math.ceil(len(self.arch_pool) / len(itr))
+        for _ in range(1, repeat_number):
+            itr_chain.append(generator.get_input_iter(sort_by_length=sort_by_length))
+        whole_gen_itr = itertools.chain(*itr_chain)
+
+        arch_itr = self.arch_pool
+        if tqdm is not None:
+            arch_itr = tqdm(arch_itr)
 
         val_loss_list = []
         val_acc_list = []
         valid_time = StopwatchMeter()
-        for arch in self.arch_pool:
-            child = self.new_model(arch)
-            with self.child_train_env(child, train=False):
-                val_loss = mu.validate(self.hparams, self, datasets, 'dev', eval_freq)
-            val_loss_list.append(val_loss)
+        for arch, sample in zip(arch_itr, whole_gen_itr):
+            child = self.new_model(arch, cuda=False)
 
-            # TODO: How to compute BLEU? Generation too slow?
-            if ret_acc:
-                val_translations = self._generate_on_dev(child, datasets)
-                val_acc_list.append(0.0)
-            else:
-                val_acc_list.append(math.nan)
+            if compute_loss:
+                with self.child_env(child, train=False):
+                    val_loss = mu.validate(self.hparams, self, datasets, 'dev', self.hparams.child_eval_freq)
+                val_loss_list.append(val_loss)
+
+            generator.models = [child]
+            generator.cuda()
+
+            translation = generator.decoding_one_batch(sample)
+            val_bleu = batch_bleu(generator, sample, translation)
+            val_acc_list.append(val_bleu)
 
         valid_time.stop()
         logging.info('''\
 Evaluation on valid data: totally validated {} architectures
-Metrics: loss={:<6f}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
-            len(self.arch_pool), np.mean(val_loss_list), np.mean(val_acc_list),
-            valid_time.sum,
+Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
+            len(self.arch_pool), ':<6f'.format(np.mean(val_loss_list)) if compute_loss else '[NotComputed]',
+            np.mean(val_acc_list), valid_time.sum,
         ))
-        if ret_acc:
-            return val_acc_list
-        else:
-            return val_loss_list
-
-    def _get_train_itr(self, datasets, seed, epoch=1, batch_offset=0):
-        hparams = self.hparams
-        # The max number of positions can be different for train and valid
-        # e.g., RNNs may support more positions at test time than seen in training
-        max_positions_train = (
-            min(hparams.max_src_positions, self.get_model().max_encoder_positions()),
-            min(hparams.max_trg_positions, self.get_model().max_decoder_positions()),
-        )
-
-        # Initialize dataloader, starting at batch_offset
-        itr = datasets.train_dataloader(
-            hparams.train_subset,
-            max_tokens=hparams.max_tokens,
-            max_sentences=hparams.max_sentences,
-            max_positions=max_positions_train,
-            seed=seed,
-            epoch=epoch,
-            sample_without_replacement=hparams.sample_without_replacement,
-            sort_by_source_size=(epoch <= hparams.curriculum),
-            shard_id=hparams.distributed_rank,
-            num_shards=hparams.distributed_world_size,
-        )
-
-        next(itertools.islice(itr, batch_offset, batch_offset), None)
-
-        return itr
-
-    def _get_valid_itr(self, datasets, subset='dev'):
-        hparams = self.hparams
-
-        # Initialize dataloader
-        max_positions_valid = (
-            self.get_model().max_encoder_positions(),
-            self.get_model().max_decoder_positions(),
-        )
-        itr = datasets.eval_dataloader(
-            subset,
-            max_tokens=hparams.max_tokens,
-            max_sentences=hparams.max_sentences_valid,
-            max_positions=max_positions_valid,
-            skip_invalid_size_inputs_valid_test=hparams.skip_invalid_size_inputs_valid_test,
-            descending=True,  # largest batch first to warm the caching allocator
-            shard_id=hparams.distributed_rank,
-            num_shards=hparams.distributed_world_size,
-        )
-
-        return itr
+        return val_acc_list
 
     @contextmanager
-    def child_train_env(self, model, train=True):
+    def child_env(self, model, train=True):
         logging.info('Creating child {} environment'.format('train' if train else 'valid'))
         if train:
             optimizer = build_optimizer(self.hparams, model.parameters())
@@ -213,8 +187,7 @@ Metrics: loss={:<6f}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         return translated_strings
 
     def _parse_arch_to_seq(self, arch):
-        # TODO
-        pass
+        return self.controller.parse_arch_to_seq(arch, self.branch_length)
 
     def _normalized_perf(self, perf_list):
         max_val, min_val = np.max(perf_list), np.min(perf_list)
@@ -242,7 +215,6 @@ Metrics: loss={:<6f}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
 
 def nao_search_main(hparams):
-    RetAcc = False  # FIXME: Flag. Return accuracy or loss. Standard is True.
 
     components = mu.main_entry(hparams, train=True, net_code='nao')
     datasets = components['datasets']
@@ -268,15 +240,12 @@ def nao_search_main(hparams):
         trainer.train_children(datasets)
 
         # Evaluate seed arches.
-        valid_acc_list = trainer.eval_children(datasets, ret_acc=RetAcc)
+        valid_acc_list = trainer.eval_children(datasets, compute_loss=False)
 
         # Output arches and evaluated error rate.
         old_arches = trainer.arch_pool
-        if RetAcc:
-            # Error rate list.
-            old_arches_perf = [1.0 - i for i in valid_acc_list]
-        else:
-            old_arches_perf = valid_acc_list[:]
+        # Error rate list.
+        old_arches_perf = [1.0 - i for i in valid_acc_list]
 
         # Sort old arches.
         old_arches_sorted_indices = np.argsort(old_arches_perf)

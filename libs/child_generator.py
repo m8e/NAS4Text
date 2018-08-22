@@ -67,13 +67,14 @@ class ChildGenerator:
         # Options support in future
         self.retain_dropout = False
 
-    def _get_input_iter(self):
+    def get_input_iter(self, repeat=1, sort_by_length=True):
         itr = self.datasets.eval_dataloader(
             self.subset,
             max_tokens=self.max_tokens,
             max_sentences=self.max_sentences,
             max_positions=min(model.max_encoder_positions() for model in self.models),
             skip_invalid_size_inputs_valid_test=self.hparams.skip_invalid_size_inputs_valid_test,
+            repeat=repeat, sort_by_length=sort_by_length,
         )
 
         if self.hparams.num_shards > 1:
@@ -96,8 +97,16 @@ class ChildGenerator:
         # TODO: Fix the problems in beam search.
         return self.decoding(beam=self.beam)
 
+    def decoding_one_batch(self, sample, beam=_sentinel, gen_timer=None):
+        if beam is _sentinel:
+            beam = self.beam
+        if beam is None or beam <= 0:
+            return self._greedy_decoding(sample, gen_timer)
+        else:
+            return self._beam_search_slow(sample, beam, gen_timer)
+
     def decoding(self, beam=None):
-        itr = self._get_input_iter()
+        itr = self.get_input_iter()
 
         gen_timer = StopwatchMeter()
 
@@ -109,10 +118,7 @@ class ChildGenerator:
         if self.quiet and tqdm is not None:
             itr = tqdm(itr)
         for i, sample in enumerate(itr):
-            if beam is None or beam <= 0:
-                batch_translated_tokens = self._greedy_decoding(sample, gen_timer)
-            else:
-                batch_translated_tokens = self._beam_search_slow(sample, beam, gen_timer)
+            batch_translated_tokens = self.decoding_one_batch(sample, beam, gen_timer)
             if not self.quiet:
                 print('Batch {}:'.format(i))
             for id_, src_tokens, trg_tokens, translated_tokens in zip(

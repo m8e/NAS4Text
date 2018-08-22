@@ -11,7 +11,7 @@ from .child_net_base import EncDecChildNet, ChildIncrementalDecoderBase, ChildEn
 from ..layers.nao_layer import NAOLayer
 from ..layers.nas_controller import NASController
 from ..layers.net_code import NetCode
-from ..utils.search_space import CellSpace
+from ..layers.common import *
 
 
 class NAOChildEncoder(ChildEncoderBase):
@@ -91,11 +91,24 @@ class NAOChildNet(EncDecChildNet):
 
 
 class NAO_EPD(nn.Module):
+    # TODO: Change them into hparams? Or compute them from search space?
+    encoder_vocab_size = 10
+    decoder_vocab_size = 10
+    encoder_emb_size = 32
+
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
 
-    # TODO
+        self.encoder_emb = Embedding(self.encoder_vocab_size, self.encoder_emb_size, padding_idx=None, hparams=hparams)
+        # self.encoder = nn.LSTM(
+        #     # TODO
+        # )
+        self.predictor = None
+        self.decoder = None
+
+    def forward(self, encoder_input, encoder_target, decoder_target):
+        pass
 
 
 class NAOController(NASController):
@@ -189,23 +202,29 @@ class NAOController(NASController):
 
         return result
 
+    def _template_net_code(self, e, d):
+        return NetCode({
+            'Type': 'BlockChildNet',
+            'Global': {},
+            'Blocks': {
+                'enc1': e,
+                'dec1': d,
+            },
+            'Layers': [
+                ['enc1' for _ in range(self.shared_weights.encoder.num_layers)],
+                ['dec1' for _ in range(self.shared_weights.decoder.num_layers)],
+            ]
+        })
+
     def generate_arch(self, n):
         enc0 = self.shared_weights.encoder.layers[0]
         dec0 = self.shared_weights.decoder.layers[0]
 
-        def _template(e, d):
-            return NetCode({
-                'Type': 'BlockChildNet',
-                'Global': {},
-                'Blocks': {
-                    'enc1': e,
-                    'dec1': d,
-                },
-                'Layers': [
-                    ['enc1' for _ in range(self.shared_weights.encoder.num_layers)],
-                    ['dec1' for _ in range(self.shared_weights.decoder.num_layers)],
-                ]
-            })
+        return [self._template_net_code(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]
 
-        # TODO: Make unique
-        return [_template(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]
+    def parse_arch_to_seq(self, arch, branch_length):
+        # TODO
+        pass
+
+    def predict(self, topk_arches):
+        pass
