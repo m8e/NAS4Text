@@ -22,8 +22,9 @@ from libs.optimizers.lr_schedulers import build_lr_scheduler
 from libs.criterions import build_criterion
 from libs.utils import main_utils as mu
 from libs.utils.meters import StopwatchMeter
-from libs.utils.paths import get_model_path
+from libs.utils.paths import get_model_path, get_data_path
 from libs.utils.generator_utils import batch_bleu
+from libs.utils import tokenizer, dictionary
 from libs.child_trainer import ChildTrainer
 from libs.child_generator import ChildGenerator
 
@@ -44,6 +45,8 @@ class NAOTrainer(ChildTrainer):
         self.eval_arch_pool = []
         self.performance_pool = []
         self.branch_length = 2  # TODO: Change this hparams.
+        self._ref_tokens = None
+        self._ref_dict = None
 
     def new_model(self, net_code, device=None, cuda=True):
         result = BlockChildNet(net_code, self.hparams, self.controller)
@@ -102,13 +105,15 @@ class NAOTrainer(ChildTrainer):
     def eval_children(self, datasets, compute_loss=False):
         """Eval all arches in the pool."""
 
+        self._get_ref_tokens(datasets)
+
         # Prepare the generator.
         generator = ChildGenerator(
             self.hparams, datasets, [self.model], subset='dev', quiet=True, output_file=None,
-            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None, max_sentences=128,
+            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None, max_sentences=32,
             beam=5, lenpen=1.2,
         )
-        sort_by_length = True
+        sort_by_length = False
         itr = generator.get_input_iter(sort_by_length=sort_by_length)
         itr_chain = [itr]
         # [NOTE]: Make sure that each arch can process one batch. Use multiple iterators.
@@ -135,8 +140,9 @@ class NAOTrainer(ChildTrainer):
             generator.models = [child]
             generator.cuda()
 
+            # FIXME: Use beam 5 decoding here.
             translation = generator.decoding_one_batch(sample)
-            val_bleu = batch_bleu(generator, sample, translation)
+            val_bleu = batch_bleu(generator, sample['id'], translation, self._ref_tokens, self._ref_dict)
             val_acc_list.append(val_bleu)
 
         valid_time.stop()
@@ -174,17 +180,22 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 self.lr_scheduler = old_lr_scheduler
             logging.info('Trainer restored')
 
-    def _generate_on_dev(self, model, datasets, device=None):
-        logging.info('Generate on dev set')
-        generator = ChildGenerator(
-            self.hparams, datasets, [model], subset='dev', quiet=True, output_file=None,
-            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None, max_sentences=128,
-            beam=5, lenpen=1.2,
-        )
-        generator.cuda(device)
-        translated_strings = generator.greedy_decoding()
+    def _get_ref_tokens(self, datasets):
+        if self._ref_tokens is not None:
+            return
+        dataset_dir = get_data_path(self.hparams)
+        dev_filename = datasets.task.get_filename('dev', is_src_lang=False)
+        dev_orig_filename = dev_filename + '.orig'  # FIXME: Hard-coding here.
 
-        return translated_strings
+        # [NOTE]: Reuse target dictionary.
+        from copy import deepcopy
+        dict_ = self._ref_dict = deepcopy(datasets.target_dict)
+        # dict_ = self._ref_dict = dictionary.Dictionary(None, datasets.task, mode='empty')
+
+        self._ref_tokens = []
+        with open(os.path.join(dataset_dir, dev_orig_filename), 'r', encoding='utf-8') as ref_f:
+            for line in ref_f:
+                self._ref_tokens.append(tokenizer.Tokenizer.tokenize(line, dict_, tensor_type=th.IntTensor))
 
     def _parse_arch_to_seq(self, arch):
         return self.controller.parse_arch_to_seq(arch, self.branch_length)
@@ -249,8 +260,8 @@ def nao_search_main(hparams):
 
         # Sort old arches.
         old_arches_sorted_indices = np.argsort(old_arches_perf)
-        old_arches = np.array(old_arches)[old_arches_sorted_indices].tolist()
-        old_arches_perf = np.array(old_arches_perf)[old_arches_sorted_indices].tolist()
+        old_arches = [old_arches[i] for i in old_arches_sorted_indices]
+        old_arches_perf = [old_arches_perf[i] for i in old_arches_sorted_indices]
 
         # Save old arches in order.
         save_arches(hparams, ctrl_step, old_arches, old_arches_perf)
@@ -275,7 +286,7 @@ def save_arches(hparams, ctrl_step, arches, arches_perf):
     def _save(code_filename, perf_filename):
         full_code_filename = os.path.join(save_dir, code_filename)
         with open(full_code_filename, 'w', encoding='utf-8') as f:
-            json.dump(net_code_list, f)
+            json.dump(net_code_list, f, indent=4)
             logging.info('Save arches into {} (epoch {})'.format(full_code_filename, ctrl_step))
         full_perf_filename = os.path.join(save_dir, perf_filename)
         with open(full_perf_filename, 'w', encoding='utf-8') as f:
@@ -300,7 +311,7 @@ def add_nao_search_args(parser):
                        help='Number of top-k best arches used in prediction, default is %(default)s')
     group.add_argument('--num-nodes', default=4, type=int,
                        help='Number of nodes in one block, default is %(default)s')
-    group.add_argument('--cell-op-space', default='no-zero',
+    group.add_argument('--cell-op-space', default='only-attn-no-zero',
                        help='The search space of cell ops, default is %(default)r')
     group.add_argument('--num-encoder-layers', default=2, type=int,
                        help='Number of encoder layers in arch search, default is %(default)s')
@@ -308,6 +319,50 @@ def add_nao_search_args(parser):
                        help='Number of decoder layers in arch search, default is %(default)s')
     group.add_argument('--child-eval-freq', default=10, type=int,
                        help='Number of epochs to run in between evaluations, default is %(default)s')
+
+    # Controller hyper-parameters.
+    group.add_argument('--ctrl-src-length', default=22, type=int,
+                       help='Controller source length, default is %(default)s')
+    group.add_argument('--ctrl-enc-length', default=22, type=int,
+                       help='Controller encoder length, default is %(default)s')
+    group.add_argument('--ctrl-dec-length', default=22, type=int,
+                       help='Controller decoder length, default is %(default)s')
+    group.add_argument('--ctrl-enc-vocab-size', default=10, type=int,
+                       help='Controller encoder embedding size, default is %(default)s')
+    group.add_argument('--ctrl-dec-vocab-size', default=10, type=int,
+                       help='Controller decoder embedding size, default is %(default)s')
+    group.add_argument('--ctrl-enc-emb-size', default=96, type=int,
+                       help='Controller encoder embedding size, default is %(default)s')
+    group.add_argument('--ctrl-enc-hidden-size', default=96, type=int,
+                       help='Controller encoder hidden size, default is %(default)s')
+    group.add_argument('--ctrl-mlp-hidden-size', default=200, type=int,
+                       help='Controller predictor hidden size, default is %(default)s')
+    group.add_argument('--ctrl-dec-hidden-size', default=96, type=int,
+                       help='Controller decoder hidden size, default is %(default)s')
+    group.add_argument('--ctrl-num-encoder-layers', default=1, type=int,
+                       help='Number of controller encoder layers, default is %(default)s')
+    group.add_argument('--ctrl-num-mlp-layers', default=0, type=int,
+                       help='Number of controller predictor layers, default is %(default)s')
+    group.add_argument('--ctrl-num-decoder-layers', default=1, type=int,
+                       help='Number of controller decoder layers, default is %(default)s')
+    group.add_argument('--ctrl-enc-dropout', default=0.1, type=float,
+                       help='Controller encoder dropout, default is %(default)s')
+    group.add_argument('--ctrl-mlp-dropout', default=0.4, type=float,
+                       help='Controller predictor dropout, default is %(default)s')
+    group.add_argument('--ctrl-dec-dropout', default=0.0, type=float,
+                       help='Controller decoder dropout, default is %(default)s')
+    group.add_argument('--ctrl-weight-decay', default=1e-4, type=float,
+                       help='Controller weight decay, default is %(default)s')
+    group.add_argument('--ctrl-weighted-loss', action='store_true', default=False,
+                       help='Controller using weighted loss, default is False')
+    group.add_argument('--ctrl-trade-off', default=0.8, type=float,
+                       help='Controller trade off between losses (weight of EP loss), default is %(default)s')
+    group.add_argument('--ctrl-lr', default=0.001, type=float,
+                       help='Controller learning rate, default is %(default)s')
+    group.add_argument('--ctrl-optimizer', default='adam', type=str,
+                       help='Controller optimizer, default is %(default)s')
+    group.add_argument('--ctrl-clip-norm', default=5.0, type=float,
+                       help='Controller clip norm, default is %(default)s')
 
     # TODO
 

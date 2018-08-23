@@ -115,9 +115,17 @@ class Dictionary:
     def __len__(self):
         return len(self._dict)
 
+    def _add(self, symbol, s_id):
+        self._dict[symbol] = s_id
+        self._idict[s_id] = symbol
+
     def get(self, symbol, add_if_not_exist=False):
         if add_if_not_exist:
-            return self._dict.setdefault(symbol, len(self._dict))
+            s_id = self._dict.get(symbol, None)
+            if s_id is None:
+                s_id = len(self._dict)
+                self._add(symbol, s_id)
+            return s_id
         return self._dict.get(symbol, self.task.UNK_ID)
 
     def string(self, tensor, bpe_symbol=None, escape_unk=False, remove_pad=True):
