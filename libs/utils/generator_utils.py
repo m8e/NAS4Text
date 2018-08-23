@@ -7,10 +7,15 @@ import math
 
 import torch
 
-from . import tokenizer, dictionary
-from ..tasks import get_task
+from . import tokenizer
 
 __author__ = 'fyabc'
+
+
+def _unwrap_tensor(maybe_tensor):
+    if isinstance(maybe_tensor, torch.Tensor):
+        return maybe_tensor.tolist()
+    return maybe_tensor
 
 
 def _get_ngrams(segment, max_order):
@@ -61,8 +66,8 @@ def compute_bleu(reference_corpus, translation_corpus, max_order=4,
 
         merged_ref_ngram_counts = collections.Counter()
         for reference in references:
-            merged_ref_ngram_counts |= _get_ngrams(reference, max_order)
-        translation_ngram_counts = _get_ngrams(translation, max_order)
+            merged_ref_ngram_counts |= _get_ngrams(_unwrap_tensor(reference), max_order)
+        translation_ngram_counts = _get_ngrams(_unwrap_tensor(translation), max_order)
         overlap = translation_ngram_counts & merged_ref_ngram_counts
         for ngram in overlap:
             matches_by_order[len(ngram) - 1] += overlap[ngram]
@@ -155,25 +160,20 @@ def batch_bleu(generator, id_list, translation, ref_tokens, ref_dict):
     """
     bleu_fn = get_compute_bleu()
 
-    print(len(ref_dict))
-
-    # TODO: Test the correctness of C and Python BLEU score.
-    # Bug fix: Python BLEU score always return 0.
-
     task = generator.task
     datasets = generator.datasets
 
     trans_str = (datasets.target_dict.string(t, bpe_symbol=task.BPESymbol, escape_unk=True) for t in translation)
-    trans_str = list(trans_str)
-    print('$', *trans_str, sep='\n')
+    # trans_str = list(trans_str)
+    # print('$', *trans_str, sep='\n')
 
     # [NOTE]: Translation and references must be tokenized with same dictionary.
     trans_corpus = [tokenizer.Tokenizer.tokenize(t, ref_dict, tensor_type=torch.IntTensor) for t in trans_str]
 
     ref_corpus = [[ref_tokens[i]] for i in id_list]
-    print('#', *[ref_dict.string(t[0], bpe_symbol=task.BPESymbol, escape_unk=True) for t in ref_corpus], sep='\n')
+    # print('#', *[ref_dict.string(t[0], bpe_symbol=task.BPESymbol, escape_unk=True) for t in ref_corpus], sep='\n')
 
     result = bleu_fn(ref_corpus, trans_corpus, max_order=4, dict=ref_dict)
 
-    print('%', result)
+    # print('%', result)
     return result

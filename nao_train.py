@@ -70,6 +70,7 @@ class NAOTrainer(ChildTrainer):
             index = th.zeros([], dtype=th.int64).random_(0, pool_size).item()
         else:
             index = th.multinomial(prob).item()
+        print('$select index is:', index)
         return self.arch_pool[index]
 
     def train_children(self, datasets):
@@ -110,8 +111,8 @@ class NAOTrainer(ChildTrainer):
         # Prepare the generator.
         generator = ChildGenerator(
             self.hparams, datasets, [self.model], subset='dev', quiet=True, output_file=None,
-            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None, max_sentences=32,
-            beam=5, lenpen=1.2,
+            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None,
+            max_sentences=self.hparams.child_eval_batch_size, beam=5, lenpen=1.2,
         )
         sort_by_length = False
         itr = generator.get_input_iter(sort_by_length=sort_by_length)
@@ -319,6 +320,8 @@ def add_nao_search_args(parser):
                        help='Number of decoder layers in arch search, default is %(default)s')
     group.add_argument('--child-eval-freq', default=10, type=int,
                        help='Number of epochs to run in between evaluations, default is %(default)s')
+    group.add_argument('--child-eval-batch-size', default=32, type=int,
+                       help='Number of batch size in evaluations, default is %(default)s')
 
     # Controller hyper-parameters.
     group.add_argument('--ctrl-src-length', default=22, type=int,
