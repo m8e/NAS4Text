@@ -12,10 +12,17 @@ from . import tokenizer
 __author__ = 'fyabc'
 
 
-def _unwrap_tensor(maybe_tensor):
+def _normalize(maybe_tensor, eos=None):
+    # Unwrap tensor.
     if isinstance(maybe_tensor, torch.Tensor):
-        return maybe_tensor.tolist()
-    return maybe_tensor
+        result = maybe_tensor.tolist()
+    else:
+        result = maybe_tensor
+
+    # Remove EOS.
+    if eos is not None:
+        result = [i for i in result if i != eos]
+    return result
 
 
 def _get_ngrams(segment, max_order):
@@ -55,6 +62,9 @@ def compute_bleu(reference_corpus, translation_corpus, max_order=4,
         # precisions and brevity penalty.
         A float of BLEU score.
     """
+
+    dict_ = kwargs.pop('dict', None)
+
     matches_by_order = [0] * max_order
     possible_matches_by_order = [0] * max_order
     reference_length = 0
@@ -66,8 +76,8 @@ def compute_bleu(reference_corpus, translation_corpus, max_order=4,
 
         merged_ref_ngram_counts = collections.Counter()
         for reference in references:
-            merged_ref_ngram_counts |= _get_ngrams(_unwrap_tensor(reference), max_order)
-        translation_ngram_counts = _get_ngrams(_unwrap_tensor(translation), max_order)
+            merged_ref_ngram_counts |= _get_ngrams(_normalize(reference, eos=dict_.eos_id), max_order)
+        translation_ngram_counts = _get_ngrams(_normalize(translation, eos=dict_.eos_id), max_order)
         overlap = translation_ngram_counts & merged_ref_ngram_counts
         for ngram in overlap:
             matches_by_order[len(ngram) - 1] += overlap[ngram]

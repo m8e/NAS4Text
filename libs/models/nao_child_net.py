@@ -519,7 +519,11 @@ class NAOController(NASController):
             _so = self._supported_ops_cache[in_encoder]
             seq = []
             for node in block:
+                if not isinstance(node, list):
+                    continue
                 in1, in2, op1, op2, *_ = node
+                if in1 is None:
+                    continue
                 for in_, op in zip((in1, in2), (op1, op2)):
                     op_name, *op_args = op
                     op_idx = _so[op_name, tuple(op_args)]
