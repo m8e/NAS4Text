@@ -359,6 +359,14 @@ class NAOController(NASController):
 
     @staticmethod
     def _reversed_supported_ops(supported_ops):
+        """Get reversed supported ops.
+
+        Args:
+            supported_ops (list):
+
+        Returns:
+            dict
+        """
         return {
             (op_name, tuple(op_args)): i
             for i, (op_name, op_type, op_args) in enumerate(supported_ops)
@@ -483,9 +491,41 @@ class NAOController(NASController):
 
         return [self._template_net_code(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]
 
-    def parse_arch_to_seq(self, arch, branch_length):
-        # TODO
-        pass
+    def parse_arch_to_seq(self, arch):
+        """Parse architecture to sequence.
+
+        Format:
+            seq of enc1 + seq of dec1
+            -> seq of block: [seq of ops]
+            -> seq of op: [in1, op1_index, in2, op2_index]
+            -> inX: Integer in [0, num_total_nodes - 1]
+            -> opX_index: Integer in [num_total_nodes, num_total_nodes + num_total_ops - 1]
+
+            num_total_nodes = hparams.num_total_nodes
+            For each inX of node[i], inX in [0, i - 1]
+
+        Args:
+            arch (NetCode):
+
+        Returns:
+            A list of integers.
+
+        # TODO: Add doctest here.
+        """
+
+        num_total_nodes = self._layer(True, 0).num_total_nodes
+
+        def _parse_block(block, in_encoder):
+            _so = self._supported_ops_cache[in_encoder]
+            seq = []
+            for node in block:
+                in1, in2, op1, op2, *_ = node
+                for in_, op in zip((in1, in2), (op1, op2)):
+                    op_name, *op_args = op
+                    op_idx = _so[op_name, tuple(op_args)]
+                    seq.extend([in_, op_idx + num_total_nodes])
+
+        return _parse_block(arch.blocks['enc1'], True) + _parse_block(arch.blocks['dec1'], False)
 
     def predict(self, topk_arches):
         pass

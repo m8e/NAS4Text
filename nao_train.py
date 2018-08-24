@@ -32,8 +32,10 @@ __author__ = 'fyabc'
 
 
 class NAOTrainer(ChildTrainer):
-    # [NOTE]: Flag. Train different arch on different GPUs.
-    ArchDist = False
+    # [NOTE]: Flags.
+    ArchDist = False            # Train different arch on different GPUs.
+    GenSortByLength = False     # Sort by length in generation.
+    GenMaxlenB = 100            # Max length bias in generation. (less than normal generation to avoid oom)
 
     def __init__(self, hparams, criterion):
         super().__init__(hparams, None, criterion)
@@ -44,7 +46,6 @@ class NAOTrainer(ChildTrainer):
         self.arch_pool_prob = None
         self.eval_arch_pool = []
         self.performance_pool = []
-        self.branch_length = 2  # TODO: Change this hparams.
         self._ref_tokens = None
         self._ref_dict = None
 
@@ -70,7 +71,7 @@ class NAOTrainer(ChildTrainer):
             index = th.zeros([], dtype=th.int64).random_(0, pool_size).item()
         else:
             index = th.multinomial(prob).item()
-        print('$select index is:', index)
+        # print('$select index is:', index)
         return self.arch_pool[index]
 
     def train_children(self, datasets):
@@ -111,16 +112,15 @@ class NAOTrainer(ChildTrainer):
         # Prepare the generator.
         generator = ChildGenerator(
             self.hparams, datasets, [self.model], subset='dev', quiet=True, output_file=None,
-            use_task_maxlen=False, maxlen_a=0, maxlen_b=200, max_tokens=None,
+            use_task_maxlen=False, maxlen_a=0, maxlen_b=self.GenMaxlenB, max_tokens=None,
             max_sentences=self.hparams.child_eval_batch_size, beam=5, lenpen=1.2,
         )
-        sort_by_length = False
-        itr = generator.get_input_iter(sort_by_length=sort_by_length)
+        itr = generator.get_input_iter(sort_by_length=self.GenSortByLength)
         itr_chain = [itr]
         # [NOTE]: Make sure that each arch can process one batch. Use multiple iterators.
         repeat_number = math.ceil(len(self.arch_pool) / len(itr))
         for _ in range(1, repeat_number):
-            itr_chain.append(generator.get_input_iter(sort_by_length=sort_by_length))
+            itr_chain.append(generator.get_input_iter(sort_by_length=self.GenSortByLength))
         whole_gen_itr = itertools.chain(*itr_chain)
 
         arch_itr = self.arch_pool
@@ -132,6 +132,13 @@ class NAOTrainer(ChildTrainer):
         valid_time = StopwatchMeter()
         for arch, sample in zip(arch_itr, whole_gen_itr):
             child = self.new_model(arch, cuda=False)
+
+            # import pprint
+            # print('#Test arch:')
+            # pprint.pprint(arch.blocks['enc1'])
+            # pprint.pprint(arch.blocks['dec1'])
+            # print('#Test parse to sequence:')
+            # pprint.pprint(self._parse_arch_to_seq(arch))
 
             if compute_loss:
                 with self.child_env(child, train=False):
@@ -199,7 +206,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 self._ref_tokens.append(tokenizer.Tokenizer.tokenize(line, dict_, tensor_type=th.IntTensor))
 
     def _parse_arch_to_seq(self, arch):
-        return self.controller.parse_arch_to_seq(arch, self.branch_length)
+        return self.controller.parse_arch_to_seq(arch)
 
     def _normalized_perf(self, perf_list):
         max_val, min_val = np.max(perf_list), np.min(perf_list)
