@@ -128,7 +128,7 @@ class NaoEpd(nn.Module):
     KeyLength = 'length'
     KeySequence = 'sequence'
 
-    def __init__(self, hparams):
+    def __init__(self, hparams, src_length, index_range, enc_op_range, dec_op_range):
         super().__init__()
         self.hparams = hparams
 
@@ -144,11 +144,12 @@ class NaoEpd(nn.Module):
         self.enc_dropout_p = self.hparams.ctrl_enc_dropout
         self.mlp_dropout_p = self.hparams.ctrl_mlp_dropout
         self.dec_dropout_p = self.hparams.ctrl_dec_dropout
-        self.src_length = self.hparams.ctrl_src_length
-        self.enc_length = self.hparams.ctrl_enc_length
-        self.dec_length = self.hparams.ctrl_dec_length
-        self.eos_id = 0
-        self.sos_id = 0
+        self.src_length = src_length
+        self.enc_length = src_length if self.hparams.ctrl_enc_length is None else self.hparams.ctrl_enc_length
+        self.dec_length = src_length if self.hparams.ctrl_dec_length is None else self.hparams.ctrl_dec_length
+        self.eos_id, self.sos_id = 0, 0
+        self.index_range = index_range
+        self.enc_op_range, self.dec_op_range = enc_op_range, dec_op_range
 
         self.encoder_emb = nn.Embedding(self.enc_vocab_size, self.enc_emb_size)
         self.encoder = nn.LSTM(
@@ -355,7 +356,9 @@ class NAOController(NASController):
         }
 
         # EPD.
-        self.epd = NaoEpd(hparams)
+        self.epd = NaoEpd(hparams,
+                          self.expected_source_length(), self.expected_index_range(),
+                          self.expected_op_range(True), self.expected_op_range(False))
 
     @staticmethod
     def _reversed_supported_ops(supported_ops):
@@ -491,6 +494,8 @@ class NAOController(NASController):
 
         return [self._template_net_code(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]
 
+    # Arch - Sequence transforming and related methods.
+
     def parse_arch_to_seq(self, arch):
         """Parse architecture to sequence.
 
@@ -498,17 +503,20 @@ class NAOController(NASController):
             seq of enc1 + seq of dec1
             -> seq of block: [seq of ops]
             -> seq of op: [in1, op1_index, in2, op2_index]
-            -> inX: Integer in [0, num_total_nodes - 1]
+            -> inX: Integer in [1, num_total_nodes - 1]
+                (real value + 1)
             -> opX_index: Integer in [num_total_nodes, num_total_nodes + num_total_ops - 1]
+                (real value + num_total_nodes)
 
             num_total_nodes = hparams.num_total_nodes
-            For each inX of node[i], inX in [0, i - 1]
+            For each inX of node[i], inX in [1, i]
 
         Args:
             arch (NetCode):
 
         Returns:
             A list of integers.
+            Length: 2 (enc/dec) * #nodes * 4 (2 inputs + 2 ops)
 
         # TODO: Add doctest here.
         """
@@ -527,9 +535,25 @@ class NAOController(NASController):
                 for in_, op in zip((in1, in2), (op1, op2)):
                     op_name, *op_args = op
                     op_idx = _so[op_name, tuple(op_args)]
-                    seq.extend([in_, op_idx + num_total_nodes])
+                    seq.extend([in_ + 1, op_idx + num_total_nodes])
+            return seq
 
         return _parse_block(arch.blocks['enc1'], True) + _parse_block(arch.blocks['dec1'], False)
+
+    def expected_source_length(self):
+        """Get the expected source length of the sequence.
+        See ``NAOController.parse_arch_to_seq`` for the details of the equation.
+        """
+        return 2 * self.hparams.num_nodes * 4
+
+    def expected_index_range(self):
+        """Get the [low, high) range of the input indices."""
+        return 1, self._layer(True, 0).num_total_nodes
+
+    def expected_op_range(self, in_encoder):
+        """Get the [low, high) range of the op indices."""
+        num_total_nodes = self._layer(True, 0).num_total_nodes
+        return num_total_nodes, num_total_nodes + len(self._supported_ops_cache[in_encoder])
 
     def predict(self, topk_arches):
         pass

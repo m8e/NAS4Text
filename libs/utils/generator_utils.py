@@ -12,7 +12,18 @@ from . import tokenizer
 __author__ = 'fyabc'
 
 
-def _normalize(maybe_tensor, eos=None):
+def _trim(seq, token):
+    start = 0
+    length = len(seq)
+    end = length - 1
+    while seq[start] == token and start < length:
+        start += 1
+    while seq[end] == token and end >= 0 and end > start:
+        end -= 1
+    return seq[start:end + 1]
+
+
+def _normalize(maybe_tensor, eos=None, pad=None, unk=None):
     # Unwrap tensor.
     if isinstance(maybe_tensor, torch.Tensor):
         result = maybe_tensor.tolist()
@@ -21,7 +32,11 @@ def _normalize(maybe_tensor, eos=None):
 
     # Remove EOS.
     if eos is not None:
-        result = [i for i in result if i != eos]
+        result = _trim(result, eos)
+    if pad is not None:
+        result = _trim(result, pad)
+    if unk is not None:
+        result = [x if x != unk else -x for x in result]
     return result
 
 
@@ -71,18 +86,20 @@ def compute_bleu(reference_corpus, translation_corpus, max_order=4,
     translation_length = 0
     for (references, translation) in zip(reference_corpus,
                                          translation_corpus):
-        reference_length += min(len(r) for r in references)
-        translation_length += len(translation)
+        normalized_translation = _normalize(translation, eos=dict_.eos_id, pad=dict_.pad_id, unk=dict_.unk_id)
+        translation_length += len(normalized_translation)
 
         merged_ref_ngram_counts = collections.Counter()
         for reference in references:
-            merged_ref_ngram_counts |= _get_ngrams(_normalize(reference, eos=dict_.eos_id), max_order)
-        translation_ngram_counts = _get_ngrams(_normalize(translation, eos=dict_.eos_id), max_order)
+            normalized_reference = _normalize(reference, eos=dict_.eos_id, pad=dict_.pad_id, unk=dict_.unk_id)
+            reference_length += len(normalized_reference)
+            merged_ref_ngram_counts |= _get_ngrams(normalized_reference, max_order)
+        translation_ngram_counts = _get_ngrams(normalized_translation, max_order)
         overlap = translation_ngram_counts & merged_ref_ngram_counts
         for ngram in overlap:
             matches_by_order[len(ngram) - 1] += overlap[ngram]
         for order in range(1, max_order + 1):
-            possible_matches = len(translation) - order + 1
+            possible_matches = len(normalized_translation) - order + 1
             if possible_matches > 0:
                 possible_matches_by_order[order - 1] += possible_matches
 

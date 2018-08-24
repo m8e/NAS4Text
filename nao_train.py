@@ -22,9 +22,11 @@ from libs.optimizers.lr_schedulers import build_lr_scheduler
 from libs.criterions import build_criterion
 from libs.utils import main_utils as mu
 from libs.utils.meters import StopwatchMeter
-from libs.utils.paths import get_model_path, get_data_path
+from libs.utils.paths import get_data_path
 from libs.utils.generator_utils import batch_bleu
-from libs.utils import tokenizer, dictionary
+from libs.utils import tokenizer
+from libs.utils import nao_utils
+from libs.utils import common
 from libs.child_trainer import ChildTrainer
 from libs.child_generator import ChildGenerator
 
@@ -133,13 +135,6 @@ class NAOTrainer(ChildTrainer):
         for arch, sample in zip(arch_itr, whole_gen_itr):
             child = self.new_model(arch, cuda=False)
 
-            # import pprint
-            # print('#Test arch:')
-            # pprint.pprint(arch.blocks['enc1'])
-            # pprint.pprint(arch.blocks['dec1'])
-            # print('#Test parse to sequence:')
-            # pprint.pprint(self._parse_arch_to_seq(arch))
-
             if compute_loss:
                 with self.child_env(child, train=False):
                     val_loss = mu.validate(self.hparams, self, datasets, 'dev', self.hparams.child_eval_freq)
@@ -213,11 +208,23 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         return [(v - min_val) / (max_val - min_val) for v in perf_list]
 
     def controller_train_step(self, old_arches, old_arches_perf):
-        encoder_input = [self._parse_arch_to_seq(arch) for arch in old_arches]
-        encoder_target = self._normalized_perf(old_arches_perf)
-        decoder_target = copy.deepcopy(encoder_target)
+        logging.info('Training Encoder-Predictor-Decoder')
 
-        # TODO: Train the epd.
+        arch_seqs = [self._parse_arch_to_seq(arch) for arch in old_arches]
+        perf = self._normalized_perf(old_arches_perf)
+        ctrl_dataloader = nao_utils.make_ctrl_dataloader(
+            arch_seqs, perf, batch_size=self.hparams.ctrl_batch_size,
+            shuffle=False, sos_id=self.controller.epd.sos_id)
+
+        epochs = range(1, self.hparams.ctrl_train_epochs + 1)
+        if tqdm is not None:
+            epochs = tqdm(list(epochs))
+
+        for epoch in epochs:
+            # TODO: Train the epd.
+            for step, sample in enumerate(ctrl_dataloader):
+                sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
+                print(sample)
 
     def controller_generate_step(self, old_arches):
         old_arches = old_arches[:self.hparams.num_remain_top]
@@ -229,8 +236,6 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             # TODO: Generate new arches.
             predict_lambda += 1
             pass
-
-    # TODO: Train step, etc.
 
 
 def nao_search_main(hparams):
@@ -272,7 +277,7 @@ def nao_search_main(hparams):
         old_arches_perf = [old_arches_perf[i] for i in old_arches_sorted_indices]
 
         # Save old arches in order.
-        save_arches(hparams, ctrl_step, old_arches, old_arches_perf)
+        nao_utils.save_arches(hparams, ctrl_step, old_arches, old_arches_perf)
 
         # Train encoder-predictor-decoder.
         trainer.controller_train_step(old_arches, old_arches_perf)
@@ -285,122 +290,8 @@ def nao_search_main(hparams):
     logging.info('Training done in {:.1f} seconds'.format(train_meter.sum))
 
 
-def save_arches(hparams, ctrl_step, arches, arches_perf):
-    import json
-
-    save_dir = get_model_path(hparams)
-    net_code_list = [n.original_code for n in arches]
-
-    def _save(code_filename, perf_filename):
-        full_code_filename = os.path.join(save_dir, code_filename)
-        with open(full_code_filename, 'w', encoding='utf-8') as f:
-            json.dump(net_code_list, f, indent=4)
-            logging.info('Save arches into {} (epoch {})'.format(full_code_filename, ctrl_step))
-        full_perf_filename = os.path.join(save_dir, perf_filename)
-        with open(full_perf_filename, 'w', encoding='utf-8') as f:
-            for perf in arches_perf:
-                print(perf, file=f)
-            logging.info('Save performance into {} (epoch {})'.format(full_perf_filename, ctrl_step))
-
-    _save('arch_pool{}.json'.format(ctrl_step), 'arch_perf{}.txt'.format(ctrl_step))
-    _save('arch_pool_last.json', 'arch_perf_last.txt')
-
-
-def add_nao_search_args(parser):
-    group = parser.add_argument_group('NAO search options')
-
-    group.add_argument('--max-ctrl-step', default=1000, type=int,
-                       help='Number of max controller steps in arch search, default is %(default)s')
-    group.add_argument('--num-seed-arch', default=1000, type=int,
-                       help='Number of seed arches, default is %(default)s')
-    group.add_argument('--num-remain-top', default=500, type=int,
-                       help='Number of remaining top-k best arches, default is %(default)s')
-    group.add_argument('--num-pred-top', default=100, type=int,
-                       help='Number of top-k best arches used in prediction, default is %(default)s')
-    group.add_argument('--num-nodes', default=4, type=int,
-                       help='Number of nodes in one block, default is %(default)s')
-    group.add_argument('--cell-op-space', default='only-attn-no-zero',
-                       help='The search space of cell ops, default is %(default)r')
-    group.add_argument('--num-encoder-layers', default=2, type=int,
-                       help='Number of encoder layers in arch search, default is %(default)s')
-    group.add_argument('--num-decoder-layers', default=2, type=int,
-                       help='Number of decoder layers in arch search, default is %(default)s')
-    group.add_argument('--child-eval-freq', default=10, type=int,
-                       help='Number of epochs to run in between evaluations, default is %(default)s')
-    group.add_argument('--child-eval-batch-size', default=32, type=int,
-                       help='Number of batch size in evaluations, default is %(default)s')
-
-    # Controller hyper-parameters.
-    group.add_argument('--ctrl-src-length', default=22, type=int,
-                       help='Controller source length, default is %(default)s')
-    group.add_argument('--ctrl-enc-length', default=22, type=int,
-                       help='Controller encoder length, default is %(default)s')
-    group.add_argument('--ctrl-dec-length', default=22, type=int,
-                       help='Controller decoder length, default is %(default)s')
-    group.add_argument('--ctrl-enc-vocab-size', default=10, type=int,
-                       help='Controller encoder embedding size, default is %(default)s')
-    group.add_argument('--ctrl-dec-vocab-size', default=10, type=int,
-                       help='Controller decoder embedding size, default is %(default)s')
-    group.add_argument('--ctrl-enc-emb-size', default=96, type=int,
-                       help='Controller encoder embedding size, default is %(default)s')
-    group.add_argument('--ctrl-enc-hidden-size', default=96, type=int,
-                       help='Controller encoder hidden size, default is %(default)s')
-    group.add_argument('--ctrl-mlp-hidden-size', default=200, type=int,
-                       help='Controller predictor hidden size, default is %(default)s')
-    group.add_argument('--ctrl-dec-hidden-size', default=96, type=int,
-                       help='Controller decoder hidden size, default is %(default)s')
-    group.add_argument('--ctrl-num-encoder-layers', default=1, type=int,
-                       help='Number of controller encoder layers, default is %(default)s')
-    group.add_argument('--ctrl-num-mlp-layers', default=0, type=int,
-                       help='Number of controller predictor layers, default is %(default)s')
-    group.add_argument('--ctrl-num-decoder-layers', default=1, type=int,
-                       help='Number of controller decoder layers, default is %(default)s')
-    group.add_argument('--ctrl-enc-dropout', default=0.1, type=float,
-                       help='Controller encoder dropout, default is %(default)s')
-    group.add_argument('--ctrl-mlp-dropout', default=0.4, type=float,
-                       help='Controller predictor dropout, default is %(default)s')
-    group.add_argument('--ctrl-dec-dropout', default=0.0, type=float,
-                       help='Controller decoder dropout, default is %(default)s')
-    group.add_argument('--ctrl-weight-decay', default=1e-4, type=float,
-                       help='Controller weight decay, default is %(default)s')
-    group.add_argument('--ctrl-weighted-loss', action='store_true', default=False,
-                       help='Controller using weighted loss, default is False')
-    group.add_argument('--ctrl-trade-off', default=0.8, type=float,
-                       help='Controller trade off between losses (weight of EP loss), default is %(default)s')
-    group.add_argument('--ctrl-lr', default=0.001, type=float,
-                       help='Controller learning rate, default is %(default)s')
-    group.add_argument('--ctrl-optimizer', default='adam', type=str,
-                       help='Controller optimizer, default is %(default)s')
-    group.add_argument('--ctrl-clip-norm', default=5.0, type=float,
-                       help='Controller clip norm, default is %(default)s')
-
-    # TODO
-
-    return group
-
-
-def get_nao_search_args(args=None):
-    import argparse
-    from libs.utils import args as utils_args
-    parser = argparse.ArgumentParser(description='NAO search Script.')
-    utils_args.add_general_args(parser)
-    utils_args.add_dataset_args(parser, train=True, gen=True)
-    utils_args.add_hparams_args(parser)
-    utils_args.add_train_args(parser)
-    utils_args.add_distributed_args(parser)
-    utils_args.add_checkpoint_args(parser)
-    utils_args.add_generation_args(parser)  # For BLEU scorer.
-    add_nao_search_args(parser)
-
-    parsed_args = parser.parse_args(args)
-
-    utils_args.parse_extra_options(parsed_args)
-
-    return parsed_args
-
-
 def main(args=None):
-    hparams = get_nao_search_args(args)
+    hparams = nao_utils.get_nao_search_args(args)
     nao_search_main(hparams)
 
 
