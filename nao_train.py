@@ -10,6 +10,7 @@ import os
 
 import numpy as np
 import torch as th
+import torch.nn.functional as F
 try:
     from tqdm import tqdm
 except ImportError:
@@ -29,11 +30,15 @@ from libs.utils import nao_utils
 from libs.utils import common
 from libs.child_trainer import ChildTrainer
 from libs.child_generator import ChildGenerator
+from libs.hparams import hparams_env
 
 __author__ = 'fyabc'
 
 
 class NAOTrainer(ChildTrainer):
+    # TODO: Support continue training (override ``load/save_checkpoint``).
+    # Need to save and load shared weights, arches, controller optimizer, etc.
+
     # [NOTE]: Flags.
     ArchDist = False            # Train different arch on different GPUs.
     GenSortByLength = False     # Sort by length in generation.
@@ -50,6 +55,14 @@ class NAOTrainer(ChildTrainer):
         self.performance_pool = []
         self._ref_tokens = None
         self._ref_dict = None
+
+        with hparams_env(
+            hparams, optimizer=hparams.ctrl_optimizer,
+            lr=[hparams.ctrl_lr], adam_eps=1e-8,
+            weight_decay=hparams.ctrl_weight_decay,
+        ) as ctrl_hparams:
+            self.ctrl_optimizer = build_optimizer(ctrl_hparams, self.controller.epd.parameters())
+            logging.info('Controller optimizer: {}'.format(self.ctrl_optimizer.__class__.__name__))
 
     def new_model(self, net_code, device=None, cuda=True):
         result = BlockChildNet(net_code, self.hparams, self.controller)
@@ -221,26 +234,76 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             epochs = tqdm(list(epochs))
 
         for epoch in epochs:
-            # TODO: Train the epd.
+            mse, cse, total_loss = 0.0, 0.0, 0.0
             for step, sample in enumerate(ctrl_dataloader):
                 sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
                 # FIXME: Use ParallelModel here?
                 predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])
 
+                print('#encoder_input', sample['encoder_input'].shape)
+                print('#encoder_target', sample['encoder_target'].shape)
+                print('#predict_value', predict_value.shape)
+                print('#logits', logits.shape)
+                print('$arch', arch.shape, arch)
+
+                # Loss and optimize.
+                loss_1 = F.mse_loss(predict_value.squeeze(), sample['encoder_target'].squeeze())
+                logits_size = logits.size()
+                n = logits_size[0] * logits_size[1]
+                loss_2 = F.cross_entropy(logits.contiguous().view(n, -1), sample['decoder_target'].view(n))
+
+                loss = self.hparams.ctrl_trade_off * loss_1 + (1 - self.hparams.ctrl_trade_off) * loss_2
+
+                mse += loss_1.data
+                cse += loss_2.data
+                total_loss += loss.data
+
+                self.ctrl_optimizer.zero_grad()
+                loss.backward()
+                th.nn.utils.clip_grad_norm_(self.controller.epd.parameters(), self.hparams.ctrl_clip_norm)
+                self.ctrl_optimizer.step()
+
+                # TODO: Add logging here.
+
+            # TODO: Add evaluation and controller model saving here.
+
     def controller_generate_step(self, old_arches):
+        epd = self.controller.epd
+
+        old_arches_seq = [self._parse_arch_to_seq(arch) for arch in old_arches]
+
         old_arches = old_arches[:self.hparams.num_remain_top]
         new_arches = []
         predict_lambda = 0
         topk_arches = [self._parse_arch_to_seq(arch) for arch in old_arches[:self.hparams.num_pred_top]]
+        topk_arches_loader = nao_utils.make_tensor_dataloader(
+            [th.LongTensor(topk_arches)], self.hparams.ctrl_batch_size, shuffle=False)
 
         while len(new_arches) + len(old_arches) < self.hparams.num_seed_arch:
-            # TODO: Generate new arches.
             predict_lambda += 1
-            pass
+            logging.info('Generating new architectures using gradient descent with step size {}'.format(predict_lambda))
+
+            new_arch_list = []
+            for step, encoder_input in enumerate(topk_arches_loader):
+                epd.eval()
+                epd.zero_grad()
+                encoder_input = common.make_variable(encoder_input, volatile=False, cuda=True)
+                new_arch = epd.generate_new_arch(encoder_input, predict_lambda)
+                print('$gen-new_arch', new_arch.shape, new_arch)
+                new_arch_list.append(new_arch.data.squeeze().tolist())
+
+            for arch in new_arch_list:
+                # TODO: Insert new arches (skip same and invalid).
+                if arch not in old_arches_seq and arch not in new_arches:
+                    new_arches.append(arch)
+                if len(new_arches) + len(old_arches) >= self.hparams.num_seed_arch:
+                    break
+            logging.info('{} new arches generated now'.format(len(new_arches)))
+
+        self.arch_pool = old_arches + new_arches
 
 
 def nao_search_main(hparams):
-
     components = mu.main_entry(hparams, train=True, net_code='nao')
     datasets = components['datasets']
 
@@ -277,7 +340,7 @@ def nao_search_main(hparams):
         old_arches = [old_arches[i] for i in old_arches_sorted_indices]
         old_arches_perf = [old_arches_perf[i] for i in old_arches_sorted_indices]
 
-        # Save old arches in order.
+        # Save old arches and performances in order.
         nao_utils.save_arches(hparams, ctrl_step, old_arches, old_arches_perf)
 
         # Train encoder-predictor-decoder.
@@ -285,6 +348,8 @@ def nao_search_main(hparams):
 
         # Generate new arches.
         trainer.controller_generate_step(old_arches)
+
+        # TODO: Save updated arches?
 
         ctrl_step += 1
     train_meter.stop()

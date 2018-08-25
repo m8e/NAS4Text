@@ -48,6 +48,7 @@ class DartsTrainer(ChildTrainer):
         # [NOTE]: In DARTS, arch optimizer is fixed to adam, and no arch lr scheduler.
         with hparams_env(
             hparams,
+            optimizer=hparams.arch_optimizer,
             lr=[hparams.arch_lr], adam_betas=hparams.arch_adam_betas, adam_eps=1e-8,
             weight_decay=hparams.arch_weight_decay,
         ) as arch_hparams:

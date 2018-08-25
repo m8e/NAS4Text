@@ -27,14 +27,16 @@ def make_ctrl_dataloader(arch_seqs, perf, batch_size, shuffle, sos_id):
          th.LongTensor(encoder_input)[:, :-1]),
         dim=1)
     decoder_target = copy.copy(encoder_input)
-    dataset = th_data.TensorDataset(
+
+    return make_tensor_dataloader([
         th.LongTensor(encoder_input), th.Tensor(encoder_target),
         th.LongTensor(decoder_input), th.LongTensor(decoder_target),
-    )
+    ], batch_size=batch_size, shuffle=shuffle)
 
-    loader = th_data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle)
 
+def make_tensor_dataloader(tensor_list, batch_size, shuffle):
+    dataset = th_data.TensorDataset(*tensor_list)
+    loader = th_data.DataLoader(dataset, batch_size, shuffle)
     return loader
 
 

@@ -128,6 +128,8 @@ class NaoEpd(nn.Module):
     KeyLength = 'length'
     KeySequence = 'sequence'
 
+    NoEOS = True    # FIXME: Flag. The decoder does not output <EOS>.
+
     def __init__(self, hparams, src_length, index_range, enc_op_range, dec_op_range):
         super().__init__()
         self.hparams = hparams
@@ -237,6 +239,17 @@ class NaoEpd(nn.Module):
         return predicted_softmax, hidden, attn
 
     def decode(self, x, encoder_hidden=None, encoder_outputs=None, fn=F.log_softmax):
+        """
+
+        Args:
+            x:
+            encoder_hidden:
+            encoder_outputs:
+            fn:
+
+        Returns:
+
+        """
         ret_dict = {
             self.KeyAttnScore: [],
         }
@@ -249,22 +262,44 @@ class NaoEpd(nn.Module):
         lengths = np.array([length] * batch_size)
 
         def _repr2seq(step, step_output, step_attn):
-            """Sample the sequence from the decoder output representation."""
+            """Sample the sequence from the decoder output representation.
+
+            Args:
+                step (int):
+                step_output:
+                step_attn:
+
+            Returns:
+                Tensor (batch_size, 1)
+            """
             decoder_outputs.append(step_output)
             ret_dict[self.KeyAttnScore].append(step_attn)
-            # TODO: Change hard-coding here.
-            if step % 2 == 0:  # sample index, should be in [1, step+1]
-                symbols = decoder_outputs[-1][:, :step // 2 + 2].topk(1)[1]
-            else:  # sample operation, should be in [12, 15]
-                symbols = decoder_outputs[-1][:, 12:].topk(1)[1] + 12
 
+            # Split the step into (in_encoder, node_index, i).
+            # i: [in1, op1, in2, op2]
+            ed, ed_idx = divmod(step, length // 2)
+            in_encoder = ed == 0
+            node_idx, i = divmod(ed_idx, 4)
+
+            op_range = self.enc_op_range if in_encoder else self.dec_op_range
+
+            if i in (0, 2):     # Input index, should be in [1, node_idx + 1)
+                if self.NoEOS:
+                    symbols = step_output[:, 1:node_idx + 1].argmax(dim=-1).unsqueeze(1) + 1
+                else:
+                    # TODO: If allow EOS, need to generate EOS at i == 0.
+                    raise NotImplementedError('EOS in decoder is not implemented now.')
+            else:   # i in (1, 3), Op index, should be in [num_total_nodes, num_total_nodes + num_ops)
+                symbols = step_output[:, op_range[0]:op_range[1]].argmax(dim=-1).unsqueeze(1) + op_range[0]
             sequence_symbols.append(symbols)
 
-            eos_batches = symbols.data.eq(self.eos_id)
-            if eos_batches.dim() > 0:
-                eos_batches = eos_batches.cpu().view(-1).numpy()
-                update_idx = ((lengths > step) & eos_batches) != 0
-                lengths[update_idx] = len(sequence_symbols)
+            if not self.NoEOS:
+                # If generate EOS, check it and modify lengths.
+                eos_batches = symbols.data.eq(self.eos_id)
+                if eos_batches.dim() > 0:
+                    eos_batches = eos_batches.cpu().view(-1).numpy()
+                    update_idx = ((lengths > step) & eos_batches) != 0
+                    lengths[update_idx] = len(sequence_symbols)
             return symbols
 
         decoder_input = x[:, 0].unsqueeze(1)
