@@ -21,11 +21,10 @@ def make_ctrl_dataloader(arch_seqs, perf, batch_size, shuffle, sos_id):
     encoder_input = arch_seqs
     encoder_target = perf
     source_length = len(encoder_input)
-    # Create decoder input.
-    # FIXME: A problem: Why use [1:], not [:-1]?
+    # Create decoder input. Right shift the encoder input.
     decoder_input = th.cat(
         (th.LongTensor([[sos_id]] * source_length),
-         th.LongTensor(encoder_input)[:, 1:]),
+         th.LongTensor(encoder_input)[:, :-1]),
         dim=1)
     decoder_target = copy.copy(encoder_input)
     dataset = th_data.TensorDataset(

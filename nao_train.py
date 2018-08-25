@@ -224,7 +224,8 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             # TODO: Train the epd.
             for step, sample in enumerate(ctrl_dataloader):
                 sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
-                print(sample)
+                # FIXME: Use ParallelModel here?
+                predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])
 
     def controller_generate_step(self, old_arches):
         old_arches = old_arches[:self.hparams.num_remain_top]

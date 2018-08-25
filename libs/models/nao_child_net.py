@@ -248,7 +248,8 @@ class NaoEpd(nn.Module):
         sequence_symbols = []
         lengths = np.array([length] * batch_size)
 
-        def _seq2arch(step, step_output, step_attn):
+        def _repr2seq(step, step_output, step_attn):
+            """Sample the sequence from the decoder output representation."""
             decoder_outputs.append(step_output)
             ret_dict[self.KeyAttnScore].append(step_attn)
             # TODO: Change hard-coding here.
@@ -271,7 +272,7 @@ class NaoEpd(nn.Module):
             decoder_output, decoder_hidden, step_attn = self.decode_step(
                 decoder_input, decoder_hidden, encoder_outputs, fn=fn)
             step_output = decoder_output.squeeze(1)
-            symbols = _seq2arch(di, step_output, step_attn)
+            symbols = _repr2seq(di, step_output, step_attn)
             decoder_input = symbols
 
         ret_dict[self.KeySequence] = sequence_symbols
