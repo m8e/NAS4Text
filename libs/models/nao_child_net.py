@@ -130,7 +130,7 @@ class NaoEpd(nn.Module):
 
     NoEOS = True    # FIXME: Flag. The decoder does not output <EOS>.
 
-    def __init__(self, hparams, src_length, index_range, enc_op_range, dec_op_range):
+    def __init__(self, hparams, src_length, index_range, enc_op_range, dec_op_range, num_input_nodes):
         super().__init__()
         self.hparams = hparams
 
@@ -152,6 +152,7 @@ class NaoEpd(nn.Module):
         self.eos_id, self.sos_id = 0, 0
         self.index_range = index_range
         self.enc_op_range, self.dec_op_range = enc_op_range, dec_op_range
+        self.num_input_nodes = num_input_nodes
 
         self.encoder_emb = nn.Embedding(self.enc_vocab_size, self.enc_emb_size)
         self.encoder = nn.LSTM(
@@ -210,9 +211,9 @@ class NaoEpd(nn.Module):
 
         for i in range(self.num_mlp_layers):
             out = self.mlp_dropout(out)
-            out = out.mm(self.W[i])
+            out = out.mm(self.predictor[i])
             out = F.relu(out)
-        out = out.mm(self.W[-1])
+        out = out.mm(self.predictor[-1])
         predict_value = F.sigmoid(out)
 
         return encoder_outputs, encoder_state, arch_emb, predict_value
@@ -283,9 +284,9 @@ class NaoEpd(nn.Module):
 
             op_range = self.enc_op_range if in_encoder else self.dec_op_range
 
-            if i in (0, 2):     # Input index, should be in [1, node_idx + 1)
+            if i in (0, 2):     # Input index, should be in [1, node_idx + num_input_nodes + 1)
                 if self.NoEOS:
-                    symbols = step_output[:, 1:node_idx + 1].argmax(dim=-1).unsqueeze(1) + 1
+                    symbols = step_output[:, 1:node_idx + self.num_input_nodes + 1].argmax(dim=-1).unsqueeze(1) + 1
                 else:
                     # TODO: If allow EOS, need to generate EOS at i == 0.
                     raise NotImplementedError('EOS in decoder is not implemented now.')
@@ -331,6 +332,15 @@ class NaoEpd(nn.Module):
         return predict_value, decoder_outputs, arch
 
     def generate_new_arch(self, input_variable, predict_lambda=1):
+        """
+
+        Args:
+            input_variable:
+            predict_lambda:
+
+        Returns:
+            Tensor (batch_size, source_length, 1)
+        """
         encoder_outputs, encoder_hidden, arch_emb, predict_value, new_encoder_outputs, new_arch_emb = \
             self.encoder_infer(input_variable, predict_lambda)
         new_encoder_hidden = (new_arch_emb.unsqueeze(0), new_arch_emb.unsqueeze(0))
@@ -367,7 +377,7 @@ class NaoEpd(nn.Module):
             x = th.autograd.Variable(th.LongTensor([self.sos_id] * batch_size).view(batch_size, 1))
             if th.cuda.is_available():
                 x = x.cuda()
-            max_length = self.decoder_length
+            max_length = self.dec_length
         else:
             max_length = x.size(1)
 
@@ -386,15 +396,20 @@ class NAOController(NASController):
 
         # The model which contains shared weights.
         self.shared_weights = NAOChildNet(hparams)
-        self._supported_ops_cache = {
+        self._supported_ops_r_cache = {
             True: self._reversed_supported_ops(self.shared_weights.encoder.layers[0].supported_ops()),
             False: self._reversed_supported_ops(self.shared_weights.decoder.layers[0].supported_ops()),
+        }
+        self._supported_ops_cache = {
+            True: {v: k for k, v in self._supported_ops_r_cache[True].items()},
+            False: {v: k for k, v in self._supported_ops_r_cache[False].items()},
         }
 
         # EPD.
         self.epd = NaoEpd(hparams,
                           self.expected_source_length(), self.expected_index_range(),
-                          self.expected_op_range(True), self.expected_op_range(False))
+                          self.expected_op_range(True), self.expected_op_range(False),
+                          self._layer(True, 0).num_input_nodes)
 
     @staticmethod
     def _reversed_supported_ops(supported_ops):
@@ -420,7 +435,7 @@ class NAOController(NASController):
     def get_weight(self, in_encoder, layer_id, index, input_index, op_code, **kwargs):
         # [NOTE]: ENAS sharing style, same as DARTS sharing style.
         op_args = kwargs.pop('op_args', [])
-        op_idx = self._supported_ops_cache[in_encoder].get((op_code, tuple(op_args)), None)
+        op_idx = self._supported_ops_r_cache[in_encoder].get((op_code, tuple(op_args)), None)
         if op_idx is None:
             raise RuntimeError('The op type {} and op args {} does not exist in the controller'.format(
                 op_code, op_args))
@@ -450,15 +465,25 @@ class NAOController(NASController):
         self.epd.cuda(device)
         return self
 
+    def _gen_input_nodes(self, layer: NAOLayer):
+        num_input_nodes = layer.num_input_nodes
+        return [[None for _ in range(2 * num_input_nodes + 1)] for _ in range(num_input_nodes)]
+
+    def _gen_node_ppp(self, layer: NAOLayer):
+        return {
+            'preprocessors': layer.ppp_code[0],
+            'postprocessors': layer.ppp_code[1],
+        }
+
     def _generate_block(self, layer: NAOLayer):
         result = []
         num_input_nodes = layer.num_input_nodes
         num_total_nodes = layer.num_total_nodes
         in_encoder = layer.in_encoder
-        supported_ops = list(self._supported_ops_cache[in_encoder].keys())
+        supported_ops = list(self._supported_ops_r_cache[in_encoder].keys())
         supported_ops_idx = list(range(len(supported_ops)))
 
-        result.extend([[None for _ in range(2 * num_input_nodes + 1)] for _ in range(num_input_nodes)])
+        result.extend(self._gen_input_nodes(layer))
 
         while True:
             comp_nodes = []
@@ -477,19 +502,16 @@ class NAOController(NASController):
                 )
 
             # [NOTE]: Skip invalid arches.
-            if self._valid_arch(comp_nodes, in_encoder):
+            if self.valid_arch(comp_nodes, in_encoder):
                 break
 
         result.extend(comp_nodes)
 
-        result.append({
-            'preprocessors': layer.ppp_code[0],
-            'postprocessors': layer.ppp_code[1],
-        })
+        result.append(self._gen_node_ppp(layer))
 
         return result
 
-    def _template_net_code(self, e, d):
+    def template_net_code(self, e, d):
         return NetCode({
             'Type': 'BlockChildNet',
             'Global': {},
@@ -503,23 +525,26 @@ class NAOController(NASController):
             ]
         })
 
-    def _valid_arch(self, comp_nodes, in_encoder):
+    def valid_arch(self, block, in_encoder):
+        # Remove input nodes and block ppp.
+        block = [n for n in block if isinstance(n, list) and n[0] is not None]
+
         # 1. If #layers >= 2, must contains an input index 0, or the first layer will be disconnected.
         ed = self.shared_weights.encoder if in_encoder else self.shared_weights.decoder
         num_layers = len(ed.layers)
         if num_layers > 1:
-            if all(n[0] != 0 and n[1] != 0 for n in comp_nodes):
+            if all(n[0] != 0 and n[1] != 0 for n in block):
                 return False
 
         # 2. Decoder must contains at least one "EncoderAttention" layer.
         if not in_encoder:
-            if all(n[2][0] != 'EncoderAttention' and n[3][0] != 'EncoderAttention' for n in comp_nodes):
+            if all(n[2][0] != 'EncoderAttention' and n[3][0] != 'EncoderAttention' for n in block):
                 return False
 
         # 3. Decoder must contains
         if self.SkipNAT and not in_encoder:
             nat_layers = 'SelfAttention', 'CNN', 'LSTM'
-            if all(n[2][0] not in nat_layers and n[3][0] not in nat_layers for n in comp_nodes):
+            if all(n[2][0] not in nat_layers and n[3][0] not in nat_layers for n in block):
                 return False
 
         return True
@@ -528,7 +553,7 @@ class NAOController(NASController):
         enc0 = self.shared_weights.encoder.layers[0]
         dec0 = self.shared_weights.decoder.layers[0]
 
-        return [self._template_net_code(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]
+        return [self.template_net_code(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]
 
     # Arch - Sequence transforming and related methods.
 
@@ -560,7 +585,7 @@ class NAOController(NASController):
         num_total_nodes = self._layer(True, 0).num_total_nodes
 
         def _parse_block(block, in_encoder):
-            _so = self._supported_ops_cache[in_encoder]
+            _so = self._supported_ops_r_cache[in_encoder]
             seq = []
             for node in block:
                 if not isinstance(node, list):
@@ -576,6 +601,52 @@ class NAOController(NASController):
 
         return _parse_block(arch.blocks['enc1'], True) + _parse_block(arch.blocks['dec1'], False)
 
+    def parse_seq_to_blocks(self, seq):
+        length = self.expected_source_length()
+        assert len(seq) == length, 'The length is expected to be {}, but got {}'.format(length, len(seq))
+
+        num_total_nodes = self._layer(True, 0).num_total_nodes
+
+        enc1, dec1 = [], []
+
+        enc0 = self.shared_weights.encoder.layers[0]
+        dec0 = self.shared_weights.decoder.layers[0]
+
+        enc1.extend(self._gen_input_nodes(enc0))
+        dec1.extend(self._gen_input_nodes(dec0))
+
+        ins = []
+        ops = []
+
+        for index, x in enumerate(seq):
+            ed, ed_idx = divmod(index, length // 2)
+            in_encoder = True if ed == 0 else False
+            node, i = divmod(ed_idx, 4)
+
+            block = enc1 if in_encoder else dec1
+            layer = enc0 if in_encoder else dec0
+            _supported_ops = self._supported_ops_cache[in_encoder]
+
+            if i == 0:
+                # Refresh.
+                ins, ops = [], []
+
+            if i in (0, 2):
+                # Add input index.
+                ins.append(x - 1)
+            if i in (1, 3):
+                op_name, op_args = _supported_ops[x - num_total_nodes]
+                ops.append([op_name] + list(op_args))
+
+            if i == 3:
+                # Append the new node.
+                block.append(ins + ops + [layer.node_combine_op] + layer.node_ppp_code)
+
+        enc1.append(self._gen_node_ppp(enc0))
+        dec1.append(self._gen_node_ppp(dec0))
+
+        return enc1, dec1
+
     def expected_source_length(self):
         """Get the expected source length of the sequence.
         See ``NAOController.parse_arch_to_seq`` for the details of the equation.
@@ -589,7 +660,7 @@ class NAOController(NASController):
     def expected_op_range(self, in_encoder):
         """Get the [low, high) range of the op indices."""
         num_total_nodes = self._layer(True, 0).num_total_nodes
-        return num_total_nodes, num_total_nodes + len(self._supported_ops_cache[in_encoder])
+        return num_total_nodes, num_total_nodes + len(self._supported_ops_r_cache[in_encoder])
 
     def predict(self, topk_arches):
         pass

@@ -233,18 +233,20 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         if tqdm is not None:
             epochs = tqdm(list(epochs))
 
+        step = 0
         for epoch in epochs:
-            mse, cse, total_loss = 0.0, 0.0, 0.0
-            for step, sample in enumerate(ctrl_dataloader):
+            for epoch_step, sample in enumerate(ctrl_dataloader):
+                self.controller.epd.train()
+
                 sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
                 # FIXME: Use ParallelModel here?
                 predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])
 
-                print('#encoder_input', sample['encoder_input'].shape)
-                print('#encoder_target', sample['encoder_target'].shape)
-                print('#predict_value', predict_value.shape)
-                print('#logits', logits.shape)
-                print('$arch', arch.shape, arch)
+                # print('#encoder_input', sample['encoder_input'].shape)
+                # print('#encoder_target', sample['encoder_target'].shape)
+                print('#predict_value', predict_value.shape, predict_value.tolist())
+                # print('#logits', logits.shape)
+                # print('$arch', arch.shape, arch)
 
                 # Loss and optimize.
                 loss_1 = F.mse_loss(predict_value.squeeze(), sample['encoder_target'].squeeze())
@@ -254,16 +256,20 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
                 loss = self.hparams.ctrl_trade_off * loss_1 + (1 - self.hparams.ctrl_trade_off) * loss_2
 
-                mse += loss_1.data
-                cse += loss_2.data
-                total_loss += loss.data
-
                 self.ctrl_optimizer.zero_grad()
                 loss.backward()
-                th.nn.utils.clip_grad_norm_(self.controller.epd.parameters(), self.hparams.ctrl_clip_norm)
+                grad_norm = th.nn.utils.clip_grad_norm_(self.controller.epd.parameters(), self.hparams.ctrl_clip_norm)
                 self.ctrl_optimizer.step()
 
-                # TODO: Add logging here.
+                # TODO: Better logging here.
+                LogInterval = 1
+                if step % LogInterval == 0:
+                    print('| ctrl | epoch {:03d} | step {:03d} | loss={:5.6f} '
+                          '| mse={:5.6f} | cse={:5.6f} | gnorm={:5.6f}'.format(
+                            epoch, step, loss.data, loss_1.data, loss_2.data, grad_norm,
+                            ))
+
+                step += 1
 
             # TODO: Add evaluation and controller model saving here.
 
@@ -283,17 +289,23 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             predict_lambda += 1
             logging.info('Generating new architectures using gradient descent with step size {}'.format(predict_lambda))
 
-            new_arch_list = []
-            for step, encoder_input in enumerate(topk_arches_loader):
+            new_arch_seq_list = []
+            for step, (encoder_input,) in enumerate(topk_arches_loader):
                 epd.eval()
                 epd.zero_grad()
                 encoder_input = common.make_variable(encoder_input, volatile=False, cuda=True)
-                new_arch = epd.generate_new_arch(encoder_input, predict_lambda)
-                print('$gen-new_arch', new_arch.shape, new_arch)
-                new_arch_list.append(new_arch.data.squeeze().tolist())
+                new_arch_seq = epd.generate_new_arch(encoder_input, predict_lambda)
+                new_arch_seq_list.extend(new_arch_seq.data.squeeze().tolist())
 
-            for arch in new_arch_list:
-                # TODO: Insert new arches (skip same and invalid).
+            for arch_seq in new_arch_seq_list:
+                # Insert new arches (skip same and invalid).
+                e, d = self.controller.parse_seq_to_blocks(arch_seq)
+                print('#e, d', e, '\n', d)
+                if not (self.controller.valid_arch(e, True) and self.controller.valid_arch(d, False)):
+                    continue
+                arch = self.controller.template_net_code(e, d)
+                print('#arch', arch)
+
                 if arch not in old_arches_seq and arch not in new_arches:
                     new_arches.append(arch)
                 if len(new_arches) + len(old_arches) >= self.hparams.num_seed_arch:
@@ -349,7 +361,8 @@ def nao_search_main(hparams):
         # Generate new arches.
         trainer.controller_generate_step(old_arches)
 
-        # TODO: Save updated arches?
+        # Save updated arches after generate step.
+        nao_utils.save_arches(hparams, ctrl_step, trainer.arch_pool, arches_perf=None, after_gen=True)
 
         ctrl_step += 1
     train_meter.stop()

@@ -51,8 +51,10 @@ def prepare_ctrl_sample(sample, evaluation=False):
     return common.make_variable(sample, cuda=True, volatile=evaluation)
 
 
-def save_arches(hparams, ctrl_step, arches, arches_perf):
+def save_arches(hparams, ctrl_step, arches, arches_perf=None, after_gen=False):
     import json
+
+    _after_gen = ', after generate' if after_gen else ''
 
     save_dir = get_model_path(hparams)
     net_code_list = [n.original_code for n in arches]
@@ -60,13 +62,15 @@ def save_arches(hparams, ctrl_step, arches, arches_perf):
     def _save(code_filename, perf_filename):
         full_code_filename = os.path.join(save_dir, code_filename)
         with open(full_code_filename, 'w', encoding='utf-8') as f:
-            json.dump(net_code_list, f, indent=4)
-            logging.info('Save arches into {} (epoch {})'.format(full_code_filename, ctrl_step))
-        full_perf_filename = os.path.join(save_dir, perf_filename)
-        with open(full_perf_filename, 'w', encoding='utf-8') as f:
-            for perf in arches_perf:
-                print(perf, file=f)
-            logging.info('Save performance into {} (epoch {})'.format(full_perf_filename, ctrl_step))
+            for code in net_code_list:
+                print(json.dumps(code), file=f)
+            logging.info('Save arches into {} (epoch {}{})'.format(full_code_filename, ctrl_step, _after_gen))
+        if arches_perf is not None:
+            full_perf_filename = os.path.join(save_dir, perf_filename)
+            with open(full_perf_filename, 'w', encoding='utf-8') as f:
+                for perf in arches_perf:
+                    print(perf, file=f)
+                logging.info('Save performance into {} (epoch {}{})'.format(full_perf_filename, ctrl_step, _after_gen))
 
     _save('arch_pool{}.json'.format(ctrl_step), 'arch_perf{}.txt'.format(ctrl_step))
     _save('arch_pool_last.json', 'arch_perf_last.txt')
