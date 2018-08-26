@@ -130,12 +130,14 @@ class NaoEpd(nn.Module):
 
     NoEOS = True    # FIXME: Flag. The decoder does not output <EOS>.
 
-    def __init__(self, hparams, src_length, index_range, enc_op_range, dec_op_range, num_input_nodes):
+    def __init__(self, hparams, controller: 'NAOController'):
         super().__init__()
         self.hparams = hparams
 
-        self.enc_vocab_size = self.hparams.ctrl_enc_vocab_size
-        self.dec_vocab_size = self.hparams.ctrl_dec_vocab_size
+        self.enc_vocab_size = controller.expected_vocab_size(True) if self.hparams.ctrl_enc_vocab_size is None \
+            else self.hparams.ctrl_enc_vocab_size
+        self.dec_vocab_size = controller.expected_vocab_size(True) if self.hparams.ctrl_dec_vocab_size is None \
+            else self.hparams.ctrl_dec_vocab_size
         self.num_enc_layers = self.hparams.ctrl_num_encoder_layers
         self.num_dec_layers = self.hparams.ctrl_num_decoder_layers
         self.num_mlp_layers = self.hparams.ctrl_num_mlp_layers
@@ -146,13 +148,15 @@ class NaoEpd(nn.Module):
         self.enc_dropout_p = self.hparams.ctrl_enc_dropout
         self.mlp_dropout_p = self.hparams.ctrl_mlp_dropout
         self.dec_dropout_p = self.hparams.ctrl_dec_dropout
+
+        src_length = controller.expected_source_length()
         self.src_length = src_length
         self.enc_length = src_length if self.hparams.ctrl_enc_length is None else self.hparams.ctrl_enc_length
         self.dec_length = src_length if self.hparams.ctrl_dec_length is None else self.hparams.ctrl_dec_length
         self.eos_id, self.sos_id = 0, 0
-        self.index_range = index_range
-        self.enc_op_range, self.dec_op_range = enc_op_range, dec_op_range
-        self.num_input_nodes = num_input_nodes
+        self.index_range = controller.expected_index_range()
+        self.enc_op_range, self.dec_op_range = controller.expected_op_range(True), controller.expected_op_range(False)
+        self.num_input_nodes = controller.example_layer().num_input_nodes
 
         self.encoder_emb = nn.Embedding(self.enc_vocab_size, self.enc_emb_size)
         self.encoder = nn.LSTM(
@@ -406,10 +410,7 @@ class NAOController(NASController):
         }
 
         # EPD.
-        self.epd = NaoEpd(hparams,
-                          self.expected_source_length(), self.expected_index_range(),
-                          self.expected_op_range(True), self.expected_op_range(False),
-                          self._layer(True, 0).num_input_nodes)
+        self.epd = NaoEpd(hparams, self)
 
     @staticmethod
     def _reversed_supported_ops(supported_ops):
@@ -661,6 +662,13 @@ class NAOController(NASController):
         """Get the [low, high) range of the op indices."""
         num_total_nodes = self._layer(True, 0).num_total_nodes
         return num_total_nodes, num_total_nodes + len(self._supported_ops_r_cache[in_encoder])
+
+    def expected_vocab_size(self, in_encoder):
+        """Get the expected vocabulary size."""
+        return self.expected_op_range(in_encoder)[1]
+
+    def example_layer(self, in_encoder=True):
+        return self._layer(in_encoder, 0)
 
     def predict(self, topk_arches):
         pass

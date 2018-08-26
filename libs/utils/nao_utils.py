@@ -109,10 +109,10 @@ def add_nao_search_args(parser):
                        help='Controller encoder length, default same as source length')
     group.add_argument('--ctrl-dec-length', default=None, type=int,
                        help='Controller decoder length, default same as source length')
-    group.add_argument('--ctrl-enc-vocab-size', default=10, type=int,
-                       help='Controller encoder embedding size, default is %(default)s')
-    group.add_argument('--ctrl-dec-vocab-size', default=10, type=int,
-                       help='Controller decoder embedding size, default is %(default)s')
+    group.add_argument('--ctrl-enc-vocab-size', default=None, type=int,
+                       help='Controller encoder embedding size, default is automatically detected')
+    group.add_argument('--ctrl-dec-vocab-size', default=None, type=int,
+                       help='Controller decoder embedding size, default is automatically detected')
     group.add_argument('--ctrl-enc-emb-size', default=96, type=int,
                        help='Controller encoder embedding size, default is %(default)s')
     group.add_argument('--ctrl-enc-hidden-size', default=96, type=int,
