@@ -239,12 +239,16 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 self.controller.epd.train()
 
                 sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
+
+                # print('#encoder_input', sample['encoder_input'].shape, sample['encoder_input'])
+                # print('#encoder_target', sample['encoder_target'].shape, sample['encoder_target'])
+                # print('#decoder_input', sample['decoder_input'].shape, sample['decoder_input'])
+                # print('#decoder_target', sample['decoder_target'].shape, sample['decoder_target'])
+
                 # FIXME: Use ParallelModel here?
                 predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])
 
-                # print('#encoder_input', sample['encoder_input'].shape)
-                # print('#encoder_target', sample['encoder_target'].shape)
-                print('#predict_value', predict_value.shape, predict_value.tolist())
+                # print('#predict_value', predict_value.shape, predict_value.tolist())
                 # print('#logits', logits.shape)
                 # print('$arch', arch.shape, arch)
 
@@ -270,6 +274,8 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                             ))
 
                 step += 1
+
+                # exit()
 
             # TODO: Add evaluation and controller model saving here.
 

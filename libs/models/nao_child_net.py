@@ -136,7 +136,7 @@ class NaoEpd(nn.Module):
 
         self.enc_vocab_size = controller.expected_vocab_size(True) if self.hparams.ctrl_enc_vocab_size is None \
             else self.hparams.ctrl_enc_vocab_size
-        self.dec_vocab_size = controller.expected_vocab_size(True) if self.hparams.ctrl_dec_vocab_size is None \
+        self.dec_vocab_size = controller.expected_vocab_size(False) if self.hparams.ctrl_dec_vocab_size is None \
             else self.hparams.ctrl_dec_vocab_size
         self.num_enc_layers = self.hparams.ctrl_num_encoder_layers
         self.num_dec_layers = self.hparams.ctrl_num_decoder_layers
@@ -160,7 +160,7 @@ class NaoEpd(nn.Module):
 
         self.encoder_emb = nn.Embedding(self.enc_vocab_size, self.enc_emb_size)
         self.encoder = nn.LSTM(
-            self.enc_hidden_size,
+            self.enc_emb_size,
             self.enc_hidden_size,
             self.num_enc_layers,
             batch_first=True,
@@ -197,14 +197,29 @@ class NaoEpd(nn.Module):
 
         self.decode_function = F.log_softmax
 
+        self.logging_self()
+
+    def logging_self(self):
+        logging.info('Controller model structure:\n{}'.format(self))
+        logging.info('All model parameters:')
+        num_parameters = 0
+        for name, param in self.named_parameters():
+            logging.info('\t {}: {}, {}'.format(name, list(param.shape), param.numel()))
+            num_parameters += param.numel()
+        logging.info('Number of parameters: {}'.format(num_parameters))
+
     def encode(self, encoder_input):
         embedded = self.encoder_emb(encoder_input)
         embedded = self.encoder_dropout(embedded)
+
+        # Embedded shape: (batch_size, src_length, src_emb_size)
 
         if self.src_length != self.enc_length:
             assert self.src_length % self.enc_length == 0
             ratio = self.src_length // self.enc_length
             embedded = embedded.view(-1, self.enc_length, ratio * self.enc_emb_size)
+
+        # TODO: CuDNN error here on Azure017: "indexSelectLargeIndex" assertion failed and CUDNN_STATUS_NOT_INITIALIZED.
         out, hidden = self.encoder(embedded)
         out = F.normalize(out, 2, dim=-1)
         encoder_outputs, encoder_state = out, hidden
@@ -481,7 +496,7 @@ class NAOController(NASController):
         num_input_nodes = layer.num_input_nodes
         num_total_nodes = layer.num_total_nodes
         in_encoder = layer.in_encoder
-        supported_ops = list(self._supported_ops_r_cache[in_encoder].keys())
+        supported_ops = self._supported_ops_cache[in_encoder]
         supported_ops_idx = list(range(len(supported_ops)))
 
         result.extend(self._gen_input_nodes(layer))
