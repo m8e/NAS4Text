@@ -276,9 +276,8 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
     def controller_generate_step(self, old_arches):
         epd = self.controller.epd
 
-        old_arches_seq = [self._parse_arch_to_seq(arch) for arch in old_arches]
-
         old_arches = old_arches[:self.hparams.num_remain_top]
+
         new_arches = []
         predict_lambda = 0
         topk_arches = [self._parse_arch_to_seq(arch) for arch in old_arches[:self.hparams.num_pred_top]]
@@ -306,13 +305,17 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 arch = self.controller.template_net_code(e, d)
                 print('#arch', arch)
 
-                if arch not in old_arches_seq and arch not in new_arches:
+                if not self._arch_contains(arch, old_arches) and not self._arch_contains(arch, new_arches):
                     new_arches.append(arch)
                 if len(new_arches) + len(old_arches) >= self.hparams.num_seed_arch:
                     break
             logging.info('{} new arches generated now'.format(len(new_arches)))
 
         self.arch_pool = old_arches + new_arches
+
+    @staticmethod
+    def _arch_contains(arch, arch_list):
+        return any(arch.fast_eq(a) for a in arch_list)
 
 
 def nao_search_main(hparams):
