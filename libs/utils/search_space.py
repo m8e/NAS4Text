@@ -217,6 +217,21 @@ class SearchSpace:
             ('EncoderAttention', [1, '', 'd']),     # Default (4) in fairseq
             ('EncoderAttention', [2, '', 'd']),
         ],
+        'only-attn-nao': [
+            ('Identity', []),
+            ('PFFN', ['', 'd', 0]),
+            ('PFFN', ['', 'd', 1]),  # Default (512) in fairseq
+            ('PFFN', ['', 'd', 2]),
+            ('PFFN', ['', 'd', 3]),
+            ('SelfAttention', [1, '', 'd']),  # Default (4) in fairseq
+            ('SelfAttention', [2, '', 'd']),
+            ('SelfAttention', [1, '', '']),
+            ('SelfAttention', [2, '', '']),
+            ('EncoderAttention', [1, '', 'd']),  # Default (4) in fairseq
+            ('EncoderAttention', [2, '', 'd']),
+            ('EncoderAttention', [1, '', '']),
+            ('EncoderAttention', [2, '', '']),
+        ]
     }
     CellOpSpaces['with-r-lstm'] = CellOpSpaces['default'] + [('LSTM', [None, True, '', 'd'])]
     CellOpSpaces['no-conv-lstm'] = [o for o in CellOpSpaces['default'] if o[0] not in ('CNN', 'LSTM')]
