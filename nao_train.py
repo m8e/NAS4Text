@@ -266,8 +266,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 self.ctrl_optimizer.step()
 
                 # TODO: Better logging here.
-                LogInterval = 1
-                if step % LogInterval == 0:
+                if step % self.hparams.ctrl_log_freq == 0:
                     print('| ctrl | epoch {:03d} | step {:03d} | loss={:5.6f} '
                           '| mse={:5.6f} | cse={:5.6f} | gnorm={:5.6f}'.format(
                             epoch, step, loss.data, loss_1.data, loss_2.data, grad_norm,
@@ -275,14 +274,44 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
                 step += 1
 
-                # exit()
-
             # TODO: Add evaluation and controller model saving here.
+            if epoch % self.hparams.ctrl_eval_freq == 0:
+                self.controller_eval_step(ctrl_dataloader, epoch)
+
+    def controller_eval_step(self, ctrl_dataloader, epoch):
+        model = self.controller.epd
+        ground_truth_perf_list = []
+        ground_truth_arch_seq_list = []
+        predict_value_list = []
+        arch_seq_list = []
+
+        time = StopwatchMeter()
+        time.start()
+
+        for step, sample in enumerate(ctrl_dataloader):
+            model.eval()
+            sample = nao_utils.prepare_ctrl_sample(sample, evaluation=True)
+            predict_value, logits, arch = model(sample['encoder_input'])    # target_variable=None
+            predict_value_list.extend(predict_value.data.squeeze().tolist())
+            arch_seq_list.extend(arch.data.squeeze().tolist())
+            ground_truth_perf_list.extend(sample['encoder_target'].data.squeeze().tolist())
+            ground_truth_arch_seq_list.extend(sample['decoder_target'].data.squeeze().tolist())
+
+        pairwise_acc = nao_utils.pairwise_accuracy(ground_truth_perf_list, predict_value_list)
+        hamming_dis = nao_utils.hamming_distance(ground_truth_arch_seq_list, arch_seq_list)
+
+        time.stop()
+        logging.info('Evaluation on training data')
+        logging.info('| ctrl | epoch {:03d} | pairwise accuracy {:<6.6f} |'
+                     ' hamming distance {:<6.6f} | {:<6.2f} secs'.format(
+                      epoch, pairwise_acc, hamming_dis, time.sum))
 
     def controller_generate_step(self, old_arches):
         epd = self.controller.epd
 
         old_arches = old_arches[:self.hparams.num_remain_top]
+
+        # print('#old_arches:', [a.blocks for a in old_arches])
 
         new_arches = []
         predict_lambda = 0
@@ -291,7 +320,11 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             [th.LongTensor(topk_arches)], self.hparams.ctrl_batch_size, shuffle=False)
 
         while len(new_arches) + len(old_arches) < self.hparams.num_seed_arch:
-            predict_lambda += 1
+            # [NOTE]: When predict_lambda get larger, increase faster.
+            if predict_lambda < 50:
+                predict_lambda += 1
+            else:
+                predict_lambda += predict_lambda // 50
             logging.info('Generating new architectures using gradient descent with step size {}'.format(predict_lambda))
 
             new_arch_seq_list = []
@@ -304,12 +337,12 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
             for arch_seq in new_arch_seq_list:
                 # Insert new arches (skip same and invalid).
+                # [NOTE]: Reduce the "ctrl_trade_off" value to let it generate different architectures.
                 e, d = self.controller.parse_seq_to_blocks(arch_seq)
-                print('#e, d', e, '\n', d)
+                # print('#e, d', e, '\n', d)
                 if not (self.controller.valid_arch(e, True) and self.controller.valid_arch(d, False)):
                     continue
                 arch = self.controller.template_net_code(e, d)
-                print('#arch', arch)
 
                 if not self._arch_contains(arch, old_arches) and not self._arch_contains(arch, new_arches):
                     new_arches.append(arch)
@@ -325,7 +358,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
 
 def nao_search_main(hparams):
-    components = mu.main_entry(hparams, train=True, net_code='nao')
+    components = mu.main_entry(hparams, train=True, net_code='nao_train')
     datasets = components['datasets']
 
     logging.info('Building model')

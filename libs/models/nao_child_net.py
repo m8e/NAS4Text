@@ -690,4 +690,18 @@ class NAOController(NASController):
 
     def get_arch_parameter_size(self, arch, exclude_emb=True):
         """Get parameter size of the given architecture."""
-        # TODO
+
+        result = 0
+
+        for (block, in_encoder) in zip((arch.blocks['enc1'], arch.blocks['dec1']), (True, False)):
+            for node in block:
+                if not isinstance(node, list) or node[0] is None:
+                    continue
+
+                # TODO
+                op_codes = [node[1], node[3]]
+                op_names = [op_code[0] for op_code in op_codes]
+                op_args = [op_code[1:] for op_code in op_codes]
+                op_types = []
+
+        return result

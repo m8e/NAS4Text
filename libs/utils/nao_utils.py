@@ -51,6 +51,40 @@ def prepare_ctrl_sample(sample, evaluation=False):
     return common.make_variable(sample, cuda=True, volatile=evaluation)
 
 
+def pairwise_accuracy(la, lb):
+    n = len(la)
+    assert n == len(lb)
+    total, count = 0, 0
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if la[i] >= la[j] and la[i] >= lb[i]:
+                count += 1
+            if la[i] < la[j] and lb[i] < lb[j]:
+                count += 1
+            total += 1
+    return float(count) / total
+
+
+def hamming_distance(la, lb):
+    n = len(la)
+    assert n == len(lb)
+
+    def _distance(s1, s2):
+        n = len(s1)
+        assert n == len(s2)
+        c = 0
+        for i, j in zip(s1, s2):
+            if i != j:
+                c += 1
+        return c
+
+    dis = 0
+    for line1, line2 in zip(la, lb):
+        dis += _distance(line1, line2)
+    return float(dis) / n
+
+
 def save_arches(hparams, ctrl_step, arches, arches_perf=None, after_gen=False):
     import json
 
@@ -145,6 +179,12 @@ def add_nao_search_args(parser):
                        help='Controller optimizer, default is %(default)s')
     group.add_argument('--ctrl-clip-norm', default=5.0, type=float,
                        help='Controller clip norm, default is %(default)s')
+    group.add_argument('--ctrl-eval-freq', default=100, type=int,
+                       help='Number of epochs to run between controller evaluations, default is %(default)s')
+    group.add_argument('--ctrl-save-freq', default=100, type=int,
+                       help='Number of epochs to run between controller savings, default is %(default)s')
+    group.add_argument('--ctrl-log-freq', default=50, type=int,
+                       help='Number of epochs to run between controller logging, default is %(default)s')
 
     # TODO
 
