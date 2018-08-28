@@ -45,16 +45,17 @@ class NAOTrainer(ChildTrainer):
     GenMaxlenB = 100            # Max length bias in generation. (less than normal generation to avoid oom)
 
     def __init__(self, hparams, criterion):
-        super().__init__(hparams, None, criterion)
         # [NOTE]: Model is a "shared" model here.
         self.controller = NAOController(hparams).cuda()
-        self.model = self.controller.shared_weights
+        super().__init__(hparams, self.controller.shared_weights, criterion)
         self.arch_pool = []
         self.arch_pool_prob = None
         self.eval_arch_pool = []
         self.performance_pool = []
         self._ref_tokens = None
         self._ref_dict = None
+        self._current_child_size = 0
+        self._current_grad_size = 0
 
         with hparams_env(
             hparams, optimizer=hparams.ctrl_optimizer,
@@ -94,30 +95,32 @@ class NAOTrainer(ChildTrainer):
         eval_freq = self.hparams.child_eval_freq
 
         if self.single_gpu:
-            arch = self._sample_arch_from_pool()
-            child = self.new_model(arch)
+            self._init_meters()
+            for epoch in range(1, eval_freq + 1):
+                mu.train(self.hparams, self, datasets, epoch, 0)
 
-            # Train the child model for some epochs.
-            with self.child_env(child):
-                logging.info('Number of child model parameters: {}'.format(child.num_parameters()))
-                print('Architecture:', arch.blocks['enc1'], arch.blocks['dec1'], sep='\n\t')
-
-                self._init_meters()
-                for epoch in range(1, eval_freq + 1):
-                    mu.train(self.hparams, self, datasets, epoch, 0)
+            # Restore shared model after training.
+            self.model = self.controller.shared_weights
 
             return
 
         if self.ArchDist:
-            # # Random sample one arch per card to train.
-            # for device in range(self.num_gpus):
-            #     arch = self._sample_arch_from_pool()
-            #     child = self.new_model(arch, device)
-            #
-            #     # TODO: How to distributed training on all GPU cards async?
+            # TODO: How to distributed training on all GPU cards async?
             raise NotImplementedError('Arch dist multi-gpu training not supported yet')
         else:
             raise NotImplementedError('Non-arch dist multi-gpu training not supported yet')
+
+    def train_step(self, sample, update_params=True):
+        # [NOTE]: At each train step, sample a new arch from pool.
+        arch = self._sample_arch_from_pool()
+        child = self.new_model(arch)
+        self.model = child
+        self._current_child_size = self.model.num_parameters()
+        return super().train_step(sample, update_params=update_params)
+
+    def _get_flat_grads(self, out=None):
+        # [NOTE]: Since model will be changed between updates, does not use out buffer.
+        return super()._get_flat_grads(out=None)
 
     def eval_children(self, datasets, compute_loss=False):
         """Eval all arches in the pool."""

@@ -339,15 +339,13 @@ class NaoEpd(nn.Module):
         decoder_outputs, decoder_hidden, _ = self.decode(x, encoder_hidden, encoder_outputs)
         return decoder_outputs, decoder_hidden
 
-    # TODO: Change the format of output arch to be compatible with current code.
-
     def forward(self, input_variable, target_variable=None):
         encoder_outputs, encoder_hidden, arch_emb, predict_value = self.encode(input_variable)
         encoder_hidden = (arch_emb.unsqueeze(0), arch_emb.unsqueeze(0))
         decoder_outputs, decoder_hidden, ret = self.decode(
             target_variable, encoder_hidden, encoder_outputs, fn=self.decode_function)
-        decoder_outputs = th.stack(decoder_outputs, 0).permute(1, 0, 2)
-        arch = th.stack(ret[self.KeySequence], 0).permute(1, 0, 2)
+        decoder_outputs = th.stack(decoder_outputs, 0).permute(1, 0, 2).contiguous()
+        arch = th.stack(ret[self.KeySequence], 0).permute(1, 0, 2).contiguous()
         return predict_value, decoder_outputs, arch
 
     def generate_new_arch(self, input_variable, predict_lambda=1):
@@ -365,7 +363,7 @@ class NaoEpd(nn.Module):
         new_encoder_hidden = (new_arch_emb.unsqueeze(0), new_arch_emb.unsqueeze(0))
         decoder_outputs, decoder_hidden, ret = self.decode(
             None, new_encoder_hidden, new_encoder_outputs, fn=self.decode_function)
-        new_arch = th.stack(ret[self.KeySequence], 0).permute(1, 0, 2)
+        new_arch = th.stack(ret[self.KeySequence], 0).permute(1, 0, 2).contiguous()
         return new_arch
 
     def _init_decoder_state(self, encoder_hidden):
