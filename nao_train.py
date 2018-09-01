@@ -326,6 +326,9 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             # [NOTE]: When predict_lambda get larger, increase faster.
             if predict_lambda < 50:
                 predict_lambda += 1
+            elif predict_lambda >= 10000000:
+                # FIXME: A temp solution: stop the generation when the lambda is too large.
+                break
             else:
                 predict_lambda += predict_lambda // 50
             logging.info('Generating new architectures using gradient descent with step size {}'.format(predict_lambda))

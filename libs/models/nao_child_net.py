@@ -82,6 +82,9 @@ class NAOChildNet(EncDecChildNet):
 
     [NOTE]: This class is just a "container" of shared weights, the forward and backward methods will not be called.
     """
+
+    # TODO: Add implementation of random drop path.
+
     def __init__(self, hparams):
         super().__init__(None, hparams)
 
