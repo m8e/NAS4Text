@@ -364,6 +364,8 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
 
 def nao_search_main(hparams):
+    # TODO: Add stand alone training script of NaoEpd.
+
     components = mu.main_entry(hparams, train=True, net_code='nao_train')
     datasets = components['datasets']
 
