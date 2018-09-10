@@ -66,7 +66,7 @@ def pairwise_accuracy(la, lb):
 
     for i in range(n):
         for j in range(i + 1, n):
-            if la[i] >= la[j] and la[i] >= lb[i]:
+            if la[i] >= la[j] and lb[i] >= lb[j]:
                 count += 1
             if la[i] < la[j] and lb[i] < lb[j]:
                 count += 1
@@ -120,6 +120,9 @@ def save_arches(hparams, ctrl_step, arches, arches_perf=None, after_gen=False):
 
 def add_nao_search_args(parser):
     group = parser.add_argument_group('NAO search options')
+
+    group.add_argument('--standalone', action='store_true', default=False,
+                       help='Standalone train the controller, default is False')
 
     group.add_argument('--max-ctrl-step', default=1000, type=int,
                        help='Number of max controller steps in arch search, default is %(default)s')
@@ -192,7 +195,7 @@ def add_nao_search_args(parser):
     group.add_argument('--ctrl-save-freq', default=100, type=int,
                        help='Number of epochs to run between controller savings, default is %(default)s')
     group.add_argument('--ctrl-log-freq', default=50, type=int,
-                       help='Number of epochs to run between controller logging, default is %(default)s')
+                       help='Number of steps to run between controller logging, default is %(default)s')
 
     # TODO
 

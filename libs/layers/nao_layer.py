@@ -32,7 +32,7 @@ class NAOLayer(ChildLayer):
         # FIXME: Some hyperparameters are fixed now.
         self.node_combine_op = 'Add'
 
-        assert hparams.block_combine_op == 'add', 'Block combine op search is not supported now'
+        # assert hparams.block_combine_op == 'add', 'Block combine op search is not supported now'
 
         assert self.num_input_nodes == 2, 'Number of input nodes != 2 is not supported now'
 

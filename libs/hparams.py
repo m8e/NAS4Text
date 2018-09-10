@@ -125,6 +125,8 @@ def hparams_base():
         # About block child net.
         # Candidates: concat, add, last
         block_combine_op='concat',
+        # Only combine "no out" nodes or not (combine all output nodes instead).
+        block_combine_no_outs=False,
 
         # About NAS.
 
@@ -389,5 +391,15 @@ def hparams_de_en_iwslt_bpe2_darts():
     hparams = hparams_transformer_de_en_iwslt_bpe2_fairseq()
 
     hparams.block_combine_op = 'add'
+
+    return hparams
+
+
+@register_hparams('de_en_iwslt_add_no_outs')
+def hparams_de_en_iwslt_add_no_outs():
+    hparams = hparams_transformer_de_en_iwslt_bpe2_fairseq()
+
+    hparams.block_combine_op = 'add'
+    hparams.block_combine_no_outs = True
 
     return hparams

@@ -125,12 +125,16 @@ def main_entry(hparams, **kwargs):
     }
 
 
-def logging_model_criterion(model, criterion):
-    logging.info('Model structure:\n{}'.format(model))
+def logging_model_criterion(model, criterion, logging_params=True):
+    if logging_params:
+        logging.info('Model structure:\n{}'.format(model))
+    else:
+        logging.info('Model: {}'.format(model.__class__.__name__))
     logging.info('Criterion: {}'.format(criterion.__class__.__name__))
-    logging.info('All model parameters:')
-    for name, param in model.named_parameters():
-        logging.info('\t {}: {}, {}'.format(name, list(param.shape), param.numel()))
+    if logging_params:
+        logging.info('All model parameters:')
+        for name, param in model.named_parameters():
+            logging.info('\t {}: {}, {}'.format(name, list(param.shape), param.numel()))
     logging.info('Number of parameters: {}'.format(model.num_parameters()))
 
 

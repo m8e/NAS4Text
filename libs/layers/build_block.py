@@ -161,7 +161,7 @@ class CombineNode(nn.Module):
             )
 
     def forward(self, node_output_list):
-        return fns.combine_outputs(self.op, node_output_list, reduce_op=self.reduce_op)
+        return fns.combine_outputs(self.op, node_output_list, reduce_op=self.reduce_op, used_nodes=self.used_nodes)
 
     def extra_repr(self):
         return 'op={}'.format(self.op)
@@ -170,12 +170,15 @@ class CombineNode(nn.Module):
 class BlockLayer(ChildLayer):
     """Block layer. Contains several nodes."""
 
+    NumInputNodes = 2
+
     def __init__(self, hparams, in_encoder=True, controller=None):
         super().__init__(hparams)
         self.in_encoder = in_encoder
         self.input_node_indices = []
         self.nodes = nn.ModuleList()
         self.combine_node = CombineNode(self, in_encoder=in_encoder, hparams=hparams)
+        self.used_nodes = set()
         self.topological_order = []
         self.block_params = {}
         self.controller = controller
@@ -195,12 +198,14 @@ class BlockLayer(ChildLayer):
                     input_index=len(self.input_node_indices), hparams=self.hparams, node_args=node_args))
                 self.input_node_indices.append(i)
             else:
+                self.used_nodes.add(in1)
+                self.used_nodes.add(in2)
                 # This is a normal node.
                 self.nodes.append(Node(
                     in1, in2, op1, op2, combine_op, input_shape, index=i, hparams=self.hparams,
                     controller=self.controller, in_encoder=self.in_encoder, node_args=node_args, layer_id=layer_id))
 
-        if len(self.input_node_indices) != 2:
+        if len(self.input_node_indices) != self.NumInputNodes:
             raise RuntimeError('The block layer must have exactly two input nodes, but got {}'.format(
                 len(self.input_node_indices)))
         self.combine_node.build(input_shape[-1], n=len(self.nodes) - len(self.input_node_indices),
@@ -242,7 +247,13 @@ class BlockLayer(ChildLayer):
                     node_output_list, lengths=lengths, encoder_state=encoder_state, **kwargs)
 
         # Combine all intermediate nodes, does not combine input nodes.
-        return self.combine_node([o for i, o in enumerate(node_output_list) if i not in self.input_node_indices])
+        if self.hparams.block_combine_no_outs:
+            to_be_combined = [o for i, o in enumerate(node_output_list)
+                              if i not in self.input_node_indices and i not in self.used_nodes]
+        else:
+            to_be_combined = [o for i, o in enumerate(node_output_list)
+                              if i not in self.input_node_indices]
+        return self.combine_node(to_be_combined)
 
     def _get_topological_order(self, layer_code):
         self.topological_order = []
