@@ -134,7 +134,7 @@ def add_nao_search_args(parser):
                        help='Number of top-k best arches used in prediction, default is %(default)s')
     group.add_argument('--num-nodes', default=4, type=int,
                        help='Number of nodes in one block, default is %(default)s')
-    group.add_argument('--cell-op-space', default='only-attn-no-zero',
+    group.add_argument('--cell-op-space', default='only-attn',
                        help='The search space of cell ops, default is %(default)r')
     group.add_argument('--num-encoder-layers', default=2, type=int,
                        help='Number of encoder layers in arch search, default is %(default)s')

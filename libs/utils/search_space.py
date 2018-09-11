@@ -217,6 +217,17 @@ class SearchSpace:
             ('EncoderAttention', [1, '', 'd']),     # Default (4) in fairseq
             ('EncoderAttention', [2, '', 'd']),
         ],
+        'only-attn2': [     # From only-attn, PFFN - 1
+            ('Zero', []),
+            ('Identity', []),
+            ('PFFN', ['', 'd', 0]),
+            ('PFFN', ['', 'd', 1]),  # Default (512) in fairseq
+            ('PFFN', ['', 'd', 2]),
+            ('SelfAttention', [1, '', 'd']),  # Default (4) in fairseq
+            ('SelfAttention', [2, '', 'd']),
+            ('EncoderAttention', [1, '', 'd']),  # Default (4) in fairseq
+            ('EncoderAttention', [2, '', 'd']),
+        ],
         'only-attn-nao': [
             ('Identity', []),
             ('PFFN', ['', 'd', 0]),

@@ -161,7 +161,7 @@ class CombineNode(nn.Module):
             )
 
     def forward(self, node_output_list):
-        return fns.combine_outputs(self.op, node_output_list, reduce_op=self.reduce_op, used_nodes=self.used_nodes)
+        return fns.combine_outputs(self.op, node_output_list, reduce_op=self.reduce_op)
 
     def extra_repr(self):
         return 'op={}'.format(self.op)

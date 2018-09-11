@@ -14,6 +14,7 @@ sys.path.insert(0, ProjectRoot)
 
 from libs.models.nao_child_net import NAOController
 from libs.hparams import get_hparams
+from libs.layers.net_code import NetCode
 
 __author__ = 'fyabc'
 
@@ -21,23 +22,43 @@ __author__ = 'fyabc'
 def main(args=None):
     parser = argparse.ArgumentParser(description='Generate arch pool from net code.')
     parser.add_argument('-H', '--hparams', help='HParams JSON filename, default is use system default', default=None)
+    parser.add_argument('--hparams-set', help='HParams set, default is %(default)r', default=None)
+    parser.add_argument('-e', '--exist', help='Exists arch pool filename', default=None)
     parser.add_argument('-o', '--output', help='Output filename', default=None)
     parser.add_argument('--dir-output', help='Splitted output directory', default='usr_net_code/arch_pool')
     parser.add_argument('-n', type=int, help='Arch pool size, default is %(default)s', default=1000)
+    parser.add_argument('--cell-op-space', default=None, help='Specify the cell op space, default is %(default)r')
 
     args = parser.parse_args(args)
 
+    print(args)
+
     if args.hparams is None:
-        hparams = get_hparams('normal')
-        print('WARNING: Use default hparams, op args may be incorrect. Please give a hparams JSON file.')
+        if args.hparams_set is None:
+            print('WARNING: Use default hparams, op args may be incorrect. '
+                  'Please give a hparams JSON file or specify the hparams set.')
+            hparams_set = 'normal'
+        else:
+            hparams_set = args.hparams_set
+        hparams = get_hparams(hparams_set)
     else:
         with open(args.hparams, 'r', encoding='utf-8') as f:
             hparams = argparse.Namespace(**json.load(f))
+    if args.cell_op_space is not None:
+        hparams.cell_op_space = args.cell_op_space
+
+    print('Cell op space:', hparams.cell_op_space)
 
     controller = NAOController(hparams)
 
     arch_pool = []
-    _prev_n = 0
+
+    if args.exist is not None:
+        with open(args.exist, 'r', encoding='utf-8') as f:
+            for line in f:
+                arch_pool.append(NetCode(json.loads(line)))
+
+    _prev_n = len(arch_pool)
     print('Generate: ', end='')
     while len(arch_pool) < args.n:
         new_arch = controller.generate_arch(1)[0]

@@ -403,3 +403,11 @@ def hparams_de_en_iwslt_add_no_outs():
     hparams.block_combine_no_outs = True
 
     return hparams
+
+
+@register_hparams('de_en_iwslt_nao')
+def hparams_de_en_iwslt_nao():
+    hparams = hparams_de_en_iwslt_add_no_outs()
+    hparams.cell_op_space = 'only-attn'     # [NOTE]: This is dummy now, change it in future.
+
+    return hparams

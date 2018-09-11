@@ -505,17 +505,25 @@ class NAOController(NASController):
         while True:
             comp_nodes = []
             for j in range(num_input_nodes, num_total_nodes):
+                contains_zero = False
+
                 edges = [np.random.randint(0, j) for _ in range(2)]
                 ops = []
                 for _ in range(2):
                     op_name, op_args = supported_ops[np.random.choice(supported_ops_idx)]
+                    if op_name == 'Zero':
+                        contains_zero = True
                     ops.append([op_name] + list(op_args))
 
+                # [NOTE]: If contains Zero op, disable all node ppp.
+                # Reason: 1. can include Transformer as a special case.
+                #         2. When contains Zero, the node ppp will be duplicated with op ppp.
+                ppp_code = ['', ''] if contains_zero else layer.node_ppp_code
                 comp_nodes.append(
                     edges +
                     ops +
                     [layer.node_combine_op] +
-                    layer.node_ppp_code
+                    ppp_code
                 )
 
             # [NOTE]: Skip invalid arches.
@@ -558,11 +566,15 @@ class NAOController(NASController):
             if all(n[2][0] != 'EncoderAttention' and n[3][0] != 'EncoderAttention' for n in block):
                 return False
 
-        # 3. Decoder must contains
+        # 3. Decoder must contains at least one non-NAT layer.
         if self.SkipNAT and not in_encoder:
             nat_layers = 'SelfAttention', 'CNN', 'LSTM'
             if all(n[2][0] not in nat_layers and n[3][0] not in nat_layers for n in block):
                 return False
+
+        # 4. "Zero + Zero" node is invalid.
+        if any(n[2][0] == 'Zero' and n[3][0] == 'Zero' for n in block):
+            return False
 
         return True
 
