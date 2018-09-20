@@ -7,6 +7,7 @@ import copy
 import logging
 import os
 
+import numpy as np
 import torch as th
 import torch.utils.data as th_data
 
@@ -116,6 +117,61 @@ def save_arches(hparams, ctrl_step, arches, arches_perf=None, after_gen=False):
 
     _save('arch_pool{}.json'.format(ctrl_step), 'arch_perf{}.txt'.format(ctrl_step))
     _save('arch_pool_last.json', 'arch_perf_last.txt')
+
+
+def _augment_arch(arch):
+    from ..layers.net_code import NetCode
+
+    in_encoder = np.random.choice([False, True])
+    block = arch.blocks['enc1'] if in_encoder else arch.blocks['dec1']
+
+    valid_indices = [i for i in range(len(block)) if isinstance(block[i], list) and block[i][0] is not None]
+
+    new_net_code = copy.deepcopy(arch.original_code)
+    new_block = new_net_code['Blocks']['enc1'] if in_encoder else new_net_code['Blocks']['dec1']
+
+    # Random select 1 ~ N nodes to swap.
+    n_to_swap = np.random.randint(1, len(valid_indices))
+    node_idx_to_swap = valid_indices[:]
+    np.random.shuffle(node_idx_to_swap)
+    node_idx_to_swap = node_idx_to_swap[:n_to_swap]
+
+    # Swap the two branches of one node.
+    for node_idx in node_idx_to_swap:
+        node = block[node_idx]
+        in1, in2, op1, op2, *extra = node
+        new_node = [in2, in1, op2, op1] + extra
+
+        new_block[node_idx] = new_node
+
+    return NetCode(new_net_code)
+
+
+def arch_augmentation(arch_list, bleu_list, augment_rep=4):
+    """Apply the data augmentation on the architecture list.
+
+    Create some architectures with same semantics.
+
+    Args:
+        arch_list:
+        bleu_list:
+        augment_rep (int):
+
+    Returns:
+
+    """
+
+    orig_len = len(bleu_list)
+    for i in range(orig_len):
+        arch, bleu = arch_list[i], bleu_list[i]
+        for _ in range(augment_rep):
+            new_arch = _augment_arch(arch)
+            if not any(new_arch.fast_eq(a) for a in arch_list):
+                arch_list.append(new_arch)
+                bleu_list.append(bleu)
+    print('Arch augmentation: #Arches from {} to {}'.format(orig_len, len(arch_list)))
+
+    return arch_list, bleu_list
 
 
 def add_nao_search_args(parser):

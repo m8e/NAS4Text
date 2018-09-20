@@ -395,6 +395,18 @@ def hparams_de_en_iwslt_bpe2_darts():
     return hparams
 
 
+@register_hparams('de_en_iwslt_darts_dp')
+def hparams_de_en_iwslt_bpe2_darts_dropout_add_02():
+    hparams = hparams_de_en_iwslt_bpe2_darts()
+
+    hparams.dropout = 0.4
+    hparams.attention_dropout = 0.2
+    hparams.ffn_dropout = 0.2
+    hparams.ppp_dropout = hparams.dropout
+
+    return hparams
+
+
 @register_hparams('de_en_iwslt_add_no_outs')
 def hparams_de_en_iwslt_add_no_outs():
     hparams = hparams_transformer_de_en_iwslt_bpe2_fairseq()
@@ -409,5 +421,17 @@ def hparams_de_en_iwslt_add_no_outs():
 def hparams_de_en_iwslt_nao():
     hparams = hparams_de_en_iwslt_add_no_outs()
     hparams.cell_op_space = 'only-attn'     # [NOTE]: This is dummy now, change it in future.
+
+    return hparams
+
+
+@register_hparams('de_en_iwslt_nao_dp')
+def hparams_de_en_iwslt_bpe2_nao_dropout_add_02():
+    hparams = hparams_de_en_iwslt_nao()
+
+    hparams.dropout = 0.4
+    hparams.attention_dropout = 0.2
+    hparams.ffn_dropout = 0.2
+    hparams.ppp_dropout = hparams.dropout
 
     return hparams

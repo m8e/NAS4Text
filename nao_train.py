@@ -65,6 +65,12 @@ class NAOTrainer(ChildTrainer):
             self.ctrl_optimizer = build_optimizer(ctrl_hparams, self.controller.epd.parameters())
             logging.info('Controller optimizer: {}'.format(self.ctrl_optimizer.__class__.__name__))
 
+        # Meters.
+        self._ctrl_best_pa = {
+            'training': 0.00,
+            'test': 0.00,
+        }
+
     def new_model(self, net_code, device=None, cuda=True):
         result = BlockChildNet(net_code, self.hparams, self.controller)
         if cuda:
@@ -230,16 +236,19 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         split = int(np.floor(len(a) * test_size))
         return (a[split:], p[split:]), (a[:split], p[:split])
 
-    def controller_train_step(self, old_arches, old_arches_perf):
+    def controller_train_step(self, old_arches, old_arches_perf, split_test=True, augment=False, augment_rep=4):
         logging.info('Training Encoder-Predictor-Decoder')
 
-        arch_seqs = [self._parse_arch_to_seq(arch) for arch in old_arches]
         perf = self._normalized_perf(old_arches_perf)
 
-        Split = True
-
-        if Split:
-            train_ap, test_ap = self._shuffle_and_split(arch_seqs, perf, test_size=0.1)
+        if split_test:
+            train_ap, test_ap = self._shuffle_and_split(old_arches, perf, test_size=0.1)
+            if augment:
+                train_ap = nao_utils.arch_augmentation(*train_ap, augment_rep=augment_rep)
+            train_arches, train_bleus = train_ap
+            train_ap = [self._parse_arch_to_seq(arch) for arch in train_arches], train_bleus
+            test_arches, test_bleus = test_ap
+            test_ap = [self._parse_arch_to_seq(arch) for arch in test_arches], test_bleus
 
             ctrl_dataloader = nao_utils.make_ctrl_dataloader(
                 *train_ap, batch_size=self.hparams.ctrl_batch_size,
@@ -248,6 +257,9 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 *test_ap, batch_size=self.hparams.ctrl_batch_size,
                 shuffle=False, sos_id=self.controller.epd.sos_id)
         else:
+            if augment:
+                old_arches, perf = nao_utils.arch_augmentation(old_arches, perf, augment_rep=augment_rep)
+            arch_seqs = [self._parse_arch_to_seq(arch) for arch in old_arches]
             ctrl_dataloader = nao_utils.make_ctrl_dataloader(
                 arch_seqs, perf, batch_size=self.hparams.ctrl_batch_size,
                 shuffle=True, sos_id=self.controller.epd.sos_id)
@@ -316,22 +328,32 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         time = StopwatchMeter()
         time.start()
 
+        def _safe_extend(l, v):
+            v = v.data.squeeze().tolist()
+            if isinstance(v, float):
+                l.append(v)
+            else:
+                l.extend(v)
+
         for step, sample in enumerate(ctrl_dataloader):
             model.eval()
             sample = nao_utils.prepare_ctrl_sample(sample, evaluation=True)
             predict_value, logits, arch = model(sample['encoder_input'])    # target_variable=None
-            predict_value_list.extend(predict_value.data.squeeze().tolist())
-            arch_seq_list.extend(arch.data.squeeze().tolist())
-            ground_truth_perf_list.extend(sample['encoder_target'].data.squeeze().tolist())
-            ground_truth_arch_seq_list.extend(sample['decoder_target'].data.squeeze().tolist())
+            _safe_extend(predict_value_list, predict_value)
+            _safe_extend(arch_seq_list, arch)
+            _safe_extend(ground_truth_perf_list, sample['encoder_target'])
+            _safe_extend(ground_truth_arch_seq_list, sample['decoder_target'])
 
         pairwise_acc = nao_utils.pairwise_accuracy(ground_truth_perf_list, predict_value_list)
         hamming_dis = nao_utils.hamming_distance(ground_truth_arch_seq_list, arch_seq_list)
 
+        if pairwise_acc > self._ctrl_best_pa[subset]:
+            self._ctrl_best_pa[subset] = pairwise_acc
+
         time.stop()
-        logging.info('| ctrl eval ({}) | epoch {:03d} | pairwise accuracy {:<6.6f} |'
-                     ' hamming distance {:<6.6f} | {:<6.2f} secs'.format(
-                      subset, epoch, pairwise_acc, hamming_dis, time.sum))
+        logging.info('| ctrl eval ({}) | epoch {:03d} | PA {:<6.6f} | BestPA {:<6.6f} |'
+                     ' HD {:<6.6f} | {:<6.2f} secs'.format(
+                      subset, epoch, pairwise_acc, self._ctrl_best_pa[subset], hamming_dis, time.sum))
 
     def controller_generate_step(self, old_arches):
         epd = self.controller.epd
@@ -381,6 +403,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             logging.info('{} new arches generated now'.format(len(new_arches)))
 
         self.arch_pool = old_arches + new_arches
+        return self.arch_pool
 
     @staticmethod
     def _arch_contains(arch, arch_list):
@@ -392,7 +415,10 @@ def nao_epd_main(hparams):
     import json
     from libs.layers.net_code import NetCode
 
-    components = mu.main_entry(hparams, train=True, net_code='nao_train')
+    DirName = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results'
+    Iteration = 0
+
+    components = mu.main_entry(hparams, train=True, net_code='nao_train_standalone')
     datasets = components['datasets']
 
     logging.info('Building model')
@@ -402,9 +428,13 @@ def nao_epd_main(hparams):
     mu.logging_model_criterion(model, criterion, logging_params=False)
     mu.logging_training_stats(hparams)
 
+    # Release unused shared weights.
+    trainer.controller.release_shared_weights()
+
     TargetFiles = {
-        'x': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arches.txt',
-        'y': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/bleus.txt',
+        'x': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, '' if Iteration == 0 else Iteration)),
+        'y': os.path.join(DirName, 'bleus-{}{}.txt'.format(hparams.hparams_set, '' if Iteration == 0 else Iteration)),
+        'output': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, Iteration + 1)),
     }
 
     with open(TargetFiles['x'], 'r', encoding='utf-8') as f_x, \
@@ -418,7 +448,19 @@ def nao_epd_main(hparams):
     perf_pool = [perf_pool[i] for i in arches_sorted_indices]
 
     trainer.arch_pool = arch_pool
-    trainer.controller_train_step(arch_pool, perf_pool)
+    split_test = True
+    augment = True
+    augment_rep = 4
+    trainer.controller_train_step(
+        arch_pool, perf_pool, split_test=split_test, augment=augment, augment_rep=augment_rep)
+
+    new_arch_pool = trainer.controller_generate_step(arch_pool)
+    # [NOTE]: Only save unique arches.
+    unique_arch_pool = []
+    for arch in new_arch_pool:
+        if not any(arch.fast_eq(a) for a in arch_pool):
+            unique_arch_pool.append(arch)
+    nao_utils.save_arches(hparams, Iteration, unique_arch_pool, arches_perf=None, after_gen=True)
 
 
 def nao_search_main(hparams):

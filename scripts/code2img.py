@@ -96,6 +96,8 @@ def _get_op_label(op, op_args, hparams, is_combine=False, cell_args=()):
             post_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 1, ''))
         elif str_op == 'Identity':
             pass
+        elif str_op == 'Zero':
+            pass
         elif str_op == 'GroupedLSTM':
             raise NotImplementedError()
         elif str_op == 'EncoderAttention':
@@ -223,6 +225,8 @@ def main(args=None):
         g.node(bcn_name, hparams.block_combine_op)
 
         input_node_indices = []
+        all_nodes = set()
+        used_nodes = set()
         for i, cell in enumerate(block, start=0):
             if isinstance(cell, dict):
                 # TODO: Process block params.
@@ -239,6 +243,9 @@ def main(args=None):
                 g.node(node_name, 'input {}'.format(len(input_node_indices)))
                 input_node_indices.append(i)
             else:
+                all_nodes.add(i)
+                used_nodes.update({in1, in2})
+
                 g.subgraph(_make_cell_subgraph(
                     name, i,
                     in1, in2, (op1, op_args1), (op2, op_args2), (combine_op, combine_op_args), hparams, cell_args))
@@ -250,7 +257,12 @@ def main(args=None):
                     else:
                         g.edge(_name(name, in_, 'combine'), _name(name, i, in_name))
 
-                g.edge(_name(name, i, 'combine'), bcn_name)
+        if hparams.block_combine_no_outs:
+            out_nodes = all_nodes - used_nodes
+        else:
+            out_nodes = all_nodes
+        for i in out_nodes:
+            g.edge(_name(name, i, 'combine'), bcn_name)
 
         g_global.subgraph(g)
 

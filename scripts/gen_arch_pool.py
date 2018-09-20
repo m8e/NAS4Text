@@ -1,7 +1,15 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-"""Generate a large architecture pool."""
+"""Generate a large architecture pool.
+
+Examples
+==========
+
+python scripts\gen_arch_pool.py -n 100 -e ignored_scripts\arch_pool.txt -o ignored_scripts\arch_pool.txt \
+    --dir-output usr_net_code\arch_pool -H models\de_en_iwslt_bpe2\de_en_iwslt_nao\nao_train_large\hparams.json \
+    --cell-op-space only-attn
+"""
 
 import argparse
 import json
@@ -24,8 +32,10 @@ def main(args=None):
     parser.add_argument('-H', '--hparams', help='HParams JSON filename, default is use system default', default=None)
     parser.add_argument('--hparams-set', help='HParams set, default is %(default)r', default=None)
     parser.add_argument('-e', '--exist', help='Exists arch pool filename', default=None)
-    parser.add_argument('-o', '--output', help='Output filename', default=None)
-    parser.add_argument('--dir-output', help='Splitted output directory', default='usr_net_code/arch_pool')
+    parser.add_argument('-o', '--output', default='ignored_scripts/arch_pool.txt',
+                        help = 'Output filename, default is %(default)r')
+    parser.add_argument('--dir-output', default='usr_net_code/arch_pool',
+                        help='Splitted output directory, default is %(default)r')
     parser.add_argument('-n', type=int, help='Arch pool size, default is %(default)s', default=1000)
     parser.add_argument('--cell-op-space', default=None, help='Specify the cell op space, default is %(default)r')
 

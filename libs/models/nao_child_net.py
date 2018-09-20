@@ -1,6 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+import copy
 import logging
 
 import numpy as np
@@ -428,6 +429,10 @@ class NAOController(NASController):
         # EPD.
         self.epd = NaoEpd(hparams, self)
 
+    def release_shared_weights(self):
+        self.shared_weights.cpu()
+        th.cuda.empty_cache()
+
     @staticmethod
     def _reversed_supported_ops(supported_ops):
         """Get reversed supported ops.
@@ -478,9 +483,12 @@ class NAOController(NASController):
         }
 
     def cuda(self, device=None):
-        self.shared_weights.cuda(device)
+        if self.shared_weights is not None:
+            self.shared_weights.cuda(device)
         self.epd.cuda(device)
         return self
+
+    # Arch generation methods.
 
     def _gen_input_nodes(self, layer: NAOLayer):
         num_input_nodes = layer.num_input_nodes
