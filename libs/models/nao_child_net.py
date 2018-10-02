@@ -482,8 +482,8 @@ class NAOController(NASController):
             'residual_projection': layer.residual_projection,
         }
 
-    def cuda(self, device=None):
-        if self.shared_weights is not None:
+    def cuda(self, device=None, only_epd=False):
+        if not only_epd:
             self.shared_weights.cuda(device)
         self.epd.cuda(device)
         return self

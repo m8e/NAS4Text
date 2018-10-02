@@ -44,9 +44,9 @@ class NAOTrainer(ChildTrainer):
     GenSortByLength = False     # Sort by length in generation.
     GenMaxlenB = 100            # Max length bias in generation. (less than normal generation to avoid oom)
 
-    def __init__(self, hparams, criterion):
+    def __init__(self, hparams, criterion, only_cpd_cuda=False):
         # [NOTE]: Model is a "shared" model here.
-        self.controller = NAOController(hparams).cuda()
+        self.controller = NAOController(hparams).cuda(only_epd=only_cpd_cuda)
         super().__init__(hparams, self.controller.shared_weights, criterion)
         self.arch_pool = []
         self.arch_pool_prob = None
@@ -314,6 +314,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             if epoch % self.hparams.ctrl_eval_freq == 0:
                 if ctrl_dataloader is not test_ctrl_dataloader:
                     self.controller_eval_step(test_ctrl_dataloader, epoch, subset='test')
+                    # [NOTE]: Can omit eval on training set to speed up.
                     self.controller_eval_step(ctrl_dataloader, epoch, subset='training')
                 else:
                     self.controller_eval_step(test_ctrl_dataloader, epoch, subset='training')
@@ -330,7 +331,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
         def _safe_extend(l, v):
             v = v.data.squeeze().tolist()
-            if isinstance(v, float):
+            if isinstance(v, (float, int)):
                 l.append(v)
             else:
                 l.extend(v)
@@ -416,25 +417,22 @@ def nao_epd_main(hparams):
     from libs.layers.net_code import NetCode
 
     DirName = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results'
-    Iteration = 0
+    iteration = hparams.sa_iteration
 
     components = mu.main_entry(hparams, train=True, net_code='nao_train_standalone')
     datasets = components['datasets']
 
     logging.info('Building model')
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
-    trainer = NAOTrainer(hparams, criterion)
+    trainer = NAOTrainer(hparams, criterion, only_cpd_cuda=True)
     model = trainer.get_model()
     mu.logging_model_criterion(model, criterion, logging_params=False)
     mu.logging_training_stats(hparams)
 
-    # Release unused shared weights.
-    trainer.controller.release_shared_weights()
-
     TargetFiles = {
-        'x': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, '' if Iteration == 0 else Iteration)),
-        'y': os.path.join(DirName, 'bleus-{}{}.txt'.format(hparams.hparams_set, '' if Iteration == 0 else Iteration)),
-        'output': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, Iteration + 1)),
+        'x': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, iteration)),
+        'y': os.path.join(DirName, 'bleus-{}{}.txt'.format(hparams.hparams_set, iteration)),
+        'output': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, iteration)),
     }
 
     with open(TargetFiles['x'], 'r', encoding='utf-8') as f_x, \
@@ -450,7 +448,7 @@ def nao_epd_main(hparams):
     trainer.arch_pool = arch_pool
     split_test = True
     augment = True
-    augment_rep = 4
+    augment_rep = 8
     trainer.controller_train_step(
         arch_pool, perf_pool, split_test=split_test, augment=augment, augment_rep=augment_rep)
 
@@ -460,7 +458,7 @@ def nao_epd_main(hparams):
     for arch in new_arch_pool:
         if not any(arch.fast_eq(a) for a in arch_pool):
             unique_arch_pool.append(arch)
-    nao_utils.save_arches(hparams, Iteration, unique_arch_pool, arches_perf=None, after_gen=True)
+    nao_utils.save_arches(hparams, iteration, unique_arch_pool, arches_perf=None, after_gen=True)
 
 
 def nao_search_main(hparams):

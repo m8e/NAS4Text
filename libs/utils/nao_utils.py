@@ -4,8 +4,10 @@
 """NAO utils."""
 
 import copy
+import itertools
 import logging
 import os
+import random
 
 import numpy as np
 import torch as th
@@ -119,17 +121,8 @@ def save_arches(hparams, ctrl_step, arches, arches_perf=None, after_gen=False):
     _save('arch_pool_last.json', 'arch_perf_last.txt')
 
 
-def _augment_arch(arch):
-    from ..layers.net_code import NetCode
-
-    in_encoder = np.random.choice([False, True])
-    block = arch.blocks['enc1'] if in_encoder else arch.blocks['dec1']
-
-    valid_indices = [i for i in range(len(block)) if isinstance(block[i], list) and block[i][0] is not None]
-
-    new_net_code = copy.deepcopy(arch.original_code)
-    new_block = new_net_code['Blocks']['enc1'] if in_encoder else new_net_code['Blocks']['dec1']
-
+def _swap_two_branches(block, valid_indices):
+    """Swap two branches of one or more nodes in the block."""
     # Random select 1 ~ N nodes to swap.
     n_to_swap = np.random.randint(1, len(valid_indices))
     node_idx_to_swap = valid_indices[:]
@@ -142,7 +135,32 @@ def _augment_arch(arch):
         in1, in2, op1, op2, *extra = node
         new_node = [in2, in1, op2, op1] + extra
 
-        new_block[node_idx] = new_node
+        block[node_idx] = new_node
+
+
+def _swap_non_ancestor_nodes(block, valid_indices):
+    ancestor_pairs = set()
+
+    for index in valid_indices:
+        node = block[index]
+        in1, in2, *_ = node
+        # TODO: Add into ancestor set
+
+    # TODO
+
+
+def _arch_augment_per_block(arch):
+    """Run the augmentation both for encoder and decoder blocks, and run some wrapper code."""
+    from ..layers.net_code import NetCode
+
+    new_net_code = copy.deepcopy(arch.original_code)
+
+    for in_encoder in [False, True]:
+        block = arch.blocks['enc1'] if in_encoder else arch.blocks['dec1']
+        valid_indices = [i for i in range(len(block)) if isinstance(block[i], list) and block[i][0] is not None]
+        new_block = new_net_code['Blocks']['enc1'] if in_encoder else new_net_code['Blocks']['dec1']
+
+        _swap_two_branches(new_block, valid_indices)
 
     return NetCode(new_net_code)
 
@@ -165,11 +183,11 @@ def arch_augmentation(arch_list, bleu_list, augment_rep=4):
     for i in range(orig_len):
         arch, bleu = arch_list[i], bleu_list[i]
         for _ in range(augment_rep):
-            new_arch = _augment_arch(arch)
+            new_arch = _arch_augment_per_block(arch)
             if not any(new_arch.fast_eq(a) for a in arch_list):
                 arch_list.append(new_arch)
                 bleu_list.append(bleu)
-    print('Arch augmentation: #Arches from {} to {}'.format(orig_len, len(arch_list)))
+    print('Arch augmentation: Rep = {}, #Arches from {} to {}'.format(augment_rep, orig_len, len(arch_list)))
 
     return arch_list, bleu_list
 
@@ -252,6 +270,10 @@ def add_nao_search_args(parser):
                        help='Number of epochs to run between controller savings, default is %(default)s')
     group.add_argument('--ctrl-log-freq', default=50, type=int,
                        help='Number of steps to run between controller logging, default is %(default)s')
+
+    # Standalone hyper-parameters.
+    group.add_argument('--sa-iteration', type=int,
+                       help='Iteration of standalone job')
 
     # TODO
 
