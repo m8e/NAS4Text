@@ -71,6 +71,7 @@ def main_entry(hparams, **kwargs):
     net_code = kwargs.pop('net_code', True)
     if net_code is True:
         code = get_net_code(hparams, modify_hparams=True)
+        logging.info('Net code:\n{}'.format(json.dumps(code.original_code, indent=4)))
     else:
         code = None
         if isinstance(net_code, str):

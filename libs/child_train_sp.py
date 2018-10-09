@@ -47,7 +47,7 @@ def single_process_main(hparams, datasets=None):
     model = get_net_type(net_code)(net_code, hparams)
     model = ParalleledChildNet(model, output_device=hparams.device_id)
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
-    mu.logging_model_criterion(model, criterion)
+    mu.logging_model_criterion(model, criterion, logging_params=False)
 
     # Build trainer
     trainer = ChildTrainer(hparams, model, criterion)

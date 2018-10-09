@@ -94,6 +94,10 @@ def _get_op_label(op, op_args, hparams, is_combine=False, cell_args=()):
         elif str_op == 'PFFN':
             pre_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 0, ''))
             post_list = ss.PPPSpace.get_ops(_get_op_arg(op_args, 1, ''))
+            space = ss.AttentionSpaces[hparams.attn_space]
+            label_list.extend([
+                '#dim={}'.format(_get_op_arg(op_args, 2, default=hparams.attn_d_ff, space=space.FFNSize)),
+            ])
         elif str_op == 'Identity':
             pass
         elif str_op == 'Zero':
