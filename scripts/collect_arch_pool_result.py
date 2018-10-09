@@ -13,8 +13,8 @@ __author__ = 'fyabc'
 PathTemplate = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/log-iter{}/'
 FnTemplate = 'de_en_iwslt_bpe2-{}-arch_{}-base-generate-{}.log.txt'
 TargetFileTemplates = {
-    'x': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arches-{}{}.txt',
-    'y': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/bleus-{}{}.txt',
+    'x': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arches-{}-{}-{}.txt',
+    'y': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/bleus-{}-{}-{}.txt',
 }
 PoolFileTemplate = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arch_pool-{}{}.txt'
 
@@ -32,10 +32,10 @@ Baseline = {
 }
 
 
-def _find_max(l, k=5):
+def _find_max(l, k=5, start=1):
     l = np.array([-100 if e is None else e for e in l])
     topk_index = np.argsort(-l)[:k]
-    return l[topk_index].tolist(), (topk_index + 1).tolist()
+    return l[topk_index].tolist(), (topk_index + start).tolist()
 
 
 def _find_min(l):
@@ -48,6 +48,16 @@ def _find_min(l):
             index = i
             min_val = b
     return min_val, index + 1
+
+
+def _average(l):
+    s, n = 0.0, 0
+    for b in l:
+        if b is None:
+            continue
+        s += b
+        n += 1
+    return s / n
 
 
 def compare_baseline(bleu_list, subset, num_layers=2):
@@ -89,7 +99,9 @@ def real_main(hparams):
     print(''.center(40, '='))
     print('Exist:', n_arches - not_exist - n_empty, 'Not exist:', not_exist, 'Empty:', n_empty)
     print('Empty:', *empty)
-    print('Max: {} at {}'.format(*_find_max(bleu_list)), 'Min: {} at {}'.format(*_find_min(bleu_list)))
+    print('Max: {} at {}'.format(*_find_max(bleu_list, k=10, start=hparams.start)))
+    print('Min: {} at {}'.format(*_find_min(bleu_list)))
+    print('Average: {}'.format(_average(bleu_list)))
 
     num_layers = 2
     print('{} higher than baseline {} on {} set'.format(
@@ -105,8 +117,15 @@ def real_main(hparams):
             if bleu is not None:
                 line_list_out.append(lines[i])
                 bleu_list_out.append(bleu)
-    with open(TargetFileTemplates['x'].format(hparams_set, iteration), 'w', encoding='utf-8') as f_x, \
-            open(TargetFileTemplates['y'].format(hparams_set, iteration), 'w', encoding='utf-8') as f_y:
+    with open(TargetFileTemplates['x'].format(hparams_set, subset, iteration), 'w', encoding='utf-8') as f_x, \
+            open(TargetFileTemplates['y'].format(hparams_set, subset, iteration), 'w', encoding='utf-8') as f_y:
+        # Concat old results.
+        for i in range(1, iteration):
+            with open(TargetFileTemplates['x'].format(hparams_set, subset, i), 'r', encoding='utf-8') as f_x2, \
+                    open(TargetFileTemplates['y'].format(hparams_set, subset, i), 'r', encoding='utf-8') as f_y2:
+                f_x.write(f_x2.read())
+                f_y.write(f_y2.read())
+            print('Concat result of iteration {}'.format(i))
         for line, bleu in zip(line_list_out, bleu_list_out):
             print(line, file=f_x)
             print(bleu, file=f_y)
@@ -129,4 +148,7 @@ def main(args=None):
 
 
 if __name__ == '__main__':
+    # main('-i 1 -s 1 -e 1000 --subset dev'.split(' '))
     main('-i 2 -s 1001 -e 1500 --subset dev'.split(' '))
+    # main('-i 3 -s 1501 -e 1800 --subset dev'.split(' '))
+    pass

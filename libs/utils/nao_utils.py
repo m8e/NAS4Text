@@ -270,6 +270,9 @@ def add_nao_search_args(parser):
                        help='Number of epochs to run between controller savings, default is %(default)s')
     group.add_argument('--ctrl-log-freq', default=50, type=int,
                        help='Number of steps to run between controller logging, default is %(default)s')
+    group.add_argument('--ctrl-eval-train-freq', default=100, type=int,
+                       help='Number of epochs to run between controller training set evaluations, '
+                            'default is %(default)s')
 
     # Standalone hyper-parameters.
     group.add_argument('--sa-iteration', type=int,
@@ -287,6 +290,7 @@ def get_nao_search_args(args=None):
     utils_args.add_general_args(parser)
     utils_args.add_dataset_args(parser, train=True, gen=True)
     utils_args.add_hparams_args(parser)
+    utils_args.add_extra_options_args(parser)
     utils_args.add_train_args(parser)
     utils_args.add_distributed_args(parser)
     utils_args.add_checkpoint_args(parser)

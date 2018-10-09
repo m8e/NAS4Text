@@ -29,9 +29,12 @@ def get_model_path(hparams):
         model_dir = hparams.model_dir
     else:
         model_dir = ModelDir
+    exp_dir = hparams.hparams_set
+    if hparams.exp_dir is not None:
+        exp_dir = os.path.join(exp_dir, hparams.exp_dir)
     return os.path.join(
         model_dir,
-        hparams.task, hparams.hparams_set,
+        hparams.task, exp_dir,
         os.path.splitext(os.path.basename(hparams.net_code_file))[0])
 
 
@@ -41,9 +44,12 @@ def get_translate_output_path(hparams):
         output_dir = hparams.output_dir
     else:
         output_dir = TranslatedOutputDir
+    exp_dir = hparams.hparams_set
+    if hparams.exp_dir is not None:
+        exp_dir = os.path.join(exp_dir, hparams.exp_dir)
     return os.path.join(
         output_dir,
-        hparams.task, hparams.hparams_set,
+        hparams.task, exp_dir,
         os.path.splitext(os.path.basename(hparams.net_code_file))[0])
 
 

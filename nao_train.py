@@ -315,7 +315,8 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 if ctrl_dataloader is not test_ctrl_dataloader:
                     self.controller_eval_step(test_ctrl_dataloader, epoch, subset='test')
                     # [NOTE]: Can omit eval on training set to speed up.
-                    self.controller_eval_step(ctrl_dataloader, epoch, subset='training')
+                    if epoch % self.hparams.ctrl_eval_train_freq == 0:
+                        self.controller_eval_step(ctrl_dataloader, epoch, subset='training')
                 else:
                     self.controller_eval_step(test_ctrl_dataloader, epoch, subset='training')
 
@@ -418,6 +419,7 @@ def nao_epd_main(hparams):
 
     DirName = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results'
     iteration = hparams.sa_iteration
+    subset = 'dev'
 
     components = mu.main_entry(hparams, train=True, net_code='nao_train_standalone')
     datasets = components['datasets']
@@ -430,9 +432,9 @@ def nao_epd_main(hparams):
     mu.logging_training_stats(hparams)
 
     TargetFiles = {
-        'x': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, iteration)),
-        'y': os.path.join(DirName, 'bleus-{}{}.txt'.format(hparams.hparams_set, iteration)),
-        'output': os.path.join(DirName, 'arches-{}{}.txt'.format(hparams.hparams_set, iteration)),
+        'x': os.path.join(DirName, 'arches-{}-{}-{}.txt'.format(hparams.hparams_set, subset, iteration)),
+        'y': os.path.join(DirName, 'bleus-{}-{}-{}.txt'.format(hparams.hparams_set, subset, iteration)),
+        'output': os.path.join(DirName, 'arches-{}-{}-{}.txt'.format(hparams.hparams_set, subset, iteration)),
     }
 
     with open(TargetFiles['x'], 'r', encoding='utf-8') as f_x, \

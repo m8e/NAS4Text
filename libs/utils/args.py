@@ -81,6 +81,10 @@ def add_hparams_args(parser):
     group.add_argument('--clip-norm', default=None, type=float, metavar='NORM',
                        help='clip threshold of gradients')
 
+
+def add_extra_options_args(parser):
+    group = parser.add_argument_group('Extra Options:')
+
     # Arbitrary extra options.
     group.add_argument('--extra-options', default="", type=str, metavar='OPT_STR',
                        help='String to represent extra options, format: comma-separated list of `name=value`')
@@ -188,6 +192,8 @@ def add_checkpoint_args(parser, gen=False):
     group.add_argument('--restore-file', default='checkpoint_last.pt',
                        help='Filename in model directory from which to load checkpoint, '
                             'default is %(default)s')
+    group.add_argument('--exp-dir', default=None,
+                       help='The additional experiment directory, default is %(default)s')
     if not gen:
         group.add_argument('--save-interval', type=int, default=-1, metavar='N',
                            help='save a checkpoint every N updates')
@@ -263,6 +269,7 @@ def get_args(args=None):
 
     add_general_args(parser)
     add_hparams_args(parser)
+    add_extra_options_args(parser)
     add_dataset_args(parser, train=True)
     add_train_args(parser)
     add_distributed_args(parser)
@@ -279,11 +286,14 @@ def get_generator_args(args=None):
     parser = argparse.ArgumentParser(description='Generating Script.')
 
     add_general_args(parser)
+    add_extra_options_args(parser)
     add_checkpoint_args(parser, gen=True)
     add_dataset_args(parser, gen=True)
     add_generation_args(parser)
     # TODO: Add other args.
 
     parsed_args = parser.parse_args(args)
+
+    parse_extra_options(parsed_args)
 
     return parsed_args
