@@ -31,13 +31,20 @@ def main(args=None):
     parser = argparse.ArgumentParser(description='Generate arch pool from net code.')
     parser.add_argument('-H', '--hparams', help='HParams JSON filename, default is use system default', default=None)
     parser.add_argument('--hparams-set', help='HParams set, default is %(default)r', default=None)
-    parser.add_argument('-e', '--exist', help='Exists arch pool filename', default=None)
+    parser.add_argument('--exist', help='Exists arch pool filename', default=None)
     parser.add_argument('-o', '--output', default='ignored_scripts/arch_pool.txt',
                         help = 'Output filename, default is %(default)r')
     parser.add_argument('--dir-output', default='usr_net_code/arch_pool',
                         help='Splitted output directory, default is %(default)r')
+    parser.add_argument('--no-dir-output', action='store_true', default=False, help='Disable split output')
     parser.add_argument('-n', type=int, help='Arch pool size, default is %(default)s', default=1000)
     parser.add_argument('--cell-op-space', default=None, help='Specify the cell op space, default is %(default)r')
+    parser.add_argument('--global-keys', default='',
+                        help='Set comma-separated global keys to search, default is %(default)r')
+    parser.add_argument('-e', '--num-encoder-layers', type=int, default=2,
+                        help='Number of encoder layers, default is %(default)r')
+    parser.add_argument('-d', '--num-decoder-layers', type=int, default=2,
+                        help='Number of decoder layers, default is %(default)r')
 
     args = parser.parse_args(args)
 
@@ -56,6 +63,8 @@ def main(args=None):
             hparams = argparse.Namespace(**json.load(f))
     if args.cell_op_space is not None:
         hparams.cell_op_space = args.cell_op_space
+    hparams.num_encoder_layers = args.num_encoder_layers
+    hparams.num_decoder_layers = args.num_decoder_layers
 
     print('Cell op space:', hparams.cell_op_space)
 
@@ -71,7 +80,7 @@ def main(args=None):
     _prev_n = len(arch_pool)
     print('Generate: ', end='')
     while len(arch_pool) < args.n:
-        new_arch = controller.generate_arch(1)[0]
+        new_arch = controller.generate_arch(1, global_keys=args.global_keys.split(','))[0]
         if not controller.valid_arch(new_arch.blocks['enc1'], True) or \
                 not controller.valid_arch(new_arch.blocks['dec1'], False):
             continue
@@ -82,14 +91,16 @@ def main(args=None):
         _prev_n = len(arch_pool)
     print()
 
-    split_dir = os.path.join(ProjectRoot, args.dir_output)
-    os.makedirs(split_dir, exist_ok=True)
+    if not args.no_dir_output:
+        split_dir = os.path.join(ProjectRoot, args.dir_output)
+        os.makedirs(split_dir, exist_ok=True)
 
     with open(args.output, 'w', encoding='utf-8') as f:
         for i, arch in enumerate(arch_pool, start=1):
             print(json.dumps(arch.original_code), file=f)
-            with open(os.path.join(split_dir, 'arch_{}.json'.format(i)), 'w', encoding='utf-8') as f_split:
-                json.dump(arch.original_code, f_split, indent=4)
+            if not args.no_dir_output:
+                with open(os.path.join(split_dir, 'arch_{}.json'.format(i)), 'w', encoding='utf-8') as f_split:
+                    json.dump(arch.original_code, f_split, indent=4)
 
     print('Generate {} architectures into {}'.format(args.n, args.output))
 

@@ -7,7 +7,9 @@ See ``NetCodeFormat.md`` for details of net code.
 """
 
 from copy import deepcopy
+import itertools
 import json
+import logging
 import os
 import pickle
 import re
@@ -76,11 +78,11 @@ class NetCode:
 
         Assume that:
             Block type same
-            Global same
             Blocks are all "enc1" and "dec1"
             #Layers are same
         """
-        return self.blocks['enc1'] == other.blocks['enc1'] and self.blocks['dec1'] == other.blocks['dec1']
+        return self.global_code == other.global_code and \
+            self.blocks['enc1'] == other.blocks['enc1'] and self.blocks['dec1'] == other.blocks['dec1']
 
     def check_correctness(self):
         # TODO
@@ -101,9 +103,11 @@ class NetCode:
 
         """
         for name, index in self.global_code.items():
-            if getattr(hparams, camel2snake(name), None) is None:
+            c_name = camel2snake(name)
+            if getattr(hparams, c_name, None) is None:
                 value = getattr(GlobalSpace, name)[index]
-                setattr(hparams, camel2snake(name), value)
+                setattr(hparams, c_name, value)
+                logging.info('Overwrite hparam {!r} to value {!r}'.format(c_name, value))
 
     @classmethod
     def convert_old(cls, old_code):
@@ -134,12 +138,30 @@ def load_pickle(fp):
 
 
 def load_net_code_from_file(filename):
-    with open(filename, 'r') as f:
-        ext = os.path.splitext(f.name)[1]
-        if ext == '.json':
-            code = load_json(f)
+    # If there is a colon in filename ("a.json:14"), it means to read line 14 from a.json.
+    colon_pos = filename.rfind(':')
+    line_no = None
+    if colon_pos != -1:
+        line_no = int(filename[colon_pos + 1:])
+        filename = filename[:colon_pos]
+
+    ext = os.path.splitext(filename)[1]
+    if ext in ('.json', '.txt'):
+        mode = 'r'
+    elif ext == '.pkl':
+        mode = 'rb'
+    else:
+        raise ValueError('Does not support this net code file format now')
+
+    with open(filename, mode) as f:
+        lines = f
+        if line_no is not None:
+            lines = itertools.islice(lines, line_no - 1, line_no)
+
+        if ext in ('.json', '.txt'):
+            code = load_json(lines)
         elif ext == '.pkl':
-            code = load_pickle(f)
+            code = load_pickle(lines)
         else:
             raise ValueError('Does not support this net code file format now')
 

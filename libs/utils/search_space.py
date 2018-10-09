@@ -11,7 +11,7 @@ __author__ = 'fyabc'
 
 class GlobalSpace:
     """Global hyperparameters search space."""
-    Dropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    Dropout = [0.1, 0.2, 0.3]
     PPPDropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
     AttentionDropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
     FFNDropout = [0, 0.1, 0.2, 0.3, 0.4, 0.5]

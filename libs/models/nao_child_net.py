@@ -14,6 +14,7 @@ from ..layers.nao_layer import NAOLayer
 from ..layers.nas_controller import NASController
 from ..layers.net_code import NetCode
 from ..layers.common import *
+from ..utils import search_space as ss
 
 
 class NAOChildEncoder(ChildEncoderBase):
@@ -544,10 +545,20 @@ class NAOController(NASController):
 
         return result
 
-    def template_net_code(self, e, d):
+    def _generate_global(self, keys):
+        g_space = ss.GlobalSpace
+        result = {}
+        for key in keys:
+            space_size = len(getattr(g_space, key))
+            result[key] = np.random.randint(0, space_size)
+        return result
+
+    def template_net_code(self, e, d, global_dict=None):
+        if global_dict is None:
+            global_dict = {}
         return NetCode({
             'Type': 'BlockChildNet',
-            'Global': {},
+            'Global': global_dict,
             'Blocks': {
                 'enc1': e,
                 'dec1': d,
@@ -586,11 +597,14 @@ class NAOController(NASController):
 
         return True
 
-    def generate_arch(self, n):
+    def generate_arch(self, n, global_keys=()):
         enc0 = self.shared_weights.encoder.layers[0]
         dec0 = self.shared_weights.decoder.layers[0]
+        global_dict = self._generate_global(global_keys)
 
-        return [self.template_net_code(self._generate_block(enc0), self._generate_block(dec0)) for _ in range(n)]
+        return [
+            self.template_net_code(self._generate_block(enc0), self._generate_block(dec0), global_dict=global_dict)
+            for _ in range(n)]
 
     # Arch - Sequence transforming and related methods.
 
@@ -614,7 +628,7 @@ class NAOController(NASController):
 
         Returns:
             A list of integers.
-            Length: 2 (enc/dec) * #nodes * 4 (2 inputs + 2 ops)
+            Length: 2 (enc/dec) * #nodes * 4 (2 inputs + 2 ops) + #globals
 
         # TODO: Add doctest here.
         """
