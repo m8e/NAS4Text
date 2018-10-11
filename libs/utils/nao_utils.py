@@ -19,16 +19,9 @@ from . import common
 __author__ = 'fyabc'
 
 
-def add_seq_noise(encoder_input):
-    # Add sequence noise (random swap, etc.)
-    return encoder_input
-
-
-def make_ctrl_dataloader(arch_seqs, perf, batch_size, shuffle, sos_id, add_noise=False):
+def make_ctrl_dataloader(arch_seqs, perf, batch_size, shuffle, sos_id):
     # Build inputs, and collect them into batches. [batch_size, source_length]
     encoder_input = copy.copy(arch_seqs)
-    if add_noise:
-        encoder_input = add_seq_noise(encoder_input)
 
     encoder_target = perf
     source_length = len(encoder_input)

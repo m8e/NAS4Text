@@ -138,14 +138,15 @@ def load_pickle(fp):
 
 
 def load_net_code_from_file(filename):
-    # If there is a colon in filename ("a.json:14"), it means to read line 14 from a.json.
-    colon_pos = filename.rfind(':')
+    base, ext = os.path.splitext(filename)
+
+    # If there is a colon in filename ("a:14.json"), it means to read line 14 from a.json.
+    colon_pos = base.rfind(':')
     line_no = None
     if colon_pos != -1:
-        line_no = int(filename[colon_pos + 1:])
-        filename = filename[:colon_pos]
+        line_no = int(base[colon_pos + 1:])
+        filename = base[:colon_pos] + ext
 
-    ext = os.path.splitext(filename)[1]
     if ext in ('.json', '.txt'):
         mode = 'r'
     elif ext == '.pkl':
@@ -179,6 +180,8 @@ def get_net_code(hparams, modify_hparams=True):
 
     """
     result = load_net_code_from_file(hparams.net_code_file)
+    # Replace illegal characters.
+    hparams.net_code_file = hparams.net_code_file.replace(':', '_')
     if modify_hparams:
         result.modify_hparams(hparams)
     return result
