@@ -276,10 +276,11 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
                 sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
 
-                # print('#encoder_input', sample['encoder_input'].shape, sample['encoder_input'])
-                # print('#encoder_target', sample['encoder_target'].shape, sample['encoder_target'])
-                # print('#decoder_input', sample['decoder_input'].shape, sample['decoder_input'])
-                # print('#decoder_target', sample['decoder_target'].shape, sample['decoder_target'])
+                print('#encoder_input', sample['encoder_input'].shape, sample['encoder_input'])
+                print('#encoder_target', sample['encoder_target'].shape, sample['encoder_target'])
+                print('#decoder_input', sample['decoder_input'].shape, sample['decoder_input'])
+                print('#decoder_target', sample['decoder_target'].shape, sample['decoder_target'])
+                exit()
 
                 # FIXME: Use ParallelModel here?
                 predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])
@@ -392,11 +393,9 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             for arch_seq in new_arch_seq_list:
                 # Insert new arches (skip same and invalid).
                 # [NOTE]: Reduce the "ctrl_trade_off" value to let it generate different architectures.
-                e, d = self.controller.parse_seq_to_blocks(arch_seq)
-                # print('#e, d', e, '\n', d)
-                if not (self.controller.valid_arch(e, True) and self.controller.valid_arch(d, False)):
+                arch = self.controller.parse_seq_to_arch(arch_seq)
+                if arch is None:
                     continue
-                arch = self.controller.template_net_code(e, d)
 
                 if not self._arch_contains(arch, old_arches) and not self._arch_contains(arch, new_arches):
                     new_arches.append(arch)
@@ -421,7 +420,8 @@ def nao_epd_main(hparams):
     iteration = hparams.sa_iteration
     subset = 'dev'
 
-    components = mu.main_entry(hparams, train=True, net_code='nao_train_standalone')
+    components = mu.main_entry(
+        hparams, train=True, net_code='nao_train_standalone', hparams_ppp=nao_utils.hparams_ppp_nao)
     datasets = components['datasets']
 
     logging.info('Building model')
@@ -464,7 +464,8 @@ def nao_epd_main(hparams):
 
 
 def nao_search_main(hparams):
-    components = mu.main_entry(hparams, train=True, net_code='nao_train')
+    components = mu.main_entry(
+        hparams, train=True, net_code='nao_train', hparams_ppp=nao_utils.hparams_ppp_nao)
     datasets = components['datasets']
 
     logging.info('Building model')
@@ -473,6 +474,9 @@ def nao_search_main(hparams):
     model = trainer.get_model()
     mu.logging_model_criterion(model, criterion, logging_params=False)
     mu.logging_training_stats(hparams)
+
+    # Used to skip child training and evaluation in debug mode.
+    debug_epd = True
 
     max_ctrl_step = hparams.max_ctrl_step or math.inf
     ctrl_step = 1
@@ -485,10 +489,13 @@ def nao_search_main(hparams):
         # Train child model.
         trainer.init_arch_pool()
 
-        trainer.train_children(datasets)
+        if debug_epd:
+            valid_acc_list = list(np.linspace(0.0, 1.0, len(trainer.arch_pool)))
+        else:
+            trainer.train_children(datasets)
 
-        # Evaluate seed arches.
-        valid_acc_list = trainer.eval_children(datasets, compute_loss=False)
+            # Evaluate seed arches.
+            valid_acc_list = trainer.eval_children(datasets, compute_loss=False)
 
         # Output arches and evaluated error rate.
         old_arches = trainer.arch_pool

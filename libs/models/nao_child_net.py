@@ -15,6 +15,7 @@ from ..layers.nas_controller import NASController
 from ..layers.net_code import NetCode
 from ..layers.common import *
 from ..utils import search_space as ss
+from ..utils.registry_utils import camel2snake
 
 
 class NAOChildEncoder(ChildEncoderBase):
@@ -154,7 +155,8 @@ class NaoEpd(nn.Module):
         self.mlp_dropout_p = self.hparams.ctrl_mlp_dropout
         self.dec_dropout_p = self.hparams.ctrl_dec_dropout
 
-        src_length = controller.expected_source_length()
+        self.block_length, self.global_length = controller.expected_source_length(get_global=True)
+        src_length = self.block_length + self.global_length
         self.src_length = src_length
         self.enc_length = src_length if self.hparams.ctrl_enc_length is None else self.hparams.ctrl_enc_length
         self.dec_length = src_length if self.hparams.ctrl_dec_length is None else self.hparams.ctrl_dec_length
@@ -202,9 +204,9 @@ class NaoEpd(nn.Module):
 
         self.decode_function = F.log_softmax
 
-        self.logging_self()
+        self._logging_self()
 
-    def logging_self(self):
+    def _logging_self(self):
         logging.info('Controller model structure:\n{}'.format(self))
         logging.info('All model parameters:')
         num_parameters = 0
@@ -213,7 +215,7 @@ class NaoEpd(nn.Module):
             num_parameters += param.numel()
         logging.info('Number of parameters: {}'.format(num_parameters))
 
-    def encode(self, encoder_input):
+    def _encode(self, encoder_input):
         embedded = self.encoder_emb(encoder_input)
         embedded = self.encoder_dropout(embedded)
 
@@ -243,7 +245,7 @@ class NaoEpd(nn.Module):
         return encoder_outputs, encoder_state, arch_emb, predict_value
 
     def encoder_infer(self, encoder_input, predict_lambda):
-        encoder_outputs, encoder_state, arch_emb, predict_value = self.encode(encoder_input)
+        encoder_outputs, encoder_state, arch_emb, predict_value = self._encode(encoder_input)
         grads_on_outputs = th.autograd.grad(predict_value, encoder_outputs, th.ones_like(predict_value))[0]
         new_encoder_outputs = encoder_outputs - predict_lambda * grads_on_outputs
         new_encoder_outputs = F.normalize(new_encoder_outputs, 2, dim=-1)
@@ -251,7 +253,7 @@ class NaoEpd(nn.Module):
         new_arch_emb = F.normalize(new_arch_emb, 2, dim=-1)
         return encoder_outputs, encoder_state, arch_emb, predict_value, new_encoder_outputs, new_arch_emb
 
-    def decode_step(self, x, hidden, encoder_outputs, fn):
+    def _decode_step(self, x, hidden, encoder_outputs, fn):
         batch_size = x.size(0)
         output_size = x.size(1)
         embedded = self.decoder_emb(x)
@@ -263,7 +265,7 @@ class NaoEpd(nn.Module):
             batch_size, output_size, -1)
         return predicted_softmax, hidden, attn
 
-    def decode(self, x, encoder_hidden=None, encoder_outputs=None, fn=F.log_softmax):
+    def _decode(self, x, encoder_hidden=None, encoder_outputs=None, fn=F.log_softmax):
         """
 
         Args:
@@ -280,7 +282,7 @@ class NaoEpd(nn.Module):
         }
 
         x, batch_size, length = self._validate_decoder_args(x, encoder_hidden, encoder_outputs)
-        assert length == self.dec_length
+        assert length == self.dec_length, 'Length mismatch: {} vs {}'.format(length, self.dec_length)
         decoder_hidden = self._init_decoder_state(encoder_hidden)
         decoder_outputs = []
         sequence_symbols = []
@@ -297,6 +299,7 @@ class NaoEpd(nn.Module):
             Returns:
                 Tensor (batch_size, 1)
             """
+            # TODO: Change id mapping.
             decoder_outputs.append(step_output)
             ret_dict[self.KeyAttnScore].append(step_attn)
 
@@ -327,12 +330,19 @@ class NaoEpd(nn.Module):
                     lengths[update_idx] = len(sequence_symbols)
             return symbols
 
+        def _repr2global(step, step_output, step_attn):
+            # TODO
+            pass
+
         decoder_input = x[:, 0].unsqueeze(1)
         for di in range(length):
-            decoder_output, decoder_hidden, step_attn = self.decode_step(
+            decoder_output, decoder_hidden, step_attn = self._decode_step(
                 decoder_input, decoder_hidden, encoder_outputs, fn=fn)
             step_output = decoder_output.squeeze(1)
-            symbols = _repr2seq(di, step_output, step_attn)
+            if di < self.block_length:
+                symbols = _repr2seq(di, step_output, step_attn)
+            else:
+                symbols = _repr2global(di, step_output, step_attn)
             decoder_input = symbols
 
         ret_dict[self.KeySequence] = sequence_symbols
@@ -341,13 +351,13 @@ class NaoEpd(nn.Module):
         return decoder_outputs, decoder_hidden, ret_dict
 
     def decoder_infer(self, x, encoder_hidden=None, encoder_outputs=None):
-        decoder_outputs, decoder_hidden, _ = self.decode(x, encoder_hidden, encoder_outputs)
+        decoder_outputs, decoder_hidden, _ = self._decode(x, encoder_hidden, encoder_outputs)
         return decoder_outputs, decoder_hidden
 
     def forward(self, input_variable, target_variable=None):
-        encoder_outputs, encoder_hidden, arch_emb, predict_value = self.encode(input_variable)
+        encoder_outputs, encoder_hidden, arch_emb, predict_value = self._encode(input_variable)
         encoder_hidden = (arch_emb.unsqueeze(0), arch_emb.unsqueeze(0))
-        decoder_outputs, decoder_hidden, ret = self.decode(
+        decoder_outputs, decoder_hidden, ret = self._decode(
             target_variable, encoder_hidden, encoder_outputs, fn=self.decode_function)
         decoder_outputs = th.stack(decoder_outputs, 0).permute(1, 0, 2).contiguous()
         arch = th.stack(ret[self.KeySequence], 0).permute(1, 0, 2).contiguous()
@@ -366,7 +376,7 @@ class NaoEpd(nn.Module):
         encoder_outputs, encoder_hidden, arch_emb, predict_value, new_encoder_outputs, new_arch_emb = \
             self.encoder_infer(input_variable, predict_lambda)
         new_encoder_hidden = (new_arch_emb.unsqueeze(0), new_arch_emb.unsqueeze(0))
-        decoder_outputs, decoder_hidden, ret = self.decode(
+        decoder_outputs, decoder_hidden, ret = self._decode(
             None, new_encoder_hidden, new_encoder_outputs, fn=self.decode_function)
         new_arch = th.stack(ret[self.KeySequence], 0).permute(1, 0, 2).contiguous()
         return new_arch
@@ -553,7 +563,7 @@ class NAOController(NASController):
             result[key] = np.random.randint(0, space_size)
         return result
 
-    def template_net_code(self, e, d, global_dict=None):
+    def _template_net_code(self, e, d, global_dict=None):
         if global_dict is None:
             global_dict = {}
         return NetCode({
@@ -603,7 +613,7 @@ class NAOController(NASController):
         global_dict = self._generate_global(global_keys)
 
         return [
-            self.template_net_code(self._generate_block(enc0), self._generate_block(dec0), global_dict=global_dict)
+            self._template_net_code(self._generate_block(enc0), self._generate_block(dec0), global_dict=global_dict)
             for _ in range(n)]
 
     # Arch - Sequence transforming and related methods.
@@ -612,13 +622,19 @@ class NAOController(NASController):
         """Parse architecture to sequence.
 
         Format:
+        # TODO: Change the format, insert global code at first.
+            seq of global keys: Integer in
+                [1, num_global_keys]
+                (real value + 1)
+
             seq of enc1 + seq of dec1
             -> seq of block: [seq of ops]
             -> seq of op: [in1, op1_index, in2, op2_index]
-            -> inX: Integer in [1, num_total_nodes - 1]
-                (real value + 1)
-            -> opX_index: Integer in [num_total_nodes, num_total_nodes + num_total_ops - 1]
-                (real value + num_total_nodes)
+            -> inX: Integer in [num_global_keys + 1, num_global_keys + num_total_nodes - 1]
+                (real value + num_global_keys + 1)
+            -> opX_index: Integer in
+                [num_global_keys + num_total_nodes, num_global_keys + num_total_nodes + num_total_ops - 1]
+                (real value + num_global_keys + num_total_nodes)
 
             num_total_nodes = hparams.num_total_nodes
             For each inX of node[i], inX in [1, i]
@@ -628,12 +644,13 @@ class NAOController(NASController):
 
         Returns:
             A list of integers.
-            Length: 2 (enc/dec) * #nodes * 4 (2 inputs + 2 ops) + #globals
+            Length: 2 (enc/dec) * #nodes * 4 (2 inputs + 2 ops) + #hparams.ctrl_global_keys
 
         # TODO: Add doctest here.
         """
 
-        num_total_nodes = self._layer(True, 0).num_total_nodes
+        lb_globals, lb_nodes = self.expected_global_range()
+        lb_ops = self.expected_index_range()[1]
 
         def _parse_block(block, in_encoder):
             _so = self._supported_ops_r_cache[in_encoder]
@@ -647,18 +664,42 @@ class NAOController(NASController):
                 for in_, op in zip((in1, in2), (op1, op2)):
                     op_name, *op_args = op
                     op_idx = _so[op_name, tuple(op_args)]
-                    seq.extend([in_ + 1, op_idx + num_total_nodes])
+                    seq.extend([in_ + lb_nodes, op_idx + lb_ops])
             return seq
 
-        return _parse_block(arch.blocks['enc1'], True) + _parse_block(arch.blocks['dec1'], False)
+        def _parse_global(global_code):
+            seq = []
+            for key in self.hparams.ctrl_global_keys:
+                index = global_code.get(key, None)
+                if index is None:
+                    space = getattr(ss.GlobalSpace, key)
+                    default_value = getattr(self.hparams, camel2snake(key))
+                    index = space.index(default_value)
+                seq.append(index + lb_globals)
+            return seq
 
-    def parse_seq_to_blocks(self, seq):
-        length = self.expected_source_length()
+        return _parse_block(arch.blocks['enc1'], True) + _parse_block(arch.blocks['dec1'], False) + \
+            _parse_global(arch.global_code)
+
+    def parse_seq_to_arch(self, seq):
+        """
+
+        Args:
+            seq (list):
+
+        Returns:
+            NetCode instance of seq.
+            Return None if invalid.
+        """
+        block_length, global_length = self.expected_source_length(get_global=True)
+        length = block_length + global_length
         assert len(seq) == length, 'The length is expected to be {}, but got {}'.format(length, len(seq))
 
-        num_total_nodes = self._layer(True, 0).num_total_nodes
+        lb_globals, lb_nodes = self.expected_global_range()
+        lb_ops = self.expected_index_range()[1]
 
         enc1, dec1 = [], []
+        global_dict = {}
 
         enc0 = self.shared_weights.encoder.layers[0]
         dec0 = self.shared_weights.decoder.layers[0]
@@ -670,48 +711,61 @@ class NAOController(NASController):
         ops = []
 
         for index, x in enumerate(seq):
-            ed, ed_idx = divmod(index, length // 2)
-            in_encoder = True if ed == 0 else False
-            node, i = divmod(ed_idx, 4)
+            if index < block_length:
+                ed, ed_idx = divmod(index, block_length // 2)
+                in_encoder = True if ed == 0 else False
+                node, i = divmod(ed_idx, 4)
 
-            block = enc1 if in_encoder else dec1
-            layer = enc0 if in_encoder else dec0
-            _supported_ops = self._supported_ops_cache[in_encoder]
+                block = enc1 if in_encoder else dec1
+                layer = enc0 if in_encoder else dec0
+                _supported_ops = self._supported_ops_cache[in_encoder]
 
-            if i == 0:
-                # Refresh.
-                ins, ops = [], []
+                if i == 0:
+                    # Refresh.
+                    ins, ops = [], []
 
-            if i in (0, 2):
-                # Add input index.
-                ins.append(x - 1)
-            if i in (1, 3):
-                op_name, op_args = _supported_ops[x - num_total_nodes]
-                ops.append([op_name] + list(op_args))
+                if i in (0, 2):
+                    # Add input index.
+                    ins.append(x - lb_nodes)
+                if i in (1, 3):
+                    op_name, op_args = _supported_ops[x - lb_ops]
+                    ops.append([op_name] + list(op_args))
 
-            if i == 3:
-                # Append the new node.
-                block.append(ins + ops + [layer.node_combine_op] + layer.node_ppp_code)
+                if i == 3:
+                    # Append the new node.
+                    block.append(ins + ops + [layer.node_combine_op] + layer.node_ppp_code)
+            else:
+                # TODO: Parse global dict
+                pass
 
         enc1.append(self._gen_node_ppp(enc0))
         dec1.append(self._gen_node_ppp(dec0))
 
-        return enc1, dec1
+        if not (self.valid_arch(enc1, True) and self.valid_arch(dec1, False)):
+            return None
+        return self._template_net_code(enc1, dec1, global_dict=global_dict)
 
-    def expected_source_length(self):
-        """Get the expected source length of the sequence.
+    def expected_source_length(self, get_global=False):
+        """Get the expected source length and global keys length of the sequence.
         See ``NAOController.parse_arch_to_seq`` for the details of the equation.
         """
-        return 2 * self.hparams.num_nodes * 4
+        result = 2 * self.hparams.num_nodes * 4
+        if get_global:
+            return result, len(self.hparams.ctrl_global_keys)
+        return result
+
+    def expected_global_range(self):
+        return 1, len(self.hparams.ctrl_global_keys) + 1
 
     def expected_index_range(self):
         """Get the [low, high) range of the input indices."""
-        return 1, self._layer(True, 0).num_total_nodes
+        lower_bound = self.expected_global_range()[1]
+        return lower_bound, lower_bound + self._layer(True, 0).num_total_nodes - 1
 
     def expected_op_range(self, in_encoder):
         """Get the [low, high) range of the op indices."""
-        num_total_nodes = self._layer(True, 0).num_total_nodes
-        return num_total_nodes, num_total_nodes + len(self._supported_ops_r_cache[in_encoder])
+        lower_bound = self.expected_index_range()[1]
+        return lower_bound, lower_bound + len(self._supported_ops_r_cache[in_encoder])
 
     def expected_vocab_size(self, in_encoder):
         """Get the expected vocabulary size."""

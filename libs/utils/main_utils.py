@@ -48,6 +48,7 @@ def main_entry(hparams, **kwargs):
             :key train (bool): In training or generation. (True)
             :key net_code (bool or str): Get net code or not. (True)
                 If it is a string, use this string as net code filename prefix to store models and translated outputs.
+            :key hparams_ppp (callable): HParams postprocessor.
 
     Returns:
         dict: Contains several components.
@@ -83,6 +84,9 @@ def main_entry(hparams, **kwargs):
         hparams.lr = list(map(float, hparams.lr.split(',')))
         if hparams.max_sentences_valid is None:
             hparams.max_sentences_valid = hparams.max_sentences
+        hparams_ppp = kwargs.pop('hparams_ppp', None)
+        if hparams_ppp is not None:
+            hparams_ppp(hparams)
 
     logging.info('Child {} hparams:\n{}'.format(title, pprint.pformat(hparams.__dict__)))
     if train_:

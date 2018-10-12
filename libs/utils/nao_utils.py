@@ -221,6 +221,8 @@ def add_nao_search_args(parser):
                        help='Controller encoder length, default same as source length')
     group.add_argument('--ctrl-dec-length', default=None, type=int,
                        help='Controller decoder length, default same as source length')
+    group.add_argument('--ctrl-global-keys', default='',
+                       help='Comma-separated global keys to be searched, default is %(default)r')
     group.add_argument('--ctrl-enc-vocab-size', default=None, type=int,
                        help='Controller encoder embedding size, default is automatically detected')
     group.add_argument('--ctrl-dec-vocab-size', default=None, type=int,
@@ -295,3 +297,7 @@ def get_nao_search_args(args=None):
     utils_args.parse_extra_options(parsed_args)
 
     return parsed_args
+
+
+def hparams_ppp_nao(hparams):
+    hparams.ctrl_global_keys = hparams.ctrl_global_keys.split(',')
