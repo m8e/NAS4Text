@@ -276,11 +276,13 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
                 sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
 
-                print('#encoder_input', sample['encoder_input'].shape, sample['encoder_input'])
-                print('#encoder_target', sample['encoder_target'].shape, sample['encoder_target'])
-                print('#decoder_input', sample['decoder_input'].shape, sample['decoder_input'])
-                print('#decoder_target', sample['decoder_target'].shape, sample['decoder_target'])
-                exit()
+                # print('#Expected global range:', self.controller.expected_global_range())
+                # print('#Expected node range:', self.controller.expected_index_range())
+                # print('#Expected op range:', self.controller.expected_op_range(False), self.controller.expected_op_range(True))
+                # print('#encoder_input', sample['encoder_input'].shape, sample['encoder_input'][0])
+                # print('#encoder_target', sample['encoder_target'].shape, sample['encoder_target'][0])
+                # print('#decoder_input', sample['decoder_input'].shape, sample['decoder_input'][0])
+                # print('#decoder_target', sample['decoder_target'].shape, sample['decoder_target'][0])
 
                 # FIXME: Use ParallelModel here?
                 predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])

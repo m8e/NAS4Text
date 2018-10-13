@@ -140,9 +140,10 @@ class NaoEpd(nn.Module):
         super().__init__()
         self.hparams = hparams
 
-        self.enc_vocab_size = controller.expected_vocab_size(True) if self.hparams.ctrl_enc_vocab_size is None \
+        expected_vocab_size = controller.expected_vocab_size()
+        self.enc_vocab_size = expected_vocab_size if self.hparams.ctrl_enc_vocab_size is None \
             else self.hparams.ctrl_enc_vocab_size
-        self.dec_vocab_size = controller.expected_vocab_size(False) if self.hparams.ctrl_dec_vocab_size is None \
+        self.dec_vocab_size = expected_vocab_size if self.hparams.ctrl_dec_vocab_size is None \
             else self.hparams.ctrl_dec_vocab_size
         self.num_enc_layers = self.hparams.ctrl_num_encoder_layers
         self.num_dec_layers = self.hparams.ctrl_num_decoder_layers
@@ -161,6 +162,7 @@ class NaoEpd(nn.Module):
         self.enc_length = src_length if self.hparams.ctrl_enc_length is None else self.hparams.ctrl_enc_length
         self.dec_length = src_length if self.hparams.ctrl_dec_length is None else self.hparams.ctrl_dec_length
         self.eos_id, self.sos_id = 0, 0
+        self.global_range = controller.expected_global_range()
         self.index_range = controller.expected_index_range()
         self.enc_op_range, self.dec_op_range = controller.expected_op_range(True), controller.expected_op_range(False)
         self.num_input_nodes = controller.example_layer().num_input_nodes
@@ -226,7 +228,6 @@ class NaoEpd(nn.Module):
             ratio = self.src_length // self.enc_length
             embedded = embedded.view(-1, self.enc_length, ratio * self.enc_emb_size)
 
-        # TODO: CuDNN error here on Azure017: "indexSelectLargeIndex" assertion failed and CUDNN_STATUS_NOT_INITIALIZED.
         out, hidden = self.encoder(embedded)
         out = F.normalize(out, 2, dim=-1)
         encoder_outputs, encoder_state = out, hidden
@@ -287,6 +288,8 @@ class NaoEpd(nn.Module):
         decoder_outputs = []
         sequence_symbols = []
         lengths = np.array([length] * batch_size)
+        lb_nodes = self.index_range[0]
+        global_range = self.global_range
 
         def _repr2seq(step, step_output, step_attn):
             """Sample the sequence from the decoder output representation.
@@ -299,26 +302,33 @@ class NaoEpd(nn.Module):
             Returns:
                 Tensor (batch_size, 1)
             """
-            # TODO: Change id mapping.
             decoder_outputs.append(step_output)
             ret_dict[self.KeyAttnScore].append(step_attn)
 
-            # Split the step into (in_encoder, node_index, i).
-            # i: [in1, op1, in2, op2]
-            ed, ed_idx = divmod(step, length // 2)
-            in_encoder = ed == 0
-            node_idx, i = divmod(ed_idx, 4)
+            if step >= self.block_length:
+                # Globals.
+                i = step - self.block_length
+                symbols = step_output[:, global_range[i]:global_range[i + 1]].argmax(dim=-1)\
+                    .unsqueeze(1) + global_range[i]
+            else:
+                # Nodes and ops.
+                # Split the step into (in_encoder, node_index, i).
+                # i: [in1, op1, in2, op2]
+                ed, ed_idx = divmod(step, length // 2)
+                in_encoder = ed == 0
+                node_idx, i = divmod(ed_idx, 4)
 
-            op_range = self.enc_op_range if in_encoder else self.dec_op_range
+                op_range = self.enc_op_range if in_encoder else self.dec_op_range
 
-            if i in (0, 2):     # Input index, should be in [1, node_idx + num_input_nodes + 1)
-                if self.NoEOS:
-                    symbols = step_output[:, 1:node_idx + self.num_input_nodes + 1].argmax(dim=-1).unsqueeze(1) + 1
-                else:
-                    # TODO: If allow EOS, need to generate EOS at i == 0.
-                    raise NotImplementedError('EOS in decoder is not implemented now.')
-            else:   # i in (1, 3), Op index, should be in [num_total_nodes, num_total_nodes + num_ops)
-                symbols = step_output[:, op_range[0]:op_range[1]].argmax(dim=-1).unsqueeze(1) + op_range[0]
+                if i in (0, 2):     # Input index, should be in [1, node_idx + num_input_nodes + 1)
+                    if self.NoEOS:
+                        symbols = step_output[:, lb_nodes:node_idx + self.num_input_nodes + lb_nodes].argmax(dim=-1)\
+                            .unsqueeze(1) + lb_nodes
+                    else:
+                        # TODO: If allow EOS, need to generate EOS at i == 0.
+                        raise NotImplementedError('EOS in decoder is not implemented now.')
+                else:   # i in (1, 3), Op index, should be in [num_total_nodes, num_total_nodes + num_ops)
+                    symbols = step_output[:, op_range[0]:op_range[1]].argmax(dim=-1).unsqueeze(1) + op_range[0]
             sequence_symbols.append(symbols)
 
             if not self.NoEOS:
@@ -330,19 +340,12 @@ class NaoEpd(nn.Module):
                     lengths[update_idx] = len(sequence_symbols)
             return symbols
 
-        def _repr2global(step, step_output, step_attn):
-            # TODO
-            pass
-
         decoder_input = x[:, 0].unsqueeze(1)
         for di in range(length):
             decoder_output, decoder_hidden, step_attn = self._decode_step(
                 decoder_input, decoder_hidden, encoder_outputs, fn=fn)
             step_output = decoder_output.squeeze(1)
-            if di < self.block_length:
-                symbols = _repr2seq(di, step_output, step_attn)
-            else:
-                symbols = _repr2global(di, step_output, step_attn)
+            symbols = _repr2seq(di, step_output, step_attn)
             decoder_input = symbols
 
         ret_dict[self.KeySequence] = sequence_symbols
@@ -436,6 +439,8 @@ class NAOController(NASController):
             True: {v: k for k, v in self._supported_ops_r_cache[True].items()},
             False: {v: k for k, v in self._supported_ops_r_cache[False].items()},
         }
+
+        self._global_size_cache = None
 
         # EPD.
         self.epd = NaoEpd(hparams, self)
@@ -649,7 +654,7 @@ class NAOController(NASController):
         # TODO: Add doctest here.
         """
 
-        lb_globals, lb_nodes = self.expected_global_range()
+        *lb_globals_list, lb_nodes = self.expected_global_range()
         lb_ops = self.expected_index_range()[1]
 
         def _parse_block(block, in_encoder):
@@ -669,13 +674,13 @@ class NAOController(NASController):
 
         def _parse_global(global_code):
             seq = []
-            for key in self.hparams.ctrl_global_keys:
+            for i, key in enumerate(self.hparams.ctrl_global_keys):
                 index = global_code.get(key, None)
                 if index is None:
                     space = getattr(ss.GlobalSpace, key)
                     default_value = getattr(self.hparams, camel2snake(key))
                     index = space.index(default_value)
-                seq.append(index + lb_globals)
+                seq.append(index + lb_globals_list[i])
             return seq
 
         return _parse_block(arch.blocks['enc1'], True) + _parse_block(arch.blocks['dec1'], False) + \
@@ -695,7 +700,7 @@ class NAOController(NASController):
         length = block_length + global_length
         assert len(seq) == length, 'The length is expected to be {}, but got {}'.format(length, len(seq))
 
-        lb_globals, lb_nodes = self.expected_global_range()
+        *lb_globals_list, lb_nodes = self.expected_global_range()
         lb_ops = self.expected_index_range()[1]
 
         enc1, dec1 = [], []
@@ -755,21 +760,28 @@ class NAOController(NASController):
         return result
 
     def expected_global_range(self):
-        return 1, len(self.hparams.ctrl_global_keys) + 1
+        if self._global_size_cache is None:
+            space = ss.GlobalSpace
+            self._global_size_cache = [1]
+            for key in self.hparams.ctrl_global_keys:
+                self._global_size_cache.append(len(getattr(space, key)) + self._global_size_cache[-1])
+        return tuple(self._global_size_cache)
 
     def expected_index_range(self):
         """Get the [low, high) range of the input indices."""
-        lower_bound = self.expected_global_range()[1]
+        lower_bound = self.expected_global_range()[-1]
         return lower_bound, lower_bound + self._layer(True, 0).num_total_nodes - 1
 
     def expected_op_range(self, in_encoder):
         """Get the [low, high) range of the op indices."""
-        lower_bound = self.expected_index_range()[1]
+        lower_bound = self.expected_index_range()[-1]
         return lower_bound, lower_bound + len(self._supported_ops_r_cache[in_encoder])
 
-    def expected_vocab_size(self, in_encoder):
+    def expected_vocab_size(self, in_encoder=None):
         """Get the expected vocabulary size."""
-        return self.expected_op_range(in_encoder)[1]
+        if in_encoder is None:
+            return max(self.expected_vocab_size(True), self.expected_vocab_size(False))
+        return self.expected_op_range(in_encoder)[-1]
 
     def example_layer(self, in_encoder=True):
         return self._layer(in_encoder, 0)
