@@ -432,7 +432,7 @@ def nao_epd_main(hparams):
     import json
     from libs.layers.net_code import NetCode
 
-    DirName = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results'
+    DirName = 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results'
     iteration = hparams.sa_iteration
     subset = 'dev'
 
