@@ -73,8 +73,14 @@ class NAOTrainer(ChildTrainer):
 
     def new_model(self, net_code, device=None, cuda=True):
         result = BlockChildNet(net_code, self.hparams, self.controller)
-        if cuda:
-            result = result.cuda(device)
+        if self.hparams.distributed_world_size > 1:
+            from libs.models.child_net_base import ParalleledChildNet
+            result = ParalleledChildNet(
+                result, device_ids=list(range(self.hparams.distributed_world_size)),
+                output_device=self.hparams.device_id)
+        else:
+            if cuda:
+                result = result.cuda(device)
         return result
 
     def init_arch_pool(self):
@@ -114,7 +120,15 @@ class NAOTrainer(ChildTrainer):
             # TODO: How to distributed training on all GPU cards async?
             raise NotImplementedError('Arch dist multi-gpu training not supported yet')
         else:
-            raise NotImplementedError('Non-arch dist multi-gpu training not supported yet')
+            # raise NotImplementedError('Non-arch dist multi-gpu training not supported yet')
+            self._init_meters()
+            for epoch in range(1, eval_freq + 1):
+                mu.train(self.hparams, self, datasets, epoch, 0)
+
+            # Restore shared model after training.
+            self.model = self.controller.shared_weights
+
+            return
 
     def train_step(self, sample, update_params=True):
         # [NOTE]: At each train step, sample a new arch from pool.
@@ -478,7 +492,7 @@ def nao_search_main(hparams):
     mu.logging_training_stats(hparams)
 
     # Used to skip child training and evaluation in debug mode.
-    debug_epd = True
+    debug_epd = False
 
     max_ctrl_step = hparams.max_ctrl_step or math.inf
     ctrl_step = 1

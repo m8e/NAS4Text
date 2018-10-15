@@ -300,4 +300,4 @@ def get_nao_search_args(args=None):
 
 
 def hparams_ppp_nao(hparams):
-    hparams.ctrl_global_keys = hparams.ctrl_global_keys.split(',')
+    hparams.ctrl_global_keys = [k for k in hparams.ctrl_global_keys.split(',') if k != '']
