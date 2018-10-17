@@ -30,7 +30,6 @@ class SinusoidalPositionalEmbedding(nn.Module):
             embedding_dim,
             padding_idx,
         )
-        self.register_buffer('_float_tensor', torch.FloatTensor())
 
     @staticmethod
     def get_embedding(num_embeddings, embedding_dim, padding_idx=None):
@@ -62,13 +61,14 @@ class SinusoidalPositionalEmbedding(nn.Module):
                 self.embedding_dim,
                 self.padding_idx,
             )
-        self.weights = self.weights.type_as(self._float_tensor)
 
         if incremental_state is not None:
+            self.weights = self.weights.to(incremental_state.device)
             # positions is the same for every token when decoding a single step
             return self.weights[self.padding_idx + seq_len, :].expand(bsz, 1, -1)
 
         positions = utils.make_positions(input.data, self.padding_idx, self.left_pad)
+        self.weights = self.weights.to(positions.device)
         return self.weights.index_select(0, positions.view(-1)).view(bsz, seq_len, -1).detach()
 
     def max_positions(self):
