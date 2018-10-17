@@ -205,6 +205,7 @@ def main(args=None):
     global_title_list = [
         'Name={}'.format(output_basename),
         ', '.join('{}*{}'.format(b, n) for b, n in block_counter.items()),
+        ', '.join('{}={}'.format(key, getattr(ss.GlobalSpace, key)[index]) for key, index in code.global_code.items())
     ]
     global_title = '\n'.join(global_title_list)
     g_global.graph_attr.update({

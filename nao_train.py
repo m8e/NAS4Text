@@ -23,7 +23,7 @@ from libs.optimizers.lr_schedulers import build_lr_scheduler
 from libs.criterions import build_criterion
 from libs.utils import main_utils as mu
 from libs.utils.meters import StopwatchMeter
-from libs.utils.paths import get_data_path
+from libs.utils.paths import get_data_path, get_model_path
 from libs.utils.generator_utils import batch_bleu
 from libs.utils import tokenizer
 from libs.utils import nao_utils
@@ -250,15 +250,18 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         split = int(np.floor(len(a) * test_size))
         return (a[split:], p[split:]), (a[:split], p[:split])
 
-    def controller_train_step(self, old_arches, old_arches_perf, split_test=True, augment=False, augment_rep=4):
+    def controller_train_step(self, old_arches, old_arches_perf, split_test=True):
         logging.info('Training Encoder-Predictor-Decoder')
+        augment = self.hparams.augment
+        augment_rep = self.hparams.augment_rep
 
         perf = self._normalized_perf(old_arches_perf)
 
         if split_test:
             train_ap, test_ap = self._shuffle_and_split(old_arches, perf, test_size=0.1)
             if augment:
-                train_ap = nao_utils.arch_augmentation(*train_ap, augment_rep=augment_rep)
+                train_ap = nao_utils.arch_augmentation(
+                    *train_ap, augment_rep=self.hparams.augment_rep, focus_top=self.hparams.focus_top)
             train_arches, train_bleus = train_ap
             train_ap = [self._parse_arch_to_seq(arch) for arch in train_arches], train_bleus
             test_arches, test_bleus = test_ap
@@ -272,7 +275,8 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 shuffle=False, sos_id=self.controller.epd.sos_id)
         else:
             if augment:
-                old_arches, perf = nao_utils.arch_augmentation(old_arches, perf, augment_rep=augment_rep)
+                old_arches, perf = nao_utils.arch_augmentation(
+                    old_arches, perf, augment_rep=augment_rep, focus_top=self.hparams.focus_top)
             arch_seqs = [self._parse_arch_to_seq(arch) for arch in old_arches]
             ctrl_dataloader = nao_utils.make_ctrl_dataloader(
                 arch_seqs, perf, batch_size=self.hparams.ctrl_batch_size,
@@ -382,6 +386,9 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         # print('#old_arches:', [a.blocks for a in old_arches])
 
         new_arches = []
+        mapped_old_perf_list = []
+        final_old_perf_list, final_new_perf_list = [], []
+
         predict_lambda = 0
         topk_arches = [self._parse_arch_to_seq(arch) for arch in old_arches[:self.hparams.num_pred_top]]
         topk_arches_loader = nao_utils.make_tensor_dataloader(
@@ -390,12 +397,12 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         while len(new_arches) + len(old_arches) < self.hparams.num_seed_arch:
             # [NOTE]: When predict_lambda get larger, increase faster.
             if predict_lambda < 50:
-                predict_lambda += 1
+                predict_lambda += self.hparams.lambda_step
             elif predict_lambda >= 10000000:
                 # FIXME: A temp solution: stop the generation when the lambda is too large.
                 break
             else:
-                predict_lambda += predict_lambda // 50
+                predict_lambda += predict_lambda / 50
             logging.info('Generating new architectures using gradient descent with step size {}'.format(predict_lambda))
 
             new_arch_seq_list = []
@@ -403,10 +410,12 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 epd.eval()
                 epd.zero_grad()
                 encoder_input = common.make_variable(encoder_input, volatile=False, cuda=True)
-                new_arch_seq = epd.generate_new_arch(encoder_input, predict_lambda)
+                new_arch_seq, ret_dict = epd.generate_new_arch(encoder_input, predict_lambda)
                 new_arch_seq_list.extend(new_arch_seq.data.squeeze().tolist())
+                mapped_old_perf_list.extend(ret_dict['predict_value'].squeeze().tolist())
+                del ret_dict
 
-            for arch_seq in new_arch_seq_list:
+            for i, (arch_seq, mapped_perf) in enumerate(zip(new_arch_seq_list, mapped_old_perf_list)):
                 # Insert new arches (skip same and invalid).
                 # [NOTE]: Reduce the "ctrl_trade_off" value to let it generate different architectures.
                 arch = self.controller.parse_seq_to_arch(arch_seq)
@@ -415,12 +424,51 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
 
                 if not self._arch_contains(arch, old_arches) and not self._arch_contains(arch, new_arches):
                     new_arches.append(arch)
+                    # Test the new arch.
+                    sample = nao_utils.prepare_ctrl_sample(
+                        [th.LongTensor([arch_seq]), th.LongTensor([arch_seq]), th.LongTensor([arch_seq])], perf=False)
+                    predict_value, _, _ = epd(sample['encoder_input'], sample['decoder_input'])
+                    final_old_perf_list.append(mapped_perf)
+                    final_new_perf_list.append(predict_value.item())
                 if len(new_arches) + len(old_arches) >= self.hparams.num_seed_arch:
                     break
             logging.info('{} new arches generated now'.format(len(new_arches)))
 
+        # Compare old and new perf.
+        print('Old and new performances:')
+        _s_old, _s_new = 0.0, 0.0
+        for _old, _new in zip(final_old_perf_list, final_new_perf_list):
+            print('old = {}, new = {}, old - new = {}'.format(_old, _new, _old - _new))
+            _s_old += _old
+            _s_new += _new
+        _s_old /= len(final_new_perf_list)
+        _s_new /= len(final_new_perf_list)
+        print('Average: old = {}, new = {}, old - new = {}'.format(_s_old, _s_new, _s_old - _s_new))
+
         self.arch_pool = old_arches + new_arches
         return self.arch_pool
+
+    def save_epd(self):
+        save_path = get_model_path(self.hparams)
+        os.makedirs(save_path, exist_ok=True)
+        filename = 'epd_checkpoint{}.pt'.format(self.hparams.sa_iteration)
+        state = {
+            'sa_iteration': self.hparams.sa_iteration,
+            'epd': self.controller.epd.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+            'lr_scheduler': self.lr_scheduler.state_dict(),
+        }
+        th.save(state, os.path.join(save_path, filename))
+        logging.info('Save checkpoint to {}'.format(filename))
+
+    def load_epd(self):
+        filename = os.path.join(get_model_path(self.hparams), 'epd_checkpoint{}.pt'.format(self.hparams.sa_iteration))
+        state = th.load(filename)
+        assert state['sa_iteration'] == self.hparams.sa_iteration
+        self.controller.epd.load_state_dict(state['epd'])
+        self.optimizer.load_state_dict(state['optimizer'])
+        self.lr_scheduler.load_state_dict(state['lr_scheduler'])
+        logging.info('Load checkpoint from {}'.format(filename))
 
     @staticmethod
     def _arch_contains(arch, arch_list):
@@ -464,11 +512,13 @@ def nao_epd_main(hparams):
     perf_pool = [perf_pool[i] for i in arches_sorted_indices]
 
     trainer.arch_pool = arch_pool
-    split_test = True
-    augment = True
-    augment_rep = 8
-    trainer.controller_train_step(
-        arch_pool, perf_pool, split_test=split_test, augment=augment, augment_rep=augment_rep)
+
+    if hparams.reload:
+        trainer.load_epd()
+    else:
+        split_test = True
+        trainer.controller_train_step(
+            arch_pool, perf_pool, split_test=split_test)
 
     new_arch_pool = trainer.controller_generate_step(arch_pool)
     # [NOTE]: Only save unique arches.
@@ -477,6 +527,8 @@ def nao_epd_main(hparams):
         if not any(arch.fast_eq(a) for a in arch_pool):
             unique_arch_pool.append(arch)
     nao_utils.save_arches(hparams, iteration, unique_arch_pool, arches_perf=None, after_gen=True)
+
+    trainer.save_epd()
 
 
 def nao_search_main(hparams):

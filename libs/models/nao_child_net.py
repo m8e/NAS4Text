@@ -182,7 +182,7 @@ class NaoEpd(nn.Module):
             if i == 0:
                 size = self.enc_hidden_size, self.mlp_hidden_size
             else:
-                size = self.mlp_hidden_size, self.enc_hidden_size
+                size = self.mlp_hidden_size, self.mlp_hidden_size
             p_weights.append(nn.Parameter(
                     th.Tensor(*size).uniform_(-self.InitRange, self.InitRange)))
         p_weights.append(nn.Parameter(
@@ -376,13 +376,15 @@ class NaoEpd(nn.Module):
         Returns:
             Tensor (batch_size, source_length, 1)
         """
+        ret_dict = {}
         encoder_outputs, encoder_hidden, arch_emb, predict_value, new_encoder_outputs, new_arch_emb = \
             self.encoder_infer(input_variable, predict_lambda)
+        ret_dict['predict_value'] = predict_value
         new_encoder_hidden = (new_arch_emb.unsqueeze(0), new_arch_emb.unsqueeze(0))
         decoder_outputs, decoder_hidden, ret = self._decode(
             None, new_encoder_hidden, new_encoder_outputs, fn=self.decode_function)
         new_arch = th.stack(ret[self.KeySequence], 0).permute(1, 0, 2).contiguous()
-        return new_arch
+        return new_arch, ret_dict
 
     def _init_decoder_state(self, encoder_hidden):
         """ Initialize the encoder hidden state. """
@@ -738,10 +740,22 @@ class NAOController(NASController):
 
                 if i == 3:
                     # Append the new node.
-                    block.append(ins + ops + [layer.node_combine_op] + layer.node_ppp_code)
+
+                    if True:
+                        # [NOTE]: Special case for Zero op.
+                        # See similar code in ``NAOController._generate_block`` for more details.
+                        contains_zero = any(o[0] == 'Zero' for o in ops)
+                        ppp_code = ['', ''] if contains_zero else layer.node_ppp_code
+                    else:
+                        # For backward compatibility.
+                        ppp_code = layer.node_ppp_code
+
+                    block.append(ins + ops + [layer.node_combine_op] + ppp_code)
             else:
-                # TODO: Parse global dict
-                pass
+                # Parse global dict.
+                i = index - block_length
+                key = self.hparams.ctrl_global_keys[i]
+                global_dict[key] = seq[index] - lb_globals_list[i]
 
         enc1.append(self._gen_node_ppp(enc0))
         dec1.append(self._gen_node_ppp(dec0))

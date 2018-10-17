@@ -3,11 +3,10 @@
 
 """NAO utils."""
 
+from bisect import bisect
 import copy
-import itertools
 import logging
 import os
-import random
 
 import numpy as np
 import torch as th
@@ -32,6 +31,12 @@ def make_ctrl_dataloader(arch_seqs, perf, batch_size, shuffle, sos_id):
         dim=1)
     decoder_target = copy.copy(encoder_input)
 
+    if perf is None:
+        return make_tensor_dataloader([
+            th.LongTensor(encoder_input),
+            th.LongTensor(decoder_input), th.LongTensor(decoder_target),
+        ], batch_size=batch_size, shuffle=shuffle)
+
     return make_tensor_dataloader([
         th.LongTensor(encoder_input), th.Tensor(encoder_target),
         th.LongTensor(decoder_input), th.LongTensor(decoder_target),
@@ -44,14 +49,22 @@ def make_tensor_dataloader(tensor_list, batch_size, shuffle):
     return loader
 
 
-def prepare_ctrl_sample(sample, evaluation=False):
-    encoder_input, encoder_target, decoder_input, decoder_target = sample
-    sample = {
-        'encoder_input': encoder_input,
-        'encoder_target': encoder_target,
-        'decoder_input': decoder_input,
-        'decoder_target': decoder_target,
-    }
+def prepare_ctrl_sample(sample, evaluation=False, perf=True):
+    if perf:
+        encoder_input, encoder_target, decoder_input, decoder_target = sample
+        sample = {
+            'encoder_input': encoder_input,
+            'encoder_target': encoder_target,
+            'decoder_input': decoder_input,
+            'decoder_target': decoder_target,
+        }
+    else:
+        encoder_input, decoder_input, decoder_target = sample
+        sample = {
+            'encoder_input': encoder_input,
+            'decoder_input': decoder_input,
+            'decoder_target': decoder_target,
+        }
     return common.make_variable(sample, cuda=True, volatile=evaluation)
 
 
@@ -93,6 +106,7 @@ def save_arches(hparams, ctrl_step, arches, arches_perf=None, after_gen=False):
     import json
 
     _after_gen = ', after generate' if after_gen else ''
+    _n = len(arches)
 
     save_dir = get_model_path(hparams)
     net_code_list = [n.original_code for n in arches]
@@ -102,7 +116,7 @@ def save_arches(hparams, ctrl_step, arches, arches_perf=None, after_gen=False):
         with open(full_code_filename, 'w', encoding='utf-8') as f:
             for code in net_code_list:
                 print(json.dumps(code), file=f)
-            logging.info('Save arches into {} (epoch {}{})'.format(full_code_filename, ctrl_step, _after_gen))
+            logging.info('Save {} arches into {} (epoch {}{})'.format(_n, full_code_filename, ctrl_step, _after_gen))
         if arches_perf is not None:
             full_perf_filename = os.path.join(save_dir, perf_filename)
             with open(full_perf_filename, 'w', encoding='utf-8') as f:
@@ -158,7 +172,11 @@ def _arch_augment_per_block(arch):
     return NetCode(new_net_code)
 
 
-def arch_augmentation(arch_list, bleu_list, augment_rep=4):
+def _get_augment_rep(base_rep, bleu, sorted_list):
+    return max(1, int(2 * base_rep * bisect(sorted_list, bleu) / len(sorted_list)))
+
+
+def arch_augmentation(arch_list, bleu_list, augment_rep=4, focus_top=False):
     """Apply the data augmentation on the architecture list.
 
     Create some architectures with same semantics.
@@ -167,15 +185,19 @@ def arch_augmentation(arch_list, bleu_list, augment_rep=4):
         arch_list:
         bleu_list:
         augment_rep (int):
+        focus_top (bool):
 
     Returns:
 
     """
 
+    sorted_list = sorted(bleu_list)
+
     orig_len = len(bleu_list)
     for i in range(orig_len):
         arch, bleu = arch_list[i], bleu_list[i]
-        for _ in range(augment_rep):
+        rep = _get_augment_rep(augment_rep, bleu, sorted_list) if focus_top else augment_rep
+        for _ in range(rep):
             new_arch = _arch_augment_per_block(arch)
             if not any(new_arch.fast_eq(a) for a in arch_list):
                 arch_list.append(new_arch)
@@ -268,10 +290,20 @@ def add_nao_search_args(parser):
     group.add_argument('--ctrl-eval-train-freq', default=100, type=int,
                        help='Number of epochs to run between controller training set evaluations, '
                             'default is %(default)s')
+    group.add_argument('--lambda-step', type=float, default=1.0,
+                       help='Lambda step, default is %(default)r')
 
     # Standalone hyper-parameters.
     group.add_argument('--sa-iteration', type=int,
                        help='Iteration of standalone job')
+    group.add_argument('--no-augment', action='store_false', default=True, dest='augment',
+                       help='Does not apply augmentation')
+    group.add_argument('--augment-rep', type=int, default=8,
+                       help='Augmentation replicate number, default is %(default)r')
+    group.add_argument('--focus-top', action='store_true', default=False,
+                       help='Focus on top architectures')
+    group.add_argument('--reload', action='store_true', default=False,
+                       help='Reload old model, only run generation.')
 
     # TODO
 
