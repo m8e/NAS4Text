@@ -333,11 +333,10 @@ class ChildDecoderBase(nn.Module):
             assert hparams.trg_embedding_size == hparams.decoder_out_embedding_size, \
                 'Shared embed weights implies same dimensions out_embedding_size={} vs trg_embedding_size={}'.format(
                     hparams.decoder_out_embedding_size, hparams.trg_embedding_size)
-            self.fc_last = nn.Linear(hparams.decoder_out_embedding_size, self.task.TargetVocabSize, bias=False)
-            self.fc_last.weight = self.embed_tokens.weight
+            self.fc_last = None
         else:
-            self.fc_last = Linear(hparams.decoder_out_embedding_size,
-                                  self.task.TargetVocabSize, dropout=hparams.dropout, hparams=hparams, bias=False)
+            self.fc_last = nn.Parameter(th.Tensor(self.task.TargetVocabSize, hparams.decoder_out_embedding_size))
+            nn.init.normal_(self.fc_last, mean=0, std=hparams.decoder_out_embedding_size ** -0.5)
 
     def _fwd_pre(self, encoder_out, src_lengths, trg_tokens, trg_lengths, incremental_state):
         # TODO: Implement incremental state.
@@ -372,7 +371,10 @@ class ChildDecoderBase(nn.Module):
             x = self.fc2(x)
             x = F.dropout(x, p=self.hparams.dropout, training=self.training)
 
-        x = self.fc_last(x)
+        if self.fc_last is None:
+            x = F.linear(x, self.embed_tokens.weight)
+        else:
+            x = F.linear(x, self.fc_last)
 
         logging.debug('Decoder output shape: {} & {}'.format(
             list(x.shape), None if avg_attn_scores is None else list(avg_attn_scores.shape)))

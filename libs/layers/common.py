@@ -90,6 +90,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx, hparams=None):
         uniform_unit_scaling_initializer(m.weight, scale=hparams.initializer_gain)
     elif hparams.initializer == 'fairseq':
         nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
+        nn.init.constant_(m.weight[padding_idx], 0)
     else:
         raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
     return m
@@ -97,7 +98,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx, hparams=None):
 
 def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad, hparams=None, learned=True):
     if learned:
-        m = LearnedPositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad)
+        m = LearnedPositionalEmbedding(num_embeddings + padding_idx + 1, embedding_dim, padding_idx, left_pad)
         if hparams.initializer in ('original', 'kaitao', 'kaitao_wn'):
             m.weight.data.normal_(0, 0.1)
         elif hparams.initializer == 'uniform_unit_scaling':
@@ -108,7 +109,7 @@ def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, left_pad, hp
         else:
             raise ValueError('Unknown initializer {!r}'.format(hparams.initializer))
     else:
-        m = SinusoidalPositionalEmbedding(embedding_dim, padding_idx, left_pad, num_embeddings)
+        m = SinusoidalPositionalEmbedding(embedding_dim, padding_idx, left_pad, num_embeddings + padding_idx + 1)
     return m
 
 
