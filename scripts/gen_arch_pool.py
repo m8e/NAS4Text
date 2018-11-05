@@ -33,7 +33,7 @@ def main(args=None):
     parser.add_argument('--hparams-set', help='HParams set, default is %(default)r', default=None)
     parser.add_argument('--exist', help='Exists arch pool filename', default=None)
     parser.add_argument('-o', '--output', default='ignored_scripts/arch_pool.txt',
-                        help = 'Output filename, default is %(default)r')
+                        help='Output filename, default is %(default)r')
     parser.add_argument('--dir-output', default='usr_net_code/arch_pool',
                         help='Splitted output directory, default is %(default)r')
     parser.add_argument('--no-dir-output', action='store_true', default=False, help='Disable split output')

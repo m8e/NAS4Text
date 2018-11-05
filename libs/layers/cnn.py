@@ -145,7 +145,8 @@ class DecoderConvLayer(ConvLayer):
         x = F.glu(x, dim=1)
 
         # Remove last (kernel_size - 1) sequence
-        x = x[:, :, :1 - self.kernel_size]
+        if self.kernel_size > 1:
+            x = x[:, :, :1 - self.kernel_size]
 
         result = x.transpose(1, 2)
 

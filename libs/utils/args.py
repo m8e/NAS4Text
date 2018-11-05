@@ -87,7 +87,8 @@ def add_extra_options_args(parser):
 
     # Arbitrary extra options.
     group.add_argument('--extra-options', default="", type=str, metavar='OPT_STR',
-                       help='String to represent extra options, format: comma-separated list of `name=value`')
+                       help=r'String to represent extra options, format: comma-separated list of `name=value`. '
+                            r'Use "@" instead of double-quotes.')
 
     return group
 
@@ -177,7 +178,7 @@ def add_distributed_args(parser):
                        help='distributed backend')
     group.add_argument('--distributed-init-method', default=None, type=str,
                        help='typically tcp://hostname:port that will be used to '
-                            'establish initial connetion')
+                            'establish initial connection')
     group.add_argument('--distributed-port', default=-1, type=int,
                        help='port number (not required if using --distributed-init-method)')
     group.add_argument('--device-id', type=int, default=0, metavar='N',
@@ -257,7 +258,7 @@ def add_generation_args(parser):
 
 
 def parse_extra_options(parsed_args):
-    _extra_dict = eval('dict({})'.format(parsed_args.extra_options))
+    _extra_dict = eval('dict({})'.format(parsed_args.extra_options.replace('@', '"')))
     for name, value in _extra_dict.items():
         setattr(parsed_args, name, value)
 

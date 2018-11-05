@@ -242,6 +242,20 @@ class SearchSpace:
             ('EncoderAttention', [2, '', 'd']),
             ('EncoderAttention', [1, '', '']),
             ('EncoderAttention', [2, '', '']),
+        ],
+        'default-ext': [
+            ('Zero', []),
+            ('Identity', []),
+            ('PFFN', ['', 'd', 1]),  # Default (512) in fairseq
+            ('PFFN', ['', 'd', 2]),
+            ('SelfAttention', [1, '', 'd']),  # Default (4) in fairseq
+            ('SelfAttention', [2, '', 'd']),
+            ('EncoderAttention', [1, '', 'd']),  # Default (4) in fairseq
+            ('EncoderAttention', [2, '', 'd']),
+            ('CNN', [None, 0, 0, 0, '', 'd']),
+            ('CNN', [None, 1, 0, 0, '', 'd']),  # Default stride = 3
+            ('LSTM', [None, False, '', 'd']),
+            ('LSTM', [None, True, '', 'd']),    # Reversed LSTM
         ]
     }
     CellOpSpaces['with-r-lstm'] = CellOpSpaces['default'] + [('LSTM', [None, True, '', 'd'])]
