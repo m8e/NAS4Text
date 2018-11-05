@@ -169,7 +169,7 @@ class ChildTrainer:
             self.model.eval()
         else:
             self.model.train()
-            self.optimizer.zero_grad()
+            # self.optimizer.zero_grad()
 
         loss = None
         sample_size = 0
