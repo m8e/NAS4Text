@@ -11,13 +11,13 @@ import numpy as np
 
 __author__ = 'fyabc'
 
-PathTemplate = 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/log-iter{}/'
-FnTemplate = 'de_en_iwslt_bpe2-{}-{}_{}-base-generate-{}.log.txt'
+PathTemplate = 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/log-{}iter{}/'
+FnTemplate = 'de_en_iwslt_bpe2-{}-{}_{}{}-base-generate-{}.log.txt'
 TargetFileTemplates = {
     'x': 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arches-{}-{}-{}.txt',
     'y': 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/bleus-{}-{}-{}.txt',
 }
-PoolFileTemplate = 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arch_pool-{}{}.txt'
+PoolFileTemplate = 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arch_pool-{}{}{}.txt'
 
 Baseline = {
     'dev': {
@@ -108,8 +108,8 @@ def real_main(hparams):
     bleu_list = [None for _ in range(hparams.start, hparams.end + 1)]
     for i in range(hparams.start, hparams.end + 1):
         print(i, end=' ')
-        fname = os.path.join(PathTemplate.format(hparams.iteration), FnTemplate.format(
-            hparams_set, hparams.arch_pool, i, subset))
+        fname = os.path.join(PathTemplate.format(hparams.extra_name, hparams.iteration), FnTemplate.format(
+            hparams_set, hparams.arch_pool, i, hparams.exp_dir, subset))
 
         if not os.path.exists(fname):
             print('Not exist')
@@ -142,7 +142,7 @@ def real_main(hparams):
 
     line_list_out = []
     bleu_list_out = []
-    with open(PoolFileTemplate.format(hparams_set, iteration), 'r', encoding='utf-8') as f_pool:
+    with open(PoolFileTemplate.format(hparams.extra_name, hparams_set, iteration), 'r', encoding='utf-8') as f_pool:
         print('Read architectures from {!r}'.format(f_pool.name))
         lines = [l.strip() for l in f_pool]
         assert len(lines) == len(bleu_list), 'Arch pool size {} != arch BLEU size {}'.format(len(lines), len(bleu_list))
@@ -190,6 +190,8 @@ def main(args=None):
     parser.add_argument('-a', '--arch-pool', default='arch', help='Arch pool name, default is %(default)r')
     parser.add_argument('-n', '--num-layers', default=2, type=int, help='Number of layers, default is %(default)r')
     parser.add_argument('-f', '--focus', action='store_true', default=False, help='Focus on top arches')
+    parser.add_argument('--extra-name', default='', help='Extra name in log folder, default is %(default)r')
+    parser.add_argument('--exp-dir', default='', help='Exp dir name, default is %(default)r')
 
     hparams = parser.parse_args(args)
     print(hparams)
@@ -199,6 +201,7 @@ def main(args=None):
 
 if __name__ == '__main__':
     # main('-i 1 -s 1 -e 1000 --subset dev -a arch_pool_e6d6_dp -n 6'.split(' '))
+    # main('-i 1 -s 1 -e 1000 --subset test -a arch_pool_e6d6_dp -n 6'.split(' '))
 
     # main('-i 2 -s 1001 -e 1500 --subset dev -a arch_pool_e6d6_dp -n 6'.split(' '))
     # main('-i 2 -s 1001 -e 1500 --subset test -a arch_pool_e6d6_dp -n 6'.split(' '))
@@ -209,5 +212,11 @@ if __name__ == '__main__':
     # main('-i 3 -s 1501 -e 1800 --subset dev'.split(' '))
 
     # main('-i 4 -s 2001 -e 2500 --subset dev -a arch_pool_e6d6_dp -n 6'.split(' '))
-    main('-i 4 -s 2001 -e 2500 --subset test -a arch_pool_e6d6_dp -n 6'.split(' '))
+    # main('-i 4 -s 2001 -e 2500 --subset test -a arch_pool_e6d6_dp -n 6'.split(' '))
+
+    # main('-i 1 -s 1 -e 1000 --subset dev -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+    # main('-i 1 -s 1 -e 1000 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+
+    main('-i 2 -s 1001 -e 1500 --subset dev -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+    # main('-i 2 -s 1001 -e 1500 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
     pass

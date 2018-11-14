@@ -112,6 +112,7 @@ def attention_and_proj_mask(
         scores = scores.view(batch_size, h, length_q, length_kv)
         scores = scores.masked_fill_(mask == 0, float('-inf'))
         scores = scores.view(batch_size * h, length_q, length_kv)
+    # FIXME: Attention score and QKV same.
 
     attn_weights = F.softmax(scores, dim=-1)
     dropout = layer.dropout
@@ -130,6 +131,7 @@ def attention_and_proj_mask(
         attn_weights = attn_weights.mean(dim=1)
 
     # 3) "Concat" using a view and apply a final linear.
+    # FIXME: Attention weights different.
     attn = attn.transpose(1, 2).contiguous().view(batch_size, -1, h * d_head)
 
     attn = layer.out_proj(attn)
@@ -291,7 +293,7 @@ class PositionwiseFeedForward(ChildLayer):
 
     @wrap_ppp
     def forward(self, x, **kwargs):
-        return self.w_2(self.dropout(F.relu(self.w_1(x))))      # [DEBUG]: Same before here
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
 
 
 class SelfAttention(ChildLayer):
@@ -382,7 +384,7 @@ class SelfAttention(ChildLayer):
 
         result = self.feed_forward(encdec_result)
 
-        return result   # [DEBUG]: Same before here (decoder)
+        return result
 
     def push_prepostprocessors(self, preprocess_code, postprocess_code, input_shape, output_shape):
         # [NOTE]: Different layer norm parameters between child layers.

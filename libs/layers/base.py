@@ -40,7 +40,7 @@ class ChildLayer(nn.Module):
         if self.postprocessors is None:
             return x
         input_ = self.modify_input_before_postprocess(input_)
-        for m in self.postprocessors:   # [DEBUG]: Same after here (except dropout)
+        for m in self.postprocessors:
             x = m(x, input_)
         return x
 

@@ -237,7 +237,6 @@ class ChildTrainer:
             th.distributed.all_reduce(flat_grads)
 
         # rescale and clip gradients
-        # FIXME: Sum of flat grads same before here, different after here (why???)
         flat_grads.div_(grad_denom)
         grad_norm = common.clip_grad_norm_(flat_grads, self.hparams.clip_norm)
 
