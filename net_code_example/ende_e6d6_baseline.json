@@ -1,0 +1,27 @@
+{
+    "Type": "BlockChildNet",
+    "Global": {},
+    "Blocks": {
+        "enc1": [
+            [null, null, null, null, null],
+            [null, null, null, null, null],
+            [0, 0, ["SelfAttention", 2, "", "d"], "Identity", "Add", "", "n"],
+            [2, 2, ["PFFN", "", "d"], "Identity", "Add", "", "n"]
+        ],
+        "dec1": [
+            [null, null, null, null, null],
+            [null, null, null, null, null],
+            [0, 0, ["SelfAttention", 2, "", "d"], "Identity", "Add", "", "n"],
+            [2, 2, ["EncoderAttention", 2, "", "d"], "Identity", "Add", "", "n"],
+            [3, 3, ["PFFN", "", "d"], "Identity", "Add", "", "n"]
+        ]
+    },
+    "Layers": [
+        [
+            "enc1", "enc1", "enc1", "enc1", "enc1", "enc1"
+        ],
+        [
+            "dec1", "dec1", "dec1", "dec1", "dec1", "dec1"
+        ]
+    ]
+}

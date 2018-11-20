@@ -435,3 +435,33 @@ def hparams_de_en_iwslt_bpe2_nao_dropout_add_02():
     hparams.ppp_dropout = hparams.dropout
 
     return hparams
+
+
+@register_hparams('en_de_wmt_nao')
+def hparams_en_de_wmt_nao():
+    hparams = hparams_normal()
+
+    hparams.initializer = 'fairseq'
+
+    hparams.dropout = 0.1
+    hparams.attention_dropout = 0.0
+    hparams.ffn_dropout = 0.0
+    hparams.ppp_dropout = hparams.dropout
+
+    hparams.max_src_positions = 1024
+    hparams.max_trg_positions = 1024
+    hparams.src_embedding_size = 512
+    hparams.trg_embedding_size = 512
+    hparams.decoder_out_embedding_size = 512
+    hparams.share_input_output_embedding = False
+    hparams.attn_d_ff = 2048
+    hparams.attn_linear_bias = True
+    hparams.enc_learned_pos = False
+    hparams.dec_learned_pos = False
+    hparams.embed_scale = True
+
+    hparams.block_combine_op = 'add'
+    hparams.block_combine_no_outs = True
+    hparams.cell_op_space = 'only-attn'  # [NOTE]: This is dummy now, change it in future.
+
+    return hparams
