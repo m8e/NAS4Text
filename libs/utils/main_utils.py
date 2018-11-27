@@ -80,6 +80,8 @@ def main_entry(hparams, **kwargs):
 
     # Postprocess hparams.
     _set_default_hparams(hparams)
+    if hasattr(hparams, 'update_freq'):
+        hparams.update_freq = list(map(int, hparams.update_freq.split(',')))
     if train_:
         hparams.lr = list(map(float, hparams.lr.split(',')))
         if hparams.max_sentences_valid is None:
@@ -214,6 +216,12 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
     next(itertools.islice(itr, batch_offset, batch_offset), None)
     progress = build_progress_bar(hparams, itr, epoch, no_progress_bar='simple')
 
+    # update parameters every N batches
+    if epoch <= len(hparams.update_freq):
+        update_freq = hparams.update_freq[epoch - 1]
+    else:
+        update_freq = hparams.update_freq[-1]
+
     # Reset training meters
     for k in ['train_loss', 'train_nll_loss', 'wps', 'ups', 'wpb', 'bsz', 'clip']:
         meter = trainer.get_meter(k)
@@ -222,8 +230,13 @@ def train(hparams, trainer, datasets, epoch, batch_offset):
 
     extra_meters = collections.defaultdict(lambda: AverageMeter())
     max_update = hparams.max_update or math.inf
+    num_batches = len(itr)
     for i, sample in enumerate(progress, start=batch_offset):
-        log_output = trainer.train_step(sample)
+        if i < num_batches - 1 and (i + 1) % update_freq > 0:
+            trainer.train_step(sample, update_params=False)
+            continue
+        else:
+            log_output = trainer.train_step(sample, update_params=True)
 
         # Log mid-epoch stats
         stats = get_training_stats(trainer)

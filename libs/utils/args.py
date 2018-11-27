@@ -138,6 +138,8 @@ def add_train_args(parser):
     group.add_argument('--sentence-avg', action='store_true', default=False,
                        help='normalize gradients by the number of sentences in a batch'
                             ' (default is to normalize by number of tokens)')
+    group.add_argument('--update-freq', default='1', metavar='N',
+                       help='update parameters every N_i batches, when in epoch i')
     group.add_argument('--optimizer', default='nag', metavar='OPT',
                        choices=AllOptimizers.keys(),
                        help='optimizer: {} (default: %(default)s)'.format(', '.join(AllOptimizers.keys())))

@@ -281,3 +281,19 @@ class DeEnIwsltFs(TextTask):
             'test': None,
         },
     }
+
+
+@register_task
+class EnDeWmt14(TextTask):
+    SourceLang = Languages.EN
+    TargetLang = Languages.DE
+
+    SourceDictType = 'text'
+    TargetDictType = 'text'
+
+    UniqueFilename = 'wmt14'
+
+    SourceVocabSize = 32764 + TextTask.NumSpecialTokens
+    TargetVocabSize = 32764 + TextTask.NumSpecialTokens
+
+    BPESymbol = '@@ '

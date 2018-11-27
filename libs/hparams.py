@@ -453,7 +453,8 @@ def hparams_en_de_wmt_nao():
     hparams.src_embedding_size = 512
     hparams.trg_embedding_size = 512
     hparams.decoder_out_embedding_size = 512
-    hparams.share_input_output_embedding = False
+    hparams.share_input_output_embedding = True
+    hparams.share_src_trg_embedding = True
     hparams.attn_d_ff = 2048
     hparams.attn_linear_bias = True
     hparams.enc_learned_pos = False
@@ -463,5 +464,18 @@ def hparams_en_de_wmt_nao():
     hparams.block_combine_op = 'add'
     hparams.block_combine_no_outs = True
     hparams.cell_op_space = 'only-attn'  # [NOTE]: This is dummy now, change it in future.
+
+    return hparams
+
+
+@register_hparams('vaswani_en_de_wmt_big')
+def hparams_vaswani_en_de_wmt_big():
+    hparams = hparams_en_de_wmt_nao()
+
+    hparams.dropout = 0.3
+    hparams.src_embedding_size = 1024
+    hparams.trg_embedding_size = 1024
+    hparams.decoder_out_embedding_size = 1024
+    hparams.attn_d_ff = 4096
 
     return hparams

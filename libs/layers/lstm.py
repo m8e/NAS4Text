@@ -50,6 +50,20 @@ class LSTMLayer(ChildLayer):
         else:
             self.fc_init_state = None
 
+        # [NOTE]: Only flatten parameters in single GPU training.
+        # See <https://github.com/pytorch/pytorch/issues/7092> for more details.
+        # TODO: Find a better solution?
+        if self.hparams.distributed_world_size > 1:
+            self._flatten_parameters_if_not_parallel = self._dummy
+        else:
+            self._flatten_parameters_if_not_parallel = self._flatten_parameters
+
+    def _dummy(self):
+        pass
+
+    def _flatten_parameters(self):
+        self.lstm.flatten_parameters()
+
     def _init_lstm_params(self):
         for name, param in self.lstm.named_parameters():
             if 'bias' in name:
@@ -80,7 +94,8 @@ class LSTMLayer(ChildLayer):
         packed_input = nn.utils.rnn.pack_padded_sequence(input_, list(lengths.data), batch_first=True)
 
         # [NOTE]: Add this to disable the user warning, may reduce the memory usage.
-        self.lstm.flatten_parameters()
+        self._flatten_parameters_if_not_parallel()
+
         packed_output, _ = self.lstm(packed_input, init_h_c)
 
         output, _ = nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True, padding_value=0.0)

@@ -221,6 +221,9 @@ if __name__ == '__main__':
     # main('-i 2 -s 1001 -e 1500 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
 
     # main('-i 3 -s 1501 -e 2000 --subset dev -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
-    main('-i 3 -s 1501 -e 2000 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+    # main('-i 3 -s 1501 -e 2000 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+
+    # main('-i 4 -s 2001 -e 2500 --subset dev -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+    main('-i 4 -s 2001 -e 2500 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
 
     pass
