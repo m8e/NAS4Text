@@ -482,9 +482,17 @@ def forward_call(method_name):
     return _method
 
 
+def forward_property(property_name):
+    def _getter(self):
+        return getattr(self.module, property_name)
+    return property(fget=_getter, doc='The {!r} attribute of the module'.format(property_name))
+
+
 class ParalleledChildNet(nn.DataParallel):
     encode = forward_call('encode')
     decode = forward_call('decode')
+    encoder = forward_property('encoder')
+    decoder = forward_property('decoder')
     get_normalized_probs = forward_call('get_normalized_probs')
     get_targets = forward_call('get_targets')
     max_encoder_positions = forward_call('max_encoder_positions')

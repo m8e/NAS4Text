@@ -313,7 +313,7 @@ def volatile_variable(*args, **kwargs):
         return Variable(*args, **kwargs, volatile=True)
 
 
-def make_variable(sample, volatile=False, cuda=False, requires_grad=False):
+def make_variable(sample, volatile=False, cuda=False, requires_grad=False, device=None):
     """Wrap input tensors in Variable class."""
 
     if len(sample) == 0:
@@ -322,7 +322,7 @@ def make_variable(sample, volatile=False, cuda=False, requires_grad=False):
     def _make_variable(maybe_tensor):
         if th.is_tensor(maybe_tensor):
             if cuda and th.cuda.is_available():
-                maybe_tensor = maybe_tensor.cuda()
+                maybe_tensor = maybe_tensor.cuda(device=device)
             if volatile:
                 return volatile_variable(maybe_tensor, requires_grad=requires_grad)
             else:
@@ -413,3 +413,9 @@ def batched_index_select(input_, index):
 def fill_with_neg_inf(t):
     """FP16-compatible function that fills a tensor with -inf."""
     return t.float().fill_(float('-inf')).type_as(t)
+
+
+def cycled_data_iter(dataloader):
+    while True:
+        for data in dataloader:
+            yield data

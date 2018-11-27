@@ -49,7 +49,7 @@ def make_tensor_dataloader(tensor_list, batch_size, shuffle):
     return loader
 
 
-def prepare_ctrl_sample(sample, evaluation=False, perf=True):
+def prepare_ctrl_sample(sample, evaluation=False, perf=True, device=None):
     if perf:
         encoder_input, encoder_target, decoder_input, decoder_target = sample
         sample = {
@@ -65,7 +65,7 @@ def prepare_ctrl_sample(sample, evaluation=False, perf=True):
             'decoder_input': decoder_input,
             'decoder_target': decoder_target,
         }
-    return common.make_variable(sample, cuda=True, volatile=evaluation)
+    return common.make_variable(sample, cuda=True, volatile=evaluation, device=device)
 
 
 def pairwise_accuracy(la, lb):
@@ -212,6 +212,10 @@ def add_nao_search_args(parser):
 
     group.add_argument('--standalone', action='store_true', default=False,
                        help='Standalone train the controller, default is False')
+    group.add_argument('--gen-device', default=None, type=int,
+                       help='The GPU device that for generation, default is %(default)r')
+    group.add_argument('--epd-device', default=None, type=int,
+                       help='The GPU device that store the EPD, default is %(default)r')
 
     group.add_argument('--max-ctrl-step', default=1000, type=int,
                        help='Number of max controller steps in arch search, default is %(default)s')

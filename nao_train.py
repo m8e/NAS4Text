@@ -34,6 +34,8 @@ from libs.hparams import hparams_env
 
 __author__ = 'fyabc'
 
+_sentinel = object()
+
 
 class NAOTrainer(ChildTrainer):
     # TODO: Support continue training (override ``load/save_checkpoint``).
@@ -46,8 +48,12 @@ class NAOTrainer(ChildTrainer):
 
     def __init__(self, hparams, criterion, only_cpd_cuda=False):
         # [NOTE]: Model is a "shared" model here.
-        self.controller = NAOController(hparams).cuda(only_epd=only_cpd_cuda)
+        self.controller = NAOController(hparams).cuda(only_epd=only_cpd_cuda, epd_device=hparams.epd_device)
         super().__init__(hparams, self.controller.shared_weights, criterion)
+
+        self.main_device = th.cuda.current_device()
+        self.device_ids_for_gen = self._get_device_ids_for_gen()
+
         self.arch_pool = []
         self.arch_pool_prob = None
         self.eval_arch_pool = []
@@ -71,13 +77,25 @@ class NAOTrainer(ChildTrainer):
             'test': 0.00,
         }
 
-    def new_model(self, net_code, device=None, cuda=True):
+    def _get_device_ids_for_gen(self):
+        all_device_ids = set(range(self.hparams.distributed_world_size))
+        all_device_ids.discard(self.main_device)
+        all_device_ids.discard(self.hparams.epd_device)
+        return sorted(all_device_ids)
+
+    def new_model(self, net_code, device=None, cuda=True,
+                  device_ids=None, output_device=_sentinel, force_single=False):
         result = BlockChildNet(net_code, self.hparams, self.controller)
-        if self.hparams.distributed_world_size > 1:
-            from libs.models.child_net_base import ParalleledChildNet
-            result = ParalleledChildNet(
-                result, device_ids=list(range(self.hparams.distributed_world_size)),
-                output_device=self.hparams.device_id)
+        if not force_single and self.hparams.distributed_world_size > 1:
+            if cuda:
+                if device_ids is None:
+                    device_ids = list(range(self.hparams.distributed_world_size))
+                if output_device is _sentinel:
+                    output_device = self.hparams.device_id
+                from libs.models.child_net_base import ParalleledChildNet
+                result = ParalleledChildNet(
+                    result, device_ids=device_ids,
+                    output_device=output_device)
         else:
             if cuda:
                 result = result.cuda(device)
@@ -154,12 +172,7 @@ class NAOTrainer(ChildTrainer):
             max_sentences=self.hparams.child_eval_batch_size, beam=5, lenpen=1.2,
         )
         itr = generator.get_input_iter(sort_by_length=self.GenSortByLength)
-        itr_chain = [itr]
-        # [NOTE]: Make sure that each arch can process one batch. Use multiple iterators.
-        repeat_number = math.ceil(len(self.arch_pool) / len(itr))
-        for _ in range(1, repeat_number):
-            itr_chain.append(generator.get_input_iter(sort_by_length=self.GenSortByLength))
-        whole_gen_itr = itertools.chain(*itr_chain)
+        whole_gen_itr = common.cycled_data_iter(itr)
 
         arch_itr = self.arch_pool
         if tqdm is not None:
@@ -168,21 +181,34 @@ class NAOTrainer(ChildTrainer):
         val_loss_list = []
         val_acc_list = []
         valid_time = StopwatchMeter()
-        for arch, sample in zip(arch_itr, whole_gen_itr):
-            child = self.new_model(arch, cuda=False)
 
-            if compute_loss:
-                with self.child_env(child, train=False):
-                    val_loss = mu.validate(self.hparams, self, datasets, 'dev', self.hparams.child_eval_freq)
-                val_loss_list.append(val_loss)
+        with th.cuda.device(self.hparams.gen_device):
+            for arch in arch_itr:
+                while True:
+                    sample = next(whole_gen_itr)
 
-            generator.models = [child]
-            generator.cuda()
+                    # [NOTE]: Run data parallel on all GPUs except main device and epd device
+                    child = self.new_model(arch, cuda=True, device_ids=self.device_ids_for_gen, output_device=None)
 
-            # FIXME: Use beam 5 decoding here.
-            translation = generator.decoding_one_batch(sample)
-            val_bleu = batch_bleu(generator, sample['id'], translation, self._ref_tokens, self._ref_dict)
-            val_acc_list.append(val_bleu)
+                    if compute_loss:
+                        with self.child_env(child, train=False):
+                            val_loss = mu.validate(self.hparams, self, datasets, 'dev', self.hparams.child_eval_freq)
+                        val_loss_list.append(val_loss)
+
+                    generator.models = [child]
+                    generator.cuda()
+
+                    # Skip OOM batches.
+                    try:
+                        # FIXME: Use beam 5 decoding here.
+                        translation = generator.decoding_one_batch(sample)
+                        val_bleu = batch_bleu(generator, sample['id'], translation, self._ref_tokens, self._ref_dict)
+                        val_acc_list.append(val_bleu)
+                    except RuntimeError as e:
+                        logging.warning('Error when decoding a batch, skip this batch: {}'.format(e))
+                        continue
+                    else:
+                        break
 
         valid_time.stop()
         logging.info('''\
@@ -288,58 +314,60 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             epochs = tqdm(list(epochs))
 
         step = 0
-        for epoch in epochs:
-            for epoch_step, sample in enumerate(ctrl_dataloader):
-                self.controller.epd.train()
+        with th.cuda.device(self.hparams.epd_device):
+            for epoch in epochs:
+                for epoch_step, sample in enumerate(ctrl_dataloader):
+                    self.controller.epd.train()
 
-                sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
+                    sample = nao_utils.prepare_ctrl_sample(sample, evaluation=False)
 
-                # print('#Expected global range:', self.controller.expected_global_range())
-                # print('#Expected node range:', self.controller.expected_index_range())
-                # print('#Expected op range:', self.controller.expected_op_range(False), self.controller.expected_op_range(True))
-                # print('#encoder_input', sample['encoder_input'].shape, sample['encoder_input'][0])
-                # print('#encoder_target', sample['encoder_target'].shape, sample['encoder_target'][0])
-                # print('#decoder_input', sample['decoder_input'].shape, sample['decoder_input'][0])
-                # print('#decoder_target', sample['decoder_target'].shape, sample['decoder_target'][0])
+                    # print('#Expected global range:', self.controller.expected_global_range())
+                    # print('#Expected node range:', self.controller.expected_index_range())
+                    # print('#Expected op range:', self.controller.expected_op_range(False), self.controller.expected_op_range(True))
+                    # print('#encoder_input', sample['encoder_input'].shape, sample['encoder_input'][0])
+                    # print('#encoder_target', sample['encoder_target'].shape, sample['encoder_target'][0])
+                    # print('#decoder_input', sample['decoder_input'].shape, sample['decoder_input'][0])
+                    # print('#decoder_target', sample['decoder_target'].shape, sample['decoder_target'][0])
 
-                # FIXME: Use ParallelModel here?
-                predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])
+                    # FIXME: Use ParallelModel here?
+                    predict_value, logits, arch = self.controller.epd(sample['encoder_input'], sample['decoder_input'])
 
-                # print('#predict_value', predict_value.shape, predict_value.tolist())
-                # print('#logits', logits.shape)
-                # print('$arch', arch.shape, arch)
+                    # print('#predict_value', predict_value.shape, predict_value.tolist())
+                    # print('#logits', logits.shape)
+                    # print('$arch', arch.shape, arch)
 
-                # Loss and optimize.
-                loss_1 = F.mse_loss(predict_value.squeeze(), sample['encoder_target'].squeeze())
-                logits_size = logits.size()
-                n = logits_size[0] * logits_size[1]
-                loss_2 = F.cross_entropy(logits.contiguous().view(n, -1), sample['decoder_target'].view(n))
+                    # Loss and optimize.
+                    loss_1 = F.mse_loss(predict_value.squeeze(), sample['encoder_target'].squeeze())
+                    logits_size = logits.size()
+                    n = logits_size[0] * logits_size[1]
+                    loss_2 = F.cross_entropy(logits.contiguous().view(n, -1), sample['decoder_target'].view(n))
 
-                loss = self.hparams.ctrl_trade_off * loss_1 + (1 - self.hparams.ctrl_trade_off) * loss_2
+                    loss = self.hparams.ctrl_trade_off * loss_1 + (1 - self.hparams.ctrl_trade_off) * loss_2
 
-                self.ctrl_optimizer.zero_grad()
-                loss.backward()
-                grad_norm = th.nn.utils.clip_grad_norm_(self.controller.epd.parameters(), self.hparams.ctrl_clip_norm)
-                self.ctrl_optimizer.step()
+                    self.ctrl_optimizer.zero_grad()
+                    loss.backward()
+                    grad_norm = th.nn.utils.clip_grad_norm_(
+                        self.controller.epd.parameters(), self.hparams.ctrl_clip_norm)
+                    self.ctrl_optimizer.step()
 
-                # TODO: Better logging here.
-                if step % self.hparams.ctrl_log_freq == 0:
-                    print('| ctrl | epoch {:03d} | step {:03d} | loss={:5.6f} '
-                          '| mse={:5.6f} | cse={:5.6f} | gnorm={:5.6f}'.format(
-                            epoch, step, loss.data, loss_1.data, loss_2.data, grad_norm,
-                            ))
+                    # TODO: Better logging here.
+                    if step % self.hparams.ctrl_log_freq == 0:
+                        print('| ctrl | epoch {:03d} | step {:03d} | loss={:5.6f} '
+                              '| mse={:5.6f} | cse={:5.6f} | gnorm={:5.6f}'.format(
+                                epoch, step, loss.data, loss_1.data, loss_2.data, grad_norm,
+                                ))
 
-                step += 1
+                    step += 1
 
-            # TODO: Add evaluation and controller model saving here.
-            if epoch % self.hparams.ctrl_eval_freq == 0:
-                if ctrl_dataloader is not test_ctrl_dataloader:
-                    self.controller_eval_step(test_ctrl_dataloader, epoch, subset='test')
-                    # [NOTE]: Can omit eval on training set to speed up.
-                    if epoch % self.hparams.ctrl_eval_train_freq == 0:
-                        self.controller_eval_step(ctrl_dataloader, epoch, subset='training')
-                else:
-                    self.controller_eval_step(test_ctrl_dataloader, epoch, subset='training')
+                # TODO: Add evaluation and controller model saving here.
+                if epoch % self.hparams.ctrl_eval_freq == 0:
+                    if ctrl_dataloader is not test_ctrl_dataloader:
+                        self.controller_eval_step(test_ctrl_dataloader, epoch, subset='test')
+                        # [NOTE]: Can omit eval on training set to speed up.
+                        if epoch % self.hparams.ctrl_eval_train_freq == 0:
+                            self.controller_eval_step(ctrl_dataloader, epoch, subset='training')
+                    else:
+                        self.controller_eval_step(test_ctrl_dataloader, epoch, subset='training')
 
     def controller_eval_step(self, ctrl_dataloader, epoch, subset='training'):
         model = self.controller.epd
@@ -358,14 +386,15 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             else:
                 l.extend(v)
 
-        for step, sample in enumerate(ctrl_dataloader):
-            model.eval()
-            sample = nao_utils.prepare_ctrl_sample(sample, evaluation=True)
-            predict_value, logits, arch = model(sample['encoder_input'])    # target_variable=None
-            _safe_extend(predict_value_list, predict_value)
-            _safe_extend(arch_seq_list, arch)
-            _safe_extend(ground_truth_perf_list, sample['encoder_target'])
-            _safe_extend(ground_truth_arch_seq_list, sample['decoder_target'])
+        with th.cuda.device(self.hparams.epd_device):
+            for step, sample in enumerate(ctrl_dataloader):
+                model.eval()
+                sample = nao_utils.prepare_ctrl_sample(sample, evaluation=True)
+                predict_value, logits, arch = model(sample['encoder_input'])    # target_variable=None
+                _safe_extend(predict_value_list, predict_value)
+                _safe_extend(arch_seq_list, arch)
+                _safe_extend(ground_truth_perf_list, sample['encoder_target'])
+                _safe_extend(ground_truth_arch_seq_list, sample['decoder_target'])
 
         pairwise_acc = nao_utils.pairwise_accuracy(ground_truth_perf_list, predict_value_list)
         hamming_dis = nao_utils.hamming_distance(ground_truth_arch_seq_list, arch_seq_list)
@@ -394,45 +423,49 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         topk_arches_loader = nao_utils.make_tensor_dataloader(
             [th.LongTensor(topk_arches)], self.hparams.ctrl_batch_size, shuffle=False)
 
-        while len(new_arches) + len(old_arches) < self.hparams.num_seed_arch:
-            # [NOTE]: When predict_lambda get larger, increase faster.
-            if predict_lambda < 50:
-                predict_lambda += self.hparams.lambda_step
-            elif predict_lambda >= 10000000:
-                # FIXME: A temp solution: stop the generation when the lambda is too large.
-                break
-            else:
-                predict_lambda += predict_lambda / 50
-            logging.info('Generating new architectures using gradient descent with step size {}'.format(predict_lambda))
-
-            new_arch_seq_list = []
-            for step, (encoder_input,) in enumerate(topk_arches_loader):
-                epd.eval()
-                epd.zero_grad()
-                encoder_input = common.make_variable(encoder_input, volatile=False, cuda=True)
-                new_arch_seq, ret_dict = epd.generate_new_arch(encoder_input, predict_lambda)
-                new_arch_seq_list.extend(new_arch_seq.data.squeeze().tolist())
-                mapped_old_perf_list.extend(ret_dict['predict_value'].squeeze().tolist())
-                del ret_dict
-
-            for i, (arch_seq, mapped_perf) in enumerate(zip(new_arch_seq_list, mapped_old_perf_list)):
-                # Insert new arches (skip same and invalid).
-                # [NOTE]: Reduce the "ctrl_trade_off" value to let it generate different architectures.
-                arch = self.controller.parse_seq_to_arch(arch_seq)
-                if arch is None:
-                    continue
-
-                if not self._arch_contains(arch, old_arches) and not self._arch_contains(arch, new_arches):
-                    new_arches.append(arch)
-                    # Test the new arch.
-                    sample = nao_utils.prepare_ctrl_sample(
-                        [th.LongTensor([arch_seq]), th.LongTensor([arch_seq]), th.LongTensor([arch_seq])], perf=False)
-                    predict_value, _, _ = epd(sample['encoder_input'], sample['decoder_input'])
-                    final_old_perf_list.append(mapped_perf)
-                    final_new_perf_list.append(predict_value.item())
-                if len(new_arches) + len(old_arches) >= self.hparams.num_seed_arch:
+        with th.cuda.device(self.hparams.epd_device):
+            while len(new_arches) + len(old_arches) < self.hparams.num_seed_arch:
+                # [NOTE]: When predict_lambda get larger, increase faster.
+                if predict_lambda < 50:
+                    predict_lambda += self.hparams.lambda_step
+                elif predict_lambda >= 10000000:
+                    # FIXME: A temp solution: stop the generation when the lambda is too large.
                     break
-            logging.info('{} new arches generated now'.format(len(new_arches)))
+                else:
+                    predict_lambda += predict_lambda / 50
+                logging.info('Generating new architectures using gradient descent with step size {}'.format(
+                    predict_lambda))
+
+                new_arch_seq_list = []
+                for step, (encoder_input,) in enumerate(topk_arches_loader):
+                    epd.eval()
+                    epd.zero_grad()
+                    encoder_input = common.make_variable(encoder_input, volatile=False, cuda=True)
+                    new_arch_seq, ret_dict = epd.generate_new_arch(encoder_input, predict_lambda)
+                    new_arch_seq_list.extend(new_arch_seq.data.squeeze().tolist())
+                    mapped_old_perf_list.extend(ret_dict['predict_value'].squeeze().tolist())
+                    del ret_dict
+
+                for i, (arch_seq, mapped_perf) in enumerate(zip(new_arch_seq_list, mapped_old_perf_list)):
+                    # Insert new arches (skip same and invalid).
+                    # [NOTE]: Reduce the "ctrl_trade_off" value to let it generate different architectures.
+                    arch = self.controller.parse_seq_to_arch(arch_seq)
+                    if arch is None:
+                        continue
+
+                    if not self._arch_contains(arch, old_arches) and not self._arch_contains(arch, new_arches):
+                        new_arches.append(arch)
+                        # Test the new arch.
+                        sample = nao_utils.prepare_ctrl_sample(
+                            [th.LongTensor([arch_seq]), th.LongTensor([arch_seq]), th.LongTensor([arch_seq])],
+                            perf=False,
+                        )
+                        predict_value, _, _ = epd(sample['encoder_input'], sample['decoder_input'])
+                        final_old_perf_list.append(mapped_perf)
+                        final_new_perf_list.append(predict_value.item())
+                    if len(new_arches) + len(old_arches) >= self.hparams.num_seed_arch:
+                        break
+                logging.info('{} new arches generated now'.format(len(new_arches)))
 
         # Compare old and new perf.
         print('Old and new performances:')

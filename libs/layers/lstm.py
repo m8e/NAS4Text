@@ -58,6 +58,8 @@ class LSTMLayer(ChildLayer):
         else:
             self._flatten_parameters_if_not_parallel = self._flatten_parameters
 
+        self.lstm.flatten_parameters()
+
     def _dummy(self):
         pass
 

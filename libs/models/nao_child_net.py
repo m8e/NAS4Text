@@ -500,10 +500,10 @@ class NAOController(NASController):
             'residual_projection': layer.residual_projection,
         }
 
-    def cuda(self, device=None, only_epd=False):
+    def cuda(self, device=None, only_epd=False, epd_device=None):
         if not only_epd:
             self.shared_weights.cuda(device)
-        self.epd.cuda(device)
+        self.epd.cuda(epd_device)
         return self
 
     # Arch generation methods.
