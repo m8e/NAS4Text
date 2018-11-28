@@ -41,6 +41,7 @@ from .dictionary import Dictionary
 from ..tasks import get_task
 from .tokenizer import Tokenizer
 from .common import numpy_seed
+from . import UseFairseqParallel
 
 __author__ = 'fyabc'
 
@@ -66,6 +67,10 @@ class LanguageDatasets:
                          seed=None, epoch=1, sample_without_replacement=0,
                          sort_by_source_size=False, shard_id=0, num_shards=1,
                          start=None, end=None):
+        # [NOTE]: If use DataParallel, must only load as single process.
+        if not UseFairseqParallel:
+            shard_id, num_shards = 0, 1
+
         dataset = self.get_dataset(split)
 
         batch_sampler = dataset.shuffled_batches_by_size(
@@ -85,6 +90,10 @@ class LanguageDatasets:
                         skip_invalid_size_inputs_valid_test=False,
                         descending=False, shard_id=0, num_shards=1,
                         repeat=1, sort_by_length=True):
+        # [NOTE]: If use DataParallel, must only load as single process.
+        if not UseFairseqParallel:
+            shard_id, num_shards = 0, 1
+
         dataset = self.get_dataset(split)
 
         batch_sampler = dataset.batches_by_size(
