@@ -46,9 +46,9 @@ class NAOTrainer(ChildTrainer):
     GenSortByLength = False     # Sort by length in generation.
     GenMaxlenB = 100            # Max length bias in generation. (less than normal generation to avoid oom)
 
-    def __init__(self, hparams, criterion, only_cpd_cuda=False):
+    def __init__(self, hparams, criterion, only_epd_cuda=False):
         # [NOTE]: Model is a "shared" model here.
-        self.controller = NAOController(hparams).cuda(only_epd=only_cpd_cuda, epd_device=hparams.epd_device)
+        self.controller = NAOController(hparams).cuda(only_epd=only_epd_cuda, epd_device=hparams.epd_device)
         super().__init__(hparams, self.controller.shared_weights, criterion)
 
         self.main_device = th.cuda.current_device()
@@ -209,6 +209,9 @@ class NAOTrainer(ChildTrainer):
                         continue
                     else:
                         break
+
+        # [NOTE]: In generation step, some of the shared weights are moved to other GPUs, move them back.
+        self.controller.shared_weights.cuda()
 
         valid_time.stop()
         logging.info('''\
@@ -407,7 +410,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                      ' HD {:<6.6f} | {:<6.2f} secs'.format(
                       subset, epoch, pairwise_acc, self._ctrl_best_pa[subset], hamming_dis, time.sum))
 
-    def controller_generate_step(self, old_arches):
+    def controller_generate_step(self, old_arches, log_compare_perf=False):
         epd = self.controller.epd
 
         old_arches = old_arches[:self.hparams.num_remain_top]
@@ -468,15 +471,16 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 logging.info('{} new arches generated now'.format(len(new_arches)))
 
         # Compare old and new perf.
-        print('Old and new performances:')
-        _s_old, _s_new = 0.0, 0.0
-        for _old, _new in zip(final_old_perf_list, final_new_perf_list):
-            print('old = {}, new = {}, old - new = {}'.format(_old, _new, _old - _new))
-            _s_old += _old
-            _s_new += _new
-        _s_old /= len(final_new_perf_list)
-        _s_new /= len(final_new_perf_list)
-        print('Average: old = {}, new = {}, old - new = {}'.format(_s_old, _s_new, _s_old - _s_new))
+        if log_compare_perf:
+            print('Old and new performances:')
+            _s_old, _s_new = 0.0, 0.0
+            for _old, _new in zip(final_old_perf_list, final_new_perf_list):
+                print('old = {}, new = {}, old - new = {}'.format(_old, _new, _old - _new))
+                _s_old += _old
+                _s_new += _new
+            _s_old /= len(final_new_perf_list)
+            _s_new /= len(final_new_perf_list)
+            print('Average: old = {}, new = {}, old - new = {}'.format(_s_old, _s_new, _s_old - _s_new))
 
         self.arch_pool = old_arches + new_arches
         return self.arch_pool
@@ -523,7 +527,7 @@ def nao_epd_main(hparams):
 
     logging.info('Building model')
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
-    trainer = NAOTrainer(hparams, criterion, only_cpd_cuda=True)
+    trainer = NAOTrainer(hparams, criterion, only_epd_cuda=True)
     model = trainer.get_model()
     mu.logging_model_criterion(model, criterion, logging_params=False)
     mu.logging_training_stats(hparams)
@@ -553,7 +557,7 @@ def nao_epd_main(hparams):
         trainer.controller_train_step(
             arch_pool, perf_pool, split_test=split_test)
 
-    new_arch_pool = trainer.controller_generate_step(arch_pool)
+    new_arch_pool = trainer.controller_generate_step(arch_pool, log_compare_perf=True)
     # [NOTE]: Only save unique arches.
     unique_arch_pool = []
     for arch in new_arch_pool:
