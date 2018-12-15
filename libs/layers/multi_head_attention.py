@@ -55,8 +55,6 @@ def attention_and_proj_mask(
     if mask is None:
         mask = common.pad_and_subsequent_mask(
             src_lengths, layer.in_encoder, apply_subsequent_mask=subsequent_mask, maxlen=key.size(1))
-        if time_first:
-            mask = mask.transpose(0, 2)     # TODO: Transpose src_mask to which shape?
     batch_size = query.size(1) if time_first else query.size(0)
 
     # 1) Do all the linear projections in batch from d_model => h x d_head
@@ -88,11 +86,21 @@ def attention_and_proj_mask(
     # k & v: (batch_size, length_kv, d_model)
     #   If time first: (length_kv, batch_size, d_model)
 
-    q = q.view(batch_size, -1, h, d_head).transpose(1, 2)
-    k = k.view(batch_size, -1, h, d_head).transpose(1, 2)
-    v = v.view(batch_size, -1, h, d_head).transpose(1, 2)
-
     # 2) Apply attention on all the projected vectors in batch.
+
+    if time_first:
+        q = q.contiguous().view(length_q, batch_size * h, d_head).transpose(0, 1)
+        k = k.contiguous().view(length_kv, batch_size * h, d_head).transpose(0, 1)
+        v = v.contiguous().view(length_kv, batch_size * h, d_head).transpose(0, 1)
+    else:
+        # Batch first.
+        q = q.view(batch_size, -1, h, d_head).transpose(1, 2)
+        k = k.view(batch_size, -1, h, d_head).transpose(1, 2)
+        v = v.view(batch_size, -1, h, d_head).transpose(1, 2)
+
+        q = q.contiguous().view(batch_size * h, length_q, d_head)
+        k = k.contiguous().view(batch_size * h, length_kv, d_head)
+        v = v.contiguous().view(batch_size * h, length_kv, d_head)
 
     # TODO: Simplify the code.
     r"""Compute scaled dot-product attention.
@@ -111,10 +119,6 @@ def attention_and_proj_mask(
             Attention value (batch_size, num_heads, length_q, d_v):
             attn_weights (batch_size, num_heads, length_q, length_kv): Attention probability distribution
     """
-
-    q = q.contiguous().view(batch_size * h, length_q, d_head)
-    k = k.contiguous().view(batch_size * h, length_kv, d_head)
-    v = v.contiguous().view(batch_size * h, length_kv, d_head)
 
     scores = th.bmm(q, k.transpose(1, 2))
     assert list(scores.size()) == [batch_size * h, length_q, length_kv]
@@ -145,7 +149,10 @@ def attention_and_proj_mask(
 
     # 3) "Concat" using a view and apply a final linear.
     # FIXME: Attention weights different.
-    attn = attn.transpose(1, 2).contiguous().view(batch_size, -1, h * d_head)
+    if time_first:
+        attn = attn.transpose(0, 1).contiguous().view(length_q, batch_size, h * d_head)
+    else:
+        attn = attn.transpose(1, 2).contiguous().view(batch_size, -1, h * d_head)
 
     attn = layer.out_proj(attn)
 

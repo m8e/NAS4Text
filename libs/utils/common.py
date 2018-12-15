@@ -301,7 +301,7 @@ def pad_and_subsequent_mask(lengths, in_encoder, apply_subsequent_mask=False, ma
 
     Returns:
         Tensor
-        (batch_size, 1, 1, src_seq_len) of byte
+        (batch_size, 1, 1 or src_seq_len, src_seq_len) of byte
     """
     if lengths is None:
         return None
@@ -419,19 +419,25 @@ def get_reversed_index(lengths, max_length):
         for l in lengths])
 
 
-def batched_index_select(input_, index):
+def batched_index_select(input_, index, dim=0):
     """Batched version of ``torch.index_select``.
 
     Args:
-        input_ (Tensor): B x T x D1 x ... x Dn
+        input_ (Tensor):
+            B x T x D1 x ... x Dn (dim=0) or
+            T x B x D1 x ... x Dn (dim=1)
         index (LongTensor): B x T
+        dim (int): Dimension of input batch, must be 0 or 1.
 
     Returns:
         Tensor
         Same shape as input
     """
 
-    return th.stack([th.index_select(a, 0, i) for a, i in zip(input_, index)])
+    if dim == 1:
+        input_ = input_.transpose(0, 1)
+
+    return th.stack([th.index_select(a, 0, i) for a, i in zip(input_, index)], dim=dim)
 
 
 def fill_with_neg_inf(t):

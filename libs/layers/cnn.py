@@ -73,6 +73,11 @@ class EncoderConvLayer(ConvLayer):
     Shape:
         - Input: :math:`(N, L_{in}, C_{in})`
         - Output: :math:`(N, L_{out}, C_{out})`
+
+        If time_first:
+
+        - Input: :math:`(L_{in}, N, C_{in})`
+        - Input: :math:`(L_{out}, N, C_{out})`
     """
 
     # [NOTE]: Since CNN may change the sequence length, how to modify the mask?
@@ -93,7 +98,10 @@ class EncoderConvLayer(ConvLayer):
 
     @wrap_ppp
     def forward(self, input_, lengths=None, **kwargs):
-        x = input_.transpose(1, 2)
+        if self.hparams.time_first:
+            x = input_.permute(1, 2, 0)
+        else:
+            x = input_.transpose(1, 2)
 
         # Add padding.
         padding_l = (self.conv.kernel_size[0] - 1) // 2
@@ -105,7 +113,10 @@ class EncoderConvLayer(ConvLayer):
         # GLU.
         x = F.glu(x, dim=1)
 
-        result = x.transpose(1, 2)
+        if self.hparams.time_first:
+            result = x.permute(2, 0, 1)
+        else:
+            result = x.transpose(1, 2)
 
         return result
 

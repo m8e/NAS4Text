@@ -228,7 +228,7 @@ class LSTMOp(BlockNodeOp):
             hidden_size=input_size,
             num_layers=1,
             bias=True,
-            batch_first=True,
+            batch_first=not self.hparams.time_first,
             dropout=self.hparams.dropout,
             bidirectional=False,
             in_encoder=self.in_encoder,

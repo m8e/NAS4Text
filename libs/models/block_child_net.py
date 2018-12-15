@@ -55,16 +55,7 @@ class BlockChildEncoder(ChildEncoderBase):
                 If time_first: (src_seq_len, batch_size, src_emb_size) of float32
         """
 
-        # x: (batch_size, src_seq_len, src_emb_size)
-        # src_mask: (batch_size, 1 (broadcast to num_heads), 1, src_seq_len)
-        # source_embedding: (batch_size, src_seq_len, src_emb_size)
         x, src_mask, source_embedding = self._fwd_pre(src_tokens, src_lengths)
-
-        if self.hparams.time_first:
-            # B x T x C -> T x B x C
-            x = x.transpose(0, 1)
-            src_mask = src_mask.transpose(0, 2)     # TODO: Transpose src_mask to which shape?
-            source_embedding = source_embedding.transpose(0, 1)
 
         input_list = [x, x]
         for i in range(self.num_layers):

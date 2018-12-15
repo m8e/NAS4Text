@@ -60,6 +60,10 @@ class LSTMLayer(ChildLayer):
 
         self.lstm.flatten_parameters()
 
+    @property
+    def batch_first(self):
+        return self.lstm.batch_first
+
     def _dummy(self):
         pass
 
@@ -82,32 +86,48 @@ class LSTMLayer(ChildLayer):
         init_h_c = self._get_init_state(input_, encoder_state)
 
         if not ApplyMaskInLSTM:
-            return self.lstm(input_, init_h_c)[0]
+            output = self.lstm(input_, init_h_c)[0]
+            output = self._reverse_io(output, lengths=lengths)
+            return output
 
         if lengths is None:
-            return self.lstm(input_)[0]
+            output = self.lstm(input_)[0]
+            output = self._reverse_io(output, lengths=lengths)
+            return output
 
         _, sort_index = th.sort(-lengths)
         _, unsort_index = th.sort(sort_index)
-        input_, lengths = input_[sort_index], lengths[sort_index]
+        if self.batch_first:
+            input_, lengths = input_[sort_index], lengths[sort_index]
+        else:
+            input_, lengths = input_[:, sort_index], lengths[sort_index]
         if init_h_c is not None:
             init_h_c = tuple(v[:, sort_index] for v in init_h_c)
 
-        packed_input = nn.utils.rnn.pack_padded_sequence(input_, list(lengths.data), batch_first=True)
+        packed_input = nn.utils.rnn.pack_padded_sequence(input_, list(lengths.data), batch_first=self.batch_first)
 
         # [NOTE]: Add this to disable the user warning, may reduce the memory usage.
         self._flatten_parameters_if_not_parallel()
 
         packed_output, _ = self.lstm(packed_input, init_h_c)
 
-        output, _ = nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=True, padding_value=0.0)
-        output = output[unsort_index]
+        output, _ = nn.utils.rnn.pad_packed_sequence(packed_output, batch_first=self.batch_first, padding_value=0.0)
+        if self.batch_first:
+            output = output[unsort_index]
+        else:
+            output = output[:, unsort_index]
 
         # [NOTE]: The input and output sequence length must be equal.
         # In parallel training, input is split into chunks, so maximum lengths may less than global maximum,
         # So output may be shorter than input, then we should pad it.
-        if output.shape[1] < input_.shape[1]:
-            output = F.pad(output, (0, 0, 0, input_.shape[1] - output.shape[1], 0, 0), value=0.0)
+        if self.batch_first:
+            in_seq_len, out_seq_len = input_.shape[1], output.shape[1]
+            pad_array = (0, 0, 0, in_seq_len - out_seq_len, 0, 0)
+        else:
+            in_seq_len, out_seq_len = input_.shape[0], output.shape[0]
+            pad_array = (0, in_seq_len - out_seq_len, 0, 0, 0, 0)
+        if out_seq_len < in_seq_len:
+            output = F.pad(output, pad_array, value=0.0)
 
         output = self.postprocess(output, input_before)
 
@@ -119,7 +139,7 @@ class LSTMLayer(ChildLayer):
         if self.in_encoder or encoder_state is None:
             return None
 
-        batch_size = input_.size(0)
+        batch_size = input_.size(0) if self.batch_first else input_.size(1)
         num_layers = self.lstm.num_layers
         hidden_size = self.lstm.hidden_size
         num_directions = 2 if self.lstm.bidirectional else 1
@@ -136,9 +156,12 @@ class LSTMLayer(ChildLayer):
         if not self.reversed:
             return data
 
-        max_length = data.size(1)
+        if self.batch_first:
+            batch_size, max_length = data.size(0), data.size(1)
+        else:
+            max_length, batch_size = data.size(0), data.size(1)
         if lengths is None:
-            lengths = th.full([th.size(0)], max_length, dtype=th.int64)
+            lengths = th.full([batch_size], max_length, dtype=th.int64)
 
         return batched_index_select(data, get_reversed_index(lengths, max_length))
 
@@ -181,7 +204,7 @@ def build_lstm(layer_code, input_shape, hparams, in_encoder=True):
         hidden_size=hidden_size,
         num_layers=space.NumLayers,
         bias=True,
-        batch_first=True,
+        batch_first=not hparams.time_first,
         dropout=hparams.dropout,
         bidirectional=bidirectional,
         in_encoder=in_encoder,

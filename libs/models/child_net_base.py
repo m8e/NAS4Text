@@ -185,6 +185,15 @@ class ChildEncoderBase(nn.Module):
 
         # x = self.fc1(x)
 
+        # x: (batch_size, src_seq_len, src_emb_size)
+        # src_mask: (batch_size, 1 (broadcast to num_heads), 1, src_seq_len)
+        # source_embedding: (batch_size, src_seq_len, src_emb_size)
+
+        if self.hparams.time_first:
+            # B x T x C -> T x B x C
+            x = x.transpose(0, 1)
+            source_embedding = source_embedding.transpose(0, 1)
+
         logging.debug('Encoder input shape after embedding: {}'.format(list(x.shape)))
         return x, src_mask, source_embedding
 
@@ -358,10 +367,23 @@ class ChildDecoderBase(nn.Module):
         # Compute mask from length, shared between all decoder layers.
         trg_mask = self._mask_from_lengths(x, trg_lengths, apply_subsequent_mask=True)
 
+        # x: (batch_size, trg_seq_len, src_emb_size)
+        # trg_mask: (batch_size, 1 (broadcast to num_heads), trg_seq_len, src_seq_len)
+        # target_embedding: (batch_size, src_seq_len, src_emb_size)
+
+        if self.hparams.time_first:
+            # B x T x C -> T x B x C
+            x = x.transpose(0, 1)
+            target_embedding = target_embedding.transpose(0, 1)
+
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         return x, encoder_out, trg_mask, target_embedding, encoder_state_mean
 
     def _fwd_post(self, x, avg_attn_scores):
+        if self.hparams.time_first:
+            # T x B x C -> B x T x C
+            x = x.transpose(0, 1)
+
         # Output normalization
         if self.out_norm is not None:
             x = self.out_norm(x)
@@ -418,7 +440,10 @@ class ChildDecoderBase(nn.Module):
 
         enc_hidden = encoder_out['x']
 
-        src_mask = common.mask_from_lengths(src_lengths, left_pad=False, max_length=enc_hidden.size(1), cuda=True)
+        if self.hparams.time_first:
+            enc_hidden = enc_hidden.transpose(0, 1)
+        max_length = enc_hidden.size(1)
+        src_mask = common.mask_from_lengths(src_lengths, left_pad=False, max_length=max_length, cuda=True)
 
         return (th.sum(enc_hidden * src_mask.unsqueeze(dim=2).type_as(enc_hidden), dim=1) /
                 src_lengths.unsqueeze(dim=1).type_as(enc_hidden))
