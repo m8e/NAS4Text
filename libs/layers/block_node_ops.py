@@ -338,15 +338,20 @@ class EncoderAttentionOp(BlockNodeOp):
         """
         Args:
             x: (batch_size, trg_seq_len, conv_channels) of float32
+                If time_first: (trg_seq_len, batch_size, src_emb_size) of float32
             encoder_state (dict):
                 'x': output, (batch_size, src_seq_len, src_emb_size) of float32
+                    If time_first: (src_seq_len, batch_size, src_emb_size) of float32
                 'y': output add source embedding, same shape as output
+                    If time_first: same shape as output
                 'src_mask':
             lengths: (batch_size,) of long
 
         Returns:
             output: (batch_size, trg_seq_len, conv_channels) of float32
+                If time_first: (trg_seq_len, batch_size, src_emb_size) of float32
             attn_score: (batch_size, trg_seq_len, src_seq_len) of float32
+                If time_first: (trg_seq_len, batch_size, src_emb_size) of float32
         """
         # assert encoder_state is not None
 

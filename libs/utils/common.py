@@ -242,6 +242,18 @@ def make_positions(tensor, padding_idx, left_pad):
 
 
 def mask_from_lengths(lengths, left_pad, max_length=None, cuda=False):
+    """Create mask from length array.
+
+    Args:
+        lengths (Tensor): (batch_size,) of int64
+        left_pad (bool):
+        max_length (int):
+        cuda (bool):
+
+    Returns:
+        Tensor
+        (batch_size, src_seq_len) of byte
+    """
     if isinstance(lengths, Variable):
         lengths_ = lengths.data
     else:
@@ -279,6 +291,18 @@ def subsequent_mask(size):
 
 
 def pad_and_subsequent_mask(lengths, in_encoder, apply_subsequent_mask=False, maxlen=None):
+    """Create masks and apply subsequent mask from lengths.
+
+    Args:
+        lengths (Tensor): (batch_size,) of int64
+        in_encoder (bool):
+        apply_subsequent_mask (bool):
+        maxlen (int):
+
+    Returns:
+        Tensor
+        (batch_size, 1, 1, src_seq_len) of byte
+    """
     if lengths is None:
         return None
 

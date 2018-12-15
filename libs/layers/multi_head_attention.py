@@ -19,21 +19,30 @@ __author__ = 'fyabc'
 
 def attention_and_proj_mask(
         layer, query, key, value, src_lengths,
-        subsequent_mask=True, target_embedding=None, attn_mean=False, mask=None):
+        subsequent_mask=True, target_embedding=None, attn_mean=False, mask=None, time_first=False):
     """Wrap attention with input / output projection and mask computation.
 
     :math:`Attention(Q, K, V) = softmax( Q * K^T / \sqrt{d_head} ) * V`
 
-    :param layer:
-    :param query:
-    :param key:
-    :param value:
-    :param src_lengths:
-    :param subsequent_mask:
-    :param target_embedding:
-    :param attn_mean:
-    :param mask:
-    :return:
+    Args:
+        layer:
+        query (Tensor): (batch_size, length_q, d_model) of float32
+            If time_first: (length_q, batch_size, d_model) of float32
+        key (Tensor): (batch_size, length_kv, d_model) of float32
+            If time_first: (length_kv, batch_size, d_model) of float32
+        value (Tensor): (batch_size, length_kv, d_model) of float32
+            If time_first: (length_kv, batch_size, d_model) of float32
+        src_lengths (Tensor): (batch_size,) of float32
+        subsequent_mask (bool):
+        target_embedding (Tensor): (batch_size, length_q, d_model) of float32
+            If time_first: (length_q, batch_size, d_model) of float32
+        attn_mean (bool):
+        mask (Tensor): (batch_size, 1, 1, d_model) of float32
+            If time_first: (1, 1, batch_size, d_model) of float32
+        time_first (bool):
+
+    Returns:
+
     """
 
     qkv_same = query.data_ptr() == key.data_ptr() == value.data_ptr()
@@ -46,7 +55,9 @@ def attention_and_proj_mask(
     if mask is None:
         mask = common.pad_and_subsequent_mask(
             src_lengths, layer.in_encoder, apply_subsequent_mask=subsequent_mask, maxlen=key.size(1))
-    batch_size = query.size(0)
+        if time_first:
+            mask = mask.transpose(0, 2)     # TODO: Transpose src_mask to which shape?
+    batch_size = query.size(1) if time_first else query.size(0)
 
     # 1) Do all the linear projections in batch from d_model => h x d_head
     if qkv_same:
@@ -69,11 +80,13 @@ def attention_and_proj_mask(
         q = (q + target_embedding) * math.sqrt(0.5)
     q *= layer.scaling
 
-    length_q = q.size(1)
-    length_kv = k.size(1)
+    length_q = q.size(0) if time_first else q.size(1)
+    length_kv = k.size(0) if time_first else k.size(1)
 
     # q: (batch_size, length_q, d_model)
+    #   If time first: (length_q, batch_size, d_model)
     # k & v: (batch_size, length_kv, d_model)
+    #   If time first: (length_kv, batch_size, d_model)
 
     q = q.view(batch_size, -1, h, d_head).transpose(1, 2)
     k = k.view(batch_size, -1, h, d_head).transpose(1, 2)
@@ -230,7 +243,7 @@ class MultiHeadAttention(ChildLayer):
         x, self.attn = attention_and_proj_mask(
             self, query, key, value, src_lengths=src_lengths, subsequent_mask=self.subsequent_mask,
             target_embedding=kwargs.pop('target_embedding', None), attn_mean=self.attn_mean,
-            mask=kwargs.pop('mask', None),
+            mask=kwargs.pop('mask', None), time_first=self.hparams.time_first,
         )
         return x
 

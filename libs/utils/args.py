@@ -80,6 +80,8 @@ def add_hparams_args(parser):
                        help='weight decay')
     group.add_argument('--clip-norm', default=None, type=float, metavar='NORM',
                        help='clip threshold of gradients')
+    group.add_argument('--time-first', action='store_true', default=False,
+                       help='Enable time first mode, default is %(default)r')
 
 
 def add_extra_options_args(parser):

@@ -11,13 +11,13 @@ import numpy as np
 
 __author__ = 'fyabc'
 
-PathTemplate = 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/log-{}iter{}/'
+PathTemplate = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/log-{}iter-{}/'
 FnTemplate = 'de_en_iwslt_bpe2-{}-{}_{}{}-base-generate-{}.log.txt'
 TargetFileTemplates = {
-    'x': 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arches-{}-{}-{}.txt',
-    'y': 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/bleus-{}-{}-{}.txt',
+    'x': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arches-{}-{}-{}.txt',
+    'y': 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/bleus-{}-{}-{}.txt',
 }
-PoolFileTemplate = 'D:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arch_pool-{}{}{}.txt'
+PoolFileTemplate = 'F:/Users/v-yaf/DataTransfer/NAS4Text/arch_pool_results/arch_pool-{}{}-{}.txt'
 
 Baseline = {
     'dev': {
@@ -153,7 +153,11 @@ def real_main(hparams):
 
     # Read old results.
     line_list_final, bleu_list_final = [], []
-    for i in range(1, iteration):
+    try:
+        int_iteration = int(iteration)
+    except ValueError:
+        int_iteration = 1
+    for i in range(1, int_iteration):
         with open(TargetFileTemplates['x'].format(hparams_set, subset, i), 'r', encoding='utf-8') as f_x2:
             for line in f_x2:
                 line_list_final.append(line.strip())
@@ -181,7 +185,7 @@ def real_main(hparams):
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='Collect architecture pool result.')
-    parser.add_argument('-i', '--iteration', type=int, default=1, help='The iteration number, default is %(default)r')
+    parser.add_argument('-i', '--iteration', type=str, default='1', help='The iteration number, default is %(default)r')
     parser.add_argument('-s', '--start', type=int, default=1, help='The start arch id, default is %(default)r')
     parser.add_argument('-e', '--end', type=int, default=1000, help='The end arch id, default is %(default)r')
     parser.add_argument('--subset', default='dev', help='The subset, default is %(default)r')
@@ -224,6 +228,13 @@ if __name__ == '__main__':
     # main('-i 3 -s 1501 -e 2000 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
 
     # main('-i 4 -s 2001 -e 2500 --subset dev -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
-    main('-i 4 -s 2001 -e 2500 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+    # main('-i 4 -s 2001 -e 2500 --subset test -a arch_pool_default_e6d6_dp -n 6 --extra-name full- --exp-dir -'.split(' '))
+
+    # main('-i mlp2 -s 1 -e 90 --subset dev -a ap_e6d6_shared_mlp2_top10 -n 6 --exp-dir -'.split(' '))
+    # main('-i mlp2 -s 1 -e 90 --subset test -a ap_e6d6_shared_mlp2_top10 -n 6 --exp-dir -'.split(' '))
+    # main('-i mlp3 -s 1 -e 70 --subset dev -a ap_e6d6_shared_mlp3_top10 -n 6 --exp-dir -'.split(' '))
+    main('-i mlp3 -s 1 -e 70 --subset test -a ap_e6d6_shared_mlp3_top10 -n 6 --exp-dir -'.split(' '))
+    # main('-i mlp3-50 -s 1 -e 60 --subset dev -a ap_e6d6_shared_mlp3_50_top10 -n 6 --exp-dir -'.split(' '))
+    # main('-i mlp3-50 -s 1 -e 60 --subset test -a ap_e6d6_shared_mlp3_50_top10 -n 6 --exp-dir -'.split(' '))
 
     pass
