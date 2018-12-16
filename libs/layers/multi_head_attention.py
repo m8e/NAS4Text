@@ -141,7 +141,6 @@ def attention_and_proj_mask(
 
     # x: Attention value (batch_size, num_heads, length_q, d_v)
     # attn: Attention probability distribution (batch_size, num_heads, length_q, length_kv)
-    attn = attn.view(batch_size, h, length_q, d_head)
     attn_weights = attn_weights.view(batch_size, h, length_q, length_kv)
 
     if attn_mean:
@@ -152,6 +151,7 @@ def attention_and_proj_mask(
     if time_first:
         attn = attn.transpose(0, 1).contiguous().view(length_q, batch_size, h * d_head)
     else:
+        attn = attn.view(batch_size, h, length_q, d_head)
         attn = attn.transpose(1, 2).contiguous().view(batch_size, -1, h * d_head)
 
     attn = layer.out_proj(attn)
