@@ -47,3 +47,94 @@ def get_first_token_accuracy(ref_filename, translated_filename):
                 n_correct += 1
 
         print('Total: {}; Correct: {}; Accuracy: {}'.format(n_total, n_correct, n_correct / n_total))
+
+
+def load_fairseq_checkpoint(model_path, model):
+    """Load parameter weights from fairseq checkpoint (only for de-en e6d6 baseline now)
+
+    Args:
+        model_path (str):
+        model:
+
+    Returns:
+        the updated model
+    """
+
+    state = th.load(model_path)
+    fairseq_model = state['model']
+
+    nas_model_dict = dict(model.named_parameters())
+
+    def _assign(nas_key, fairseq_key):
+        try:
+            nas_model_dict[nas_key].copy_(fairseq_model[fairseq_key])
+        except Exception:
+            raise KeyError('Error when copy from {!r} to {!r}'.format(fairseq_key, nas_key))
+        pass
+
+    _assign('module.encoder.embed_tokens.weight', 'encoder.embed_tokens.weight')
+    for i in range(6):
+        _assign('module.encoder.layers.{}.nodes.2.postprocessors.0.weight'.format(i),
+                'encoder.layers.{}.layer_norms.0.weight'.format(i))
+        _assign('module.encoder.layers.{}.nodes.2.postprocessors.0.bias'.format(i),
+                'encoder.layers.{}.layer_norms.0.bias'.format(i))
+        _assign('module.encoder.layers.{}.nodes.2.op1.attention.in_proj_weight'.format(i),
+                'encoder.layers.{}.self_attn.in_proj_weight: [768, 256], 196608'.format(i))
+        _assign('module.encoder.layers.{}.nodes.2.op1.attention.in_proj_bias'.format(i),
+                'encoder.layers.{}.self_attn.in_proj_bias'.format(i))
+        _assign('module.encoder.layers.{}.nodes.2.op1.attention.out_proj.weight'.format(i),
+                'encoder.layers.{}.self_attn.out_proj.weight'.format(i))
+        _assign('module.encoder.layers.{}.nodes.2.op1.attention.out_proj.bias'.format(i),
+                'encoder.layers.{}.self_attn.out_proj.bias'.format(i))
+        _assign('module.encoder.layers.{}.nodes.3.postprocessors.0.weight'.format(i),
+                'encoder.layers.{}.layer_norms.1.weight'.format(i))
+        _assign('module.encoder.layers.{}.nodes.3.postprocessors.0.bias'.format(i),
+                'encoder.layers.{}.layer_norms.1.bias'.format(i))
+        _assign('module.encoder.layers.{}.nodes.3.op1.pffn.w_1.weight'.format(i),
+                'encoder.layers.{}.fc1.weight'.format(i))
+        _assign('module.encoder.layers.{}.nodes.3.op1.pffn.w_1.bias'.format(i),
+                'encoder.layers.{}.fc1.bias'.format(i))
+        _assign('module.encoder.layers.{}.nodes.3.op1.pffn.w_2.weight'.format(i),
+                'encoder.layers.{}.fc2.weight'.format(i))
+        _assign('module.encoder.layers.{}.nodes.3.op1.pffn.w_2.bias'.format(i),
+                'encoder.layers.{}.fc2.bias'.format(i))
+    _assign('module.decoder.embed_tokens.weight', 'decoder.embed_tokens.weight')
+    for i in range(6):
+        _assign('module.decoder.layers.{}.nodes.2.postprocessors.0.weight'.format(i),
+                'decoder.layers.{}.self_attn_layer_norm.weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.2.postprocessors.0.bias'.format(i),
+                'decoder.layers.{}.self_attn_layer_norm.bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.2.op1.attention.in_proj_weight'.format(i),
+                'decoder.layers.{}.self_attn.in_proj_weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.2.op1.attention.in_proj_bias'.format(i),
+                'decoder.layers.{}.self_attn.in_proj_bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.2.op1.attention.out_proj.weight'.format(i),
+                'decoder.layers.{}.self_attn.out_proj.weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.2.op1.attention.out_proj.bias'.format(i),
+                'decoder.layers.{}.self_attn.out_proj.bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.3.postprocessors.0.weight'.format(i),
+                'decoder.layers.{}.encoder_attn_layer_norm.weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.3.postprocessors.0.bias'.format(i),
+                'decoder.layers.{}.encoder_attn_layer_norm.bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.3.op1.attention.in_proj_weight'.format(i),
+                'decoder.layers.{}.encoder_attn.in_proj_weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.3.op1.attention.in_proj_bias'.format(i),
+                'decoder.layers.{}.encoder_attn.in_proj_bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.3.op1.attention.out_proj.weight'.format(i),
+                'decoder.layers.{}.encoder_attn.out_proj.weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.3.op1.attention.out_proj.bias'.format(i),
+                'decoder.layers.{}.encoder_attn.out_proj.bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.4.postprocessors.0.weight'.format(i),
+                'decoder.layers.{}.final_layer_norm.weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.4.postprocessors.0.bias'.format(i),
+                'decoder.layers.{}.final_layer_norm.bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.4.op1.pffn.w_1.weight'.format(i),
+                'decoder.layers.{}.fc1.weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.4.op1.pffn.w_1.bias'.format(i),
+                'decoder.layers.{}.fc1.bias'.format(i))
+        _assign('module.decoder.layers.{}.nodes.4.op1.pffn.w_2.weight'.format(i),
+                'decoder.layers.{}.fc2.weight'.format(i))
+        _assign('module.decoder.layers.{}.nodes.4.op1.pffn.w_2.bias'.format(i),
+                'decoder.layers.{}.fc2.bias'.format(i))
+
+    return model
