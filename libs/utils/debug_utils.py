@@ -67,10 +67,9 @@ def load_fairseq_checkpoint(model_path, model):
 
     def _assign(nas_key, fairseq_key):
         try:
-            nas_model_dict[nas_key].copy_(fairseq_model[fairseq_key])
+            nas_model_dict[nas_key].data.copy_(fairseq_model[fairseq_key].data)
         except Exception:
             raise KeyError('Error when copy from {!r} to {!r}'.format(fairseq_key, nas_key))
-        pass
 
     _assign('module.encoder.embed_tokens.weight', 'encoder.embed_tokens.weight')
     for i in range(6):
@@ -79,7 +78,7 @@ def load_fairseq_checkpoint(model_path, model):
         _assign('module.encoder.layers.{}.nodes.2.postprocessors.0.bias'.format(i),
                 'encoder.layers.{}.layer_norms.0.bias'.format(i))
         _assign('module.encoder.layers.{}.nodes.2.op1.attention.in_proj_weight'.format(i),
-                'encoder.layers.{}.self_attn.in_proj_weight: [768, 256], 196608'.format(i))
+                'encoder.layers.{}.self_attn.in_proj_weight'.format(i))
         _assign('module.encoder.layers.{}.nodes.2.op1.attention.in_proj_bias'.format(i),
                 'encoder.layers.{}.self_attn.in_proj_bias'.format(i))
         _assign('module.encoder.layers.{}.nodes.2.op1.attention.out_proj.weight'.format(i),
