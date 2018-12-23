@@ -158,12 +158,14 @@ class LSTMLayer(ChildLayer):
 
         if self.batch_first:
             batch_size, max_length = data.size(0), data.size(1)
+            batch_dim = 0
         else:
             max_length, batch_size = data.size(0), data.size(1)
+            batch_dim = 1
         if lengths is None:
             lengths = th.full([batch_size], max_length, dtype=th.int64)
 
-        return batched_index_select(data, get_reversed_index(lengths, max_length))
+        return batched_index_select(data, get_reversed_index(lengths, max_length), dim=batch_dim)
 
     def extra_repr(self):
         return 'reversed={}'.format(self.reversed)
