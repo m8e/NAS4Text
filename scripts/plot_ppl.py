@@ -104,6 +104,39 @@ def get_style(style_name, key):
     return Styles[style_name](key)
 
 
+def _plot(e_ppl_dict, subset, **kwargs):
+    for i, (key, (e_list, ppl_list)) in enumerate(e_ppl_dict.items()):
+        plt.plot(e_list, ppl_list, get_style('baseline', key), color=ColorList[i % len(ColorList)], label=key)
+
+    x_range = kwargs.pop('x_range', np.arange(0, 61, 5))
+
+    plt.xticks(x_range)
+    if subset == 'dev':
+        # plt.yticks(np.arange(6.00, 20.00, 2.00))
+        # plt.ylim(ymin=6.00, ymax=20.00)
+        pass
+    else:
+        # plt.yticks(np.arange(3.00, 20.00, 2.00))
+        # plt.ylim(ymin=3.00, ymax=20.00)
+        pass
+    # t = np.arange(5.00, 25.00, 0.01)
+    # plt.semilogy(t, np.exp(-t / 1.0))
+    plt.xlim(xmin=np.min(x_range), xmax=np.max(x_range))
+
+    # plt.title('Test Accuracy')
+    title = '{} PPL'.format(subset)
+    extra_title = kwargs.pop('extra_title', None)
+    if extra_title:
+        title += '\n' + extra_title
+    plt.title(title)
+
+    plt.grid(which='both')
+    plt.legend(loc='best')
+    plt.tight_layout()
+
+    plt.show()
+
+
 def plot_ppl(args: dict):
     subset = args['subset']
     extract_fn = extract_dev_ppl if subset == 'dev' else extract_train_ppl
@@ -156,35 +189,39 @@ def plot_ppl(args: dict):
             # ('1295-e4d4-ppp-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_ppp_dp_add_01.txt')),
         ])
 
-    for i, (key, (e_list, ppl_list)) in enumerate(e_ppl_dict.items()):
-        plt.plot(e_list, ppl_list, get_style('baseline', key), color=ColorList[i % len(ColorList)], label=key)
+    _plot(e_ppl_dict, subset)
 
-    plt.xticks(np.arange(0, 61, 5))
-    if subset == 'dev':
-        # plt.yticks(np.arange(6.00, 20.00, 2.00))
-        # plt.ylim(ymin=6.00, ymax=20.00)
-        pass
-    else:
-        # plt.yticks(np.arange(3.00, 20.00, 2.00))
-        # plt.ylim(ymin=3.00, ymax=20.00)
-        pass
-    # t = np.arange(5.00, 25.00, 0.01)
-    # plt.semilogy(t, np.exp(-t / 1.0))
-    plt.xlim(xmin=0, xmax=61)
 
-    # plt.title('Test Accuracy')
-    plt.title('{} PPL'.format(subset))
-    plt.grid(which='both')
-    plt.legend(loc='best')
-    plt.tight_layout()
+def plot_ende_ppl(args: dict):
+    subset = args['subset']
+    extract_fn = extract_dev_ppl if subset == 'dev' else extract_train_ppl
 
-    plt.show()
+    e_ppl_dict = OrderedDict([
+        ('fairseq-baseline', extract_fn('../log/ende-logs/fairseq-vaswani_ende_e6d6_baseline-train.log.txt')),
+        ('baseline-time', extract_fn('../log/ende-logs/vaswani_ende_e6d6_baseline-u32-train.log.txt')),
+        ('baseline', extract_fn('../log/ende-logs/vaswani_ende_e6d6_baseline-u32-bf-train.log.txt')),
+        ('baseline-u16', extract_fn('../log/ende-logs/vaswani_ende_e6d6_baseline-bf-train.log.txt')),
+
+        ('1886', extract_fn('../log/ende-logs/ende_1886-u32-train.log.txt')),
+        ('1886-dp05', extract_fn('../log/ende-logs/ende_1886-dp05-u32-train.log.txt')),
+        ('1963', extract_fn('../log/ende-logs/ende_1963-u32-train.log.txt')),
+        ('1963-dp05', extract_fn('../log/ende-logs/ende_1963-dp05-u32-train.log.txt')),
+    ])
+
+    _plot(
+        e_ppl_dict, subset,
+        x_range=np.arange(0, 31, 5),
+        extra_title='Default: batch_first, update_freq=32, dropout=0.3',
+    )
 
 
 def main():
     init()
-    plot_ppl({
-        'subset': 'dev',
+    # plot_ppl({
+    #     'subset': 'dev',
+    # })
+    plot_ende_ppl({
+        'subset': 'train',
     })
 
 
