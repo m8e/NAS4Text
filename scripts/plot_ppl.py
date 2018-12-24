@@ -50,41 +50,34 @@ def init():
     }
     lines = {
         'linewidth': 3,
+        'markersize': 10,
     }
     matplotlib.rc('font', **font)
     matplotlib.rc('lines', **lines)
 
 
-def get_baseline(ed_list, extract_fn):
-    return [
-        ('Baseline-e{}d{}'.format(e, d),
-         extract_fn('D:/DataTransfer/NAS4Text/logs/train-e{}d{}_baseline.txt'.format(e, d)))
-        for e, d in ed_list
-    ]
+def get_key_name(extract_fn, e, d, s, ffn=None, n_da=False, dp=None, fairseq=False):
+    fs = 'fairseq-' if fairseq else ''
+    is_baseline = 'Baseline'
+    head = ''
+    if ffn is not None:
+        is_baseline = ''
+        head += 'FFN{}-'.format(ffn)
+    if n_da:
+        is_baseline = ''
+        head += 'NormBefore-'
+    if dp is not None:
+        is_baseline = ''
+        head += 'Dropout{}-'.format(dp)
 
-
-def get_fairseq_baseline(eds_list, extract_fn):
-    return [
-        ('Baseline-fairseq-e{}d{}-{}'.format(e, d, s),
-         extract_fn('D:/DataTransfer/NAS4Text/logs/train-fairseq-e{}d{}_baseline-seed{}.txt'.format(e, d, s)))
-        for e, d, s in eds_list
-    ]
-
-
-def get_attn(ed_list, extract_fn, attn):
-    return [
-        ('Attn{}-e{}d{}'.format(attn, e, d),
-         extract_fn('D:/DataTransfer/NAS4Text/logs/train-e{}d{}_baseline_attn{}.txt'.format(e, d, attn)))
-        for e, d in ed_list
-    ]
-
-
-def get_norm_before(ed_list, extract_fn):
-    return [
-        ('NormBefore-e{}d{}'.format(e, d),
-         extract_fn('D:/DataTransfer/NAS4Text/logs/train-e{}d{}_baseline_n_da.txt'.format(e, d)))
-        for e, d in ed_list
-    ]
+    head = is_baseline + head + '{}e{}d{}-{}'.format(fs, e, d, s)
+    return head, extract_fn(
+        'D:/DataTransfer/NAS4Text/logs/train-{fairseq}e{e}d{d}_baseline{ffn}{n_da}{dp}-seed{s}.txt'.format(
+            fairseq=fs, e=e, d=d, s=s,
+            ffn='_ffn{}'.format(ffn) if ffn is not None else '',
+            n_da='_n_da' if n_da else '',
+            dp='_dp{}'.format(str(dp).replace('.', '')) if dp is not None else '',
+        ))
 
 
 def baseline_style(key):
@@ -141,53 +134,71 @@ def plot_ppl(args: dict):
     subset = args['subset']
     extract_fn = extract_dev_ppl if subset == 'dev' else extract_train_ppl
 
-    e_ppl_dict = OrderedDict(
-        get_baseline([
-            (2, 2),
-            (4, 4),
-            (6, 6),
-            # (4, 8),
-            # (8, 4),
-            (8, 8),
-            (10, 10),
-            # (12, 12),
-        ], extract_fn) + get_fairseq_baseline([
-            # (2, 2, 1),
-            # (2, 2, 2),
-            # (2, 2, 3),
-            # (4, 4, 1),
-            # (4, 4, 2),
-            # (6, 6, 1),
-            # (6, 6, 2),
-            # (6, 6, 3),
-            # (4, 8, 1),
-            # (8, 4, 1),
-            # (8, 8, 1),
-            # (10, 10, 1),
-            # (12, 12, 1),
-        ], extract_fn) + get_attn([
-            (6, 6),
-            (8, 8),
-            (10, 10),
-        ], extract_fn, 384) + get_norm_before([
-            (8, 8),
-            (10, 10),
-        ], extract_fn) + [
-            # ('1141', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141.txt')),
-            # ('1141-e4d4', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4.txt')),
-            # ('1141-e4d4-common-dp+=0.1', extract_fn(
-            #     'D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_common_dp_add_01.txt')),
-            # ('1141-e4d4-attn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_attn_dp_add_01.txt')),
-            # ('1141-e4d4-ffn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_ffn_dp_add_01.txt')),
-            # ('1141-e4d4-ppp-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_ppp_dp_add_01.txt')),
-            # ('1295', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295.txt')),
-            # ('1295-e4d4', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4.txt')),
-            # ('1295-e4d4-common-dp+=0.1', extract_fn(
-            #     'D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_common_dp_add_01.txt')),
-            # ('1295-e4d4-attn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_attn_dp_add_01.txt')),
-            # ('1295-e4d4-ffn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_ffn_dp_add_01.txt')),
-            # ('1295-e4d4-ppp-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_ppp_dp_add_01.txt')),
-        ])
+    e_ppl_dict = OrderedDict([
+        # get_key_name(extract_fn, 2, 2, 1),
+        # get_key_name(extract_fn, 4, 4, 1),
+        # get_key_name(extract_fn, 6, 6, 1),
+        # get_key_name(extract_fn, 4, 8, 1),
+        # get_key_name(extract_fn, 8, 4, 1),
+        # get_key_name(extract_fn, 8, 8, 1),
+        # get_key_name(extract_fn, 10, 10, 1),
+        # get_key_name(extract_fn, 12, 12, 1),
+        #
+        # get_key_name(extract_fn, 6, 6, 1, ffn=384, fairseq=False),
+        # get_key_name(extract_fn, 6, 6, 1, ffn=1024, fairseq=False),
+        # get_key_name(extract_fn, 8, 8, 1, ffn=384, fairseq=False),
+        # get_key_name(extract_fn, 10, 10, 1, ffn=384, fairseq=False),
+        #
+        # get_key_name(extract_fn, 8, 8, 1, n_da=True, fairseq=False),
+        # get_key_name(extract_fn, 10, 10, 1, n_da=True, fairseq=False),
+
+        # get_key_name(extract_fn, 2, 2, 1, fairseq=True),
+        # get_key_name(extract_fn, 2, 2, 2, fairseq=True),
+        # get_key_name(extract_fn, 2, 2, 3, fairseq=True),
+        # get_key_name(extract_fn, 4, 4, 1, fairseq=True),
+        # get_key_name(extract_fn, 4, 4, 2, fairseq=True),
+        # get_key_name(extract_fn, 6, 6, 1, fairseq=True),
+        # get_key_name(extract_fn, 6, 6, 2, fairseq=True),
+        # get_key_name(extract_fn, 6, 6, 3, fairseq=True),
+        # get_key_name(extract_fn, 4, 8, 1, fairseq=True),
+        # get_key_name(extract_fn, 8, 4, 1, fairseq=True),
+        get_key_name(extract_fn, 8, 8, 1, fairseq=True),
+        get_key_name(extract_fn, 10, 10, 1, fairseq=True),
+        # get_key_name(extract_fn, 12, 12, 1, fairseq=True),
+
+        # get_key_name(extract_fn, 6, 6, 1, ffn=384, fairseq=True),
+        # get_key_name(extract_fn, 6, 6, 1, ffn=1024, fairseq=True),
+        # get_key_name(extract_fn, 8, 8, 1, ffn=384, fairseq=True),
+        # get_key_name(extract_fn, 10, 10, 1, ffn=384, fairseq=True),
+        #
+        get_key_name(extract_fn, 8, 8, 1, n_da=True, fairseq=True),
+        get_key_name(extract_fn, 10, 10, 1, n_da=True, fairseq=True),
+
+        # get_key_name(extract_fn, 8, 8, 1, dp=0.1, fairseq=True),
+        # get_key_name(extract_fn, 8, 8, 1, dp=0.3, fairseq=True),
+        # get_key_name(extract_fn, 10, 10, 1, dp=0.1, fairseq=True),
+
+        get_key_name(extract_fn, 8, 8, 1, dp=0.3, n_da=True, fairseq=True),
+        get_key_name(extract_fn, 10, 10, 1, dp=0.3, n_da=True, fairseq=True),
+        # get_key_name(extract_fn, 12, 12, 1, dp=0.3, n_da=True, fairseq=True),
+
+        # ('1141', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141.txt')),
+        # ('1141-e4d4', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4.txt')),
+        # ('1141-e4d4-NormBefore', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_n_da.txt')),
+        # ('1141-e4d4-common-dp0.1', extract_fn(
+        #     'D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_common_dp_add_01.txt')),
+        # ('1141-e4d4-attn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_attn_dp_add_01.txt')),
+        # ('1141-e4d4-ffn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_ffn_dp_add_01.txt')),
+        # ('1141-e4d4-ppp-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1141_e4d4_ppp_dp_add_01.txt')),
+        # ('1295', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295.txt')),
+        # ('1295-e4d4', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4.txt')),
+        # ('1295-e4d4-NormBefore', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_n_da.txt')),
+        # ('1295-e4d4-common-dp+=0.1', extract_fn(
+        #     'D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_common_dp_add_01.txt')),
+        # ('1295-e4d4-attn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_attn_dp_add_01.txt')),
+        # ('1295-e4d4-ffn-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_ffn_dp_add_01.txt')),
+        # ('1295-e4d4-ppp-dp+=0.1', extract_fn('D:/DataTransfer/NAS4Text/logs/train-arch_1295_e4d4_ppp_dp_add_01.txt')),
+    ])
 
     _plot(e_ppl_dict, subset)
 
