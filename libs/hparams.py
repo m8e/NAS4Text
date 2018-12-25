@@ -169,6 +169,8 @@ def hparams_base():
         # num_decoder_layers=6,
         # # Number of epochs to run in between evaluations.
         # child_eval_freq=10,
+
+        time_first=False,
     )
 
 

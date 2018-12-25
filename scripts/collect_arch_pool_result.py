@@ -233,8 +233,10 @@ if __name__ == '__main__':
     # main('-i mlp2 -s 1 -e 90 --subset dev -a ap_e6d6_shared_mlp2_top10 -n 6 --exp-dir -'.split(' '))
     # main('-i mlp2 -s 1 -e 90 --subset test -a ap_e6d6_shared_mlp2_top10 -n 6 --exp-dir -'.split(' '))
     # main('-i mlp3 -s 1 -e 70 --subset dev -a ap_e6d6_shared_mlp3_top10 -n 6 --exp-dir -'.split(' '))
-    main('-i mlp3 -s 1 -e 70 --subset test -a ap_e6d6_shared_mlp3_top10 -n 6 --exp-dir -'.split(' '))
+    # main('-i mlp3 -s 1 -e 70 --subset test -a ap_e6d6_shared_mlp3_top10 -n 6 --exp-dir -'.split(' '))
     # main('-i mlp3-50 -s 1 -e 60 --subset dev -a ap_e6d6_shared_mlp3_50_top10 -n 6 --exp-dir -'.split(' '))
     # main('-i mlp3-50 -s 1 -e 60 --subset test -a ap_e6d6_shared_mlp3_50_top10 -n 6 --exp-dir -'.split(' '))
+    # main('-i mlp3-aug8 -s 1 -e 30 --subset test -a ap_e6d6_shared_mlp3_aug8_top10 -n 6 --exp-dir -'.split(' '))
+    main('-i mlp4-aug10 -s 1 -e 30 --subset test -a ap_e6d6_shared_mlp4_aug10_top10 -n 6 --exp-dir -'.split(' '))
 
     pass

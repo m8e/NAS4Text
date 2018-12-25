@@ -362,7 +362,6 @@ class ChildDecoderBase(nn.Module):
 
         x = self._embed_tokens(x, incremental_state) * self.embed_scale + self.embed_positions(x, incremental_state)
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
-        target_embedding = x
 
         # Compute mask from length, shared between all decoder layers.
         trg_mask = self._mask_from_lengths(x, trg_lengths, apply_subsequent_mask=True)
@@ -374,7 +373,7 @@ class ChildDecoderBase(nn.Module):
         if self.hparams.time_first:
             # B x T x C -> T x B x C
             x = x.transpose(0, 1)
-            target_embedding = target_embedding.transpose(0, 1)
+        target_embedding = x
 
         logging.debug('Decoder input shape after embedding: {}'.format(list(x.shape)))
         return x, encoder_out, trg_mask, target_embedding, encoder_state_mean

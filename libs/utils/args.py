@@ -258,6 +258,9 @@ def add_generation_args(parser):
                        help='Translation output directory, default is "$PROJECT/translated/"')
     group.add_argument('--output-file', default=None, type=str, metavar='FILE',
                        help='Translation output filename, default is None (does not output)')
+    group.add_argument('--model-overrides', default="{}", type=str, metavar='DICT',
+                       help='a dictionary used to override model args at generation that were used during model '
+                            'training')
     return group
 
 

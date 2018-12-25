@@ -613,7 +613,8 @@ def generate_main(hparams, datasets=None):
     model_path = get_model_path(hparams)
     logging.info('Loading models from {}'.format(', '.join(hparams.path)))
     models, _ = common.load_ensemble_for_inference(
-        [os.path.join(model_path, name) for name in hparams.path], net_code=net_code)
+        [os.path.join(model_path, name) for name in hparams.path], net_code=net_code,
+        model_arg_overrides=eval(hparams.model_overrides))
 
     # TODO: Optimize ensemble for generation
     # TODO: Load alignment dictionary for unknown word replacement
