@@ -51,7 +51,7 @@ def single_process_main(hparams, datasets=None):
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
     mu.logging_model_criterion(model, criterion, logging_params=False)
 
-    model = load_fairseq_checkpoint('F:/Users/v-yaf/GitProjects/NAS4Text/models/fairseq_models/e6d6_baseline.pt', model)
+    # model = load_fairseq_checkpoint('F:/Users/v-yaf/GitProjects/NAS4Text/models/fairseq_models/e6d6_baseline.pt', model)
 
     # Build trainer
     trainer = ChildTrainer(hparams, model, criterion)
