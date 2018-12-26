@@ -170,7 +170,7 @@ def hparams_base():
         # # Number of epochs to run in between evaluations.
         # child_eval_freq=10,
 
-        time_first=False,
+        time_first=True,
     )
 
 

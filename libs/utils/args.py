@@ -30,7 +30,9 @@ def add_general_args(parser):
                        help='pseudo random number generator seed')
     group.add_argument('-N', '--net-code-file', dest='net_code_file', type=str, metavar='FILE',
                        default='net_code_example/default.json', help='net code filename')
-    group.add_argument('--time-first', action='store_true', default=False,
+    group.add_argument('--batch-first', action='store_false', dest='time_first',
+                       help='Enable batch first mode, default is time first mode')
+    group.add_argument('--time-first', action='store_true', default=True,
                        help='Enable time first mode, default is %(default)r')
     return group
 
