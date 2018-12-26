@@ -364,7 +364,9 @@ class ChildDecoderBase(nn.Module):
         x = F.dropout(x, p=self.hparams.dropout, training=self.training)
 
         # Compute mask from length, shared between all decoder layers.
-        trg_mask = self._mask_from_lengths(x, trg_lengths, apply_subsequent_mask=True)
+        # [NOTE]: Target mask is always equals to triu mask in decoder. See fairseq decoder layer for more details.
+        _all_longest = th.empty_like(trg_lengths).fill_(x.size(1))
+        trg_mask = self._mask_from_lengths(x, _all_longest, apply_subsequent_mask=True)
 
         # x: (batch_size, trg_seq_len, src_emb_size)
         # trg_mask: (batch_size, 1 (broadcast to num_heads), trg_seq_len, src_seq_len)

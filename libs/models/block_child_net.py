@@ -129,7 +129,7 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
                 lengths=trg_lengths, encoder_state=encoder_out, src_lengths=src_lengths,
                 target_embedding=target_embedding if self.hparams.connect_trg_emb else None,
                 encoder_state_mean=encoder_state_mean,
-                mask=trg_mask,
+                mask=trg_mask, src_mask=encoder_out['src_mask'],
             )
             input_list.append(output)
 
