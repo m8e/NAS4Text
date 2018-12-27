@@ -475,6 +475,7 @@ def hparams_vaswani_en_de_wmt_big():
     hparams = hparams_en_de_wmt_nao()
 
     hparams.dropout = 0.3
+    hparams.ppp_dropout = hparams.dropout
     hparams.src_embedding_size = 1024
     hparams.trg_embedding_size = 1024
     hparams.decoder_out_embedding_size = 1024

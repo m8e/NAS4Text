@@ -51,6 +51,7 @@ class NAOTrainer(ChildTrainer):
         self.controller = NAOController(hparams).cuda(only_epd=only_epd_cuda, epd_device=hparams.epd_device)
         super().__init__(hparams, self.controller.shared_weights, criterion)
 
+        self.only_epd_cuda = only_epd_cuda
         self.main_device = th.cuda.current_device()
         self.device_ids_for_gen = self._get_device_ids_for_gen()
 
@@ -211,7 +212,8 @@ class NAOTrainer(ChildTrainer):
                         break
 
         # [NOTE]: In generation step, some of the shared weights are moved to other GPUs, move them back.
-        self.controller.shared_weights.cuda()
+        if not self.only_epd_cuda:
+            self.controller.shared_weights.cuda()
 
         valid_time.stop()
         logging.info('''\
@@ -623,6 +625,8 @@ def nao_search_main(hparams):
 
         # Save updated arches after generate step.
         nao_utils.save_arches(hparams, ctrl_step, trainer.arch_pool, arches_perf=None, after_gen=True)
+
+        # TODO: Save shared weights.
 
         ctrl_step += 1
     train_meter.stop()

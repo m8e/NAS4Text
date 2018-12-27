@@ -125,7 +125,7 @@ class LSTMLayer(ChildLayer):
             pad_array = (0, 0, 0, in_seq_len - out_seq_len, 0, 0)
         else:
             in_seq_len, out_seq_len = input_.shape[0], output.shape[0]
-            pad_array = (0, in_seq_len - out_seq_len, 0, 0, 0, 0)
+            pad_array = (0, 0, 0, 0, 0, in_seq_len - out_seq_len)
         if out_seq_len < in_seq_len:
             output = F.pad(output, pad_array, value=0.0)
 
