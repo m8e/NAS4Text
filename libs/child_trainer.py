@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from collections import OrderedDict, defaultdict
+from itertools import chain
 import logging
 import math
 
@@ -64,6 +65,8 @@ class ChildTrainer:
 
         self._max_bsz_seen = 0
         self._num_updates = 0
+
+        self._buffered_stats = defaultdict(list)
 
     def _init_meters(self):
         self.meters['train_loss'] = AverageMeter()
@@ -132,37 +135,66 @@ class ChildTrainer:
         sample = self._prepare_sample(sample, volatile=False)
 
         # forward pass
-        loss, sample_sizes, logging_outputs, ooms_fwd = self._forward(sample)
+        loss, sample_size, logging_output, oom_fwd = self._forward(sample)
+        oom_bwd = self._backward(loss)
 
-        # aggregate stats and logging outputs
-        ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
-        nsentences = sum(log.get('nsentences', 0) for log in logging_outputs)
-        grad_denom = self.criterion.__class__.grad_denom(sample_sizes)
-        agg_logging_output = self.criterion.__class__.aggregate_logging_outputs(logging_outputs)
+        # buffer stats and logging outputs
+        self._buffered_stats['sample_sizes'].append(sample_size)
+        self._buffered_stats['logging_outputs'].append(logging_output)
+        self._buffered_stats['ooms_fwd'].append(oom_fwd)
+        self._buffered_stats['ooms_bwd'].append(oom_bwd)
 
-        # backward pass, all-reduce gradients and take an optimization step
-        grad_norm, ooms_bwd = self._backward_and_opt(loss, grad_denom, update_params=update_params)
+        if update_params:
+            # gather logging outputs from all replicas
+            sample_sizes = self._buffered_stats['sample_sizes']
+            logging_outputs = self._buffered_stats['logging_outputs']
+            ooms_fwd = self._buffered_stats['ooms_fwd']
+            ooms_bwd = self._buffered_stats['ooms_bwd']
+            if UseFairseqParallel and self.hparams.distributed_world_size > 1:
+                sample_sizes, logging_outputs, ooms_fwd, ooms_bwd = map(
+                    lambda l: list(chain.from_iterable(l)),
+                    zip(*distributed_utils.all_gather_list(
+                        (sample_sizes, logging_outputs, ooms_fwd, ooms_bwd)
+                    ))
+                )
+            ooms_fwd = sum(ooms_fwd)
+            ooms_bwd = sum(ooms_bwd)
 
-        if grad_norm is None:
+            # aggregate stats and logging outputs
+            ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
+            nsentences = sum(log.get('nsentences', 0) for log in logging_outputs)
+            agg_logging_output = self.criterion.__class__.aggregate_logging_outputs(logging_outputs)
+            grad_denom = self.criterion.__class__.grad_denom(sample_sizes)
+
+            try:
+                # all-reduce and rescale gradients, then take an optimization step
+                grad_norm = self._all_reduce_and_scale(grad_denom)
+                self._opt()
+
+                # update meters
+                self.meters['wps'].update(ntokens)
+                self.meters['ups'].update(1.)
+                self.meters['wpb'].update(ntokens)
+                self.meters['bsz'].update(nsentences)
+                if grad_norm is not None:
+                    self.meters['gnorm'].update(grad_norm)
+                    self.meters['clip'].update(1. if grad_norm > self.hparams.clip_norm else 0.)
+                self.meters['oom'].update(ooms_fwd + ooms_bwd)
+
+                # update loss meters for training
+                if 'loss' in agg_logging_output:
+                    self.meters['train_loss'].update(agg_logging_output['loss'], grad_denom)
+                # criterions can optionally log the NLL loss too
+                if 'nll_loss' in agg_logging_output:
+                    self.meters['train_nll_loss'].update(agg_logging_output['nll_loss'], ntokens)
+            except OverflowError as e:
+                self.zero_grad()
+                logging.warning('Overflow detected, {}'.format(e))
+
+            self.clear_buffered_stats()
+            return agg_logging_output
+        else:
             return None
-
-        # update meters
-        self.meters['wps'].update(ntokens)
-        self.meters['ups'].update(1.)
-        self.meters['wpb'].update(ntokens)
-        self.meters['bsz'].update(nsentences)
-        self.meters['gnorm'].update(grad_norm)
-        self.meters['clip'].update(1. if grad_norm > self.hparams.clip_norm else 0.)
-        self.meters['oom'].update(ooms_fwd + ooms_bwd)
-
-        # update loss meters for training
-        if 'loss' in agg_logging_output:
-            self.meters['train_loss'].update(agg_logging_output['loss'], grad_denom)
-        # criterions can optionally log the NLL loss too
-        if 'nll_loss' in agg_logging_output:
-            self.meters['train_nll_loss'].update(agg_logging_output['nll_loss'], ntokens)
-
-        return agg_logging_output
 
     def _forward(self, sample, eval_=False):
         if eval_:
@@ -194,19 +226,9 @@ class ChildTrainer:
                 else:
                     raise e
 
-        # synchronize logging outputs for multi-GPU training
-        if UseFairseqParallel and self.hparams.distributed_world_size > 1:
-            sample_sizes, logging_outputs, ooms = zip(*list(
-                distributed_utils.all_gather_list((sample_size, logging_output, oom))))
-            ooms = sum(ooms)
-        else:
-            sample_sizes = [sample_size]
-            logging_outputs = [logging_output]
-            ooms = oom
+        return loss, sample_size, logging_output, oom
 
-        return loss, sample_sizes, logging_outputs, ooms
-
-    def _backward_and_opt(self, loss, grad_denom, update_params=True):
+    def _backward(self, loss):
         oom = 0
         if loss is not None:
             try:
@@ -218,17 +240,10 @@ class ChildTrainer:
                     oom = 1
                     if hasattr(th.cuda, 'empty_cache'):
                         th.cuda.empty_cache()
-                    self.optimizer.zero_grad()
+                    self.zero_grad()
                 else:
                     raise e
-
-        if not update_params:
-            return None, None
-
-        grad_norm = self._all_reduce_and_scale(grad_denom)
-        self._opt()
-
-        return grad_norm, oom
+        return oom
 
     def _all_reduce_and_scale(self, grad_denom):
         # flatten grads into a single buffer and all-reduce
@@ -314,10 +329,14 @@ class ChildTrainer:
     def zero_grad(self):
         self.optimizer.zero_grad()
 
+    def clear_buffered_stats(self):
+        self._buffered_stats.clear()
+
     def dummy_train_step(self, dummy_batch):
         """Dummy training step for warming caching allocator."""
         self.train_step(dummy_batch, update_params=False)
         self.zero_grad()
+        self.clear_buffered_stats()
 
     def set_seed(self, epoch=0):
         """Set seed based on args.seed and the epoch number so that

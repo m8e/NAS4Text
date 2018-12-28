@@ -120,6 +120,7 @@ def main_entry(hparams, **kwargs):
         logging.info('Source dictionary [{}]: len = {}'.format(_d_trg.language, len(_d_trg)))
 
         splits = ['train', 'dev'] if train_ else [hparams.gen_subset]
+        # splits = ['test', 'dev'] if train_ else [hparams.gen_subset]    # [DEBUG]
         datasets.load_splits(splits)
         for split in splits:
             logging.info('Split {}: len = {}'.format(split, len(datasets.splits[split])))

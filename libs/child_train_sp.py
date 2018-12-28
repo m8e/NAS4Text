@@ -61,6 +61,7 @@ def single_process_main(hparams, datasets=None):
 
     # Send a dummy batch to warm the caching allocator
     dummy_batch = datasets.get_dataset('train').get_dummy_batch(hparams.max_tokens, trainer.get_model().max_positions())
+    # dummy_batch = datasets.get_dataset('test').get_dummy_batch(hparams.max_tokens, trainer.get_model().max_positions())     # [DEBUG]
     trainer.dummy_train_step(dummy_batch)
 
     # Train until the learning rate gets too small
