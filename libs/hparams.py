@@ -394,6 +394,11 @@ def hparams_de_en_iwslt_bpe2_darts():
 
     hparams.block_combine_op = 'add'
 
+    # [NOTE]: This hparams is added later. Only add results from no-out nodes.
+    # Now this hparams setting is same as NAO.
+    hparams.block_combine_no_outs = True
+    hparams.cell_op_space = 'default-ext'
+
     return hparams
 
 
