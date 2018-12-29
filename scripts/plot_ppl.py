@@ -98,8 +98,15 @@ def get_style(style_name, key):
 
 
 def _plot(e_ppl_dict, subset, **kwargs):
+    style = kwargs.pop('style', None)
+    if style is None:
+        def style_fn(key):
+            return get_style('baseline', key)
+    else:
+        style_fn = style
+
     for i, (key, (e_list, ppl_list)) in enumerate(e_ppl_dict.items()):
-        plt.plot(e_list, ppl_list, get_style('baseline', key), color=ColorList[i % len(ColorList)], label=key)
+        plt.plot(e_list, ppl_list, style_fn(key), color=ColorList[i % len(ColorList)], label=key)
 
     x_range = kwargs.pop('x_range', np.arange(0, 61, 5))
 
@@ -130,7 +137,7 @@ def _plot(e_ppl_dict, subset, **kwargs):
     plt.show()
 
 
-def plot_ppl(args: dict):
+def plot_deen_ppl(args: dict):
     subset = args['subset']
     extract_fn = extract_dev_ppl if subset == 'dev' else extract_train_ppl
 
@@ -203,6 +210,16 @@ def plot_ppl(args: dict):
     _plot(e_ppl_dict, subset)
 
 
+def _simple_style_fn(key):
+    if 'baseline' in key:
+        return '-'
+    if '1886' in key:
+        return '--'
+    if '1963' in key:
+        return '-.'
+    return '-'
+
+
 def plot_ende_ppl(args: dict):
     subset = args['subset']
     extract_fn = extract_dev_ppl if subset == 'dev' else extract_train_ppl
@@ -221,17 +238,54 @@ def plot_ende_ppl(args: dict):
 
     _plot(
         e_ppl_dict, subset,
-        x_range=np.arange(0, 31, 5),
+        x_range=np.arange(0, 41, 5),
         extra_title='Default: batch_first, update_freq=32, dropout=0.3',
+        style=_simple_style_fn,
+    )
+
+
+def plot_deen_ppl2(args: dict):
+    subset = args['subset']
+    extract_fn = extract_dev_ppl if subset == 'dev' else extract_train_ppl
+
+    e_ppl_dict = OrderedDict([
+        ('fairseq-baseline', extract_fn('../log/deen-logs/train-fairseq-e6d6_baseline-seed1.txt')),
+        # ('baseline', extract_fn('../log/deen-logs/e6d6_baseline-train.log.txt')),
+        # ('baseline-linux', extract_fn('../log/deen-logs/e6d6_baseline-train-linux.log.txt')),
+        # ('baseline-time_first', extract_fn('../log/deen-logs/e6d6_baseline-train-time_first.log.txt')),
+        ('baseline-time_first-new', extract_fn('../log/deen-logs/e6d6_baseline-train-time_first-new.log.txt')),
+        ('baseline-time_first-linux-new', extract_fn('../log/deen-logs/e6d6_baseline-train-linux-new.log.txt')),
+
+        ('1886', extract_fn('../log/deen-logs/1886-train.log.txt')),
+        # ('1886-time_first', extract_fn('../log/deen-logs/1886-train-time_first.log.txt')),
+        # ('1886-time_first-linux', extract_fn('../log/deen-logs/1886-train-time_first-linux.log.txt')),
+        ('1886-time_first-new', extract_fn('../log/deen-logs/1886-train-time_first-new.log.txt')),
+        ('1886-time_first-linux-new', extract_fn('../log/deen-logs/1886-train-time_first-linux-new.log.txt')),
+
+        ('1963', extract_fn('../log/deen-logs/1963-train.log.txt')),
+        # ('1963-time_first', extract_fn('../log/deen-logs/1963-train-time_first.log.txt')),
+        # ('1963-time_first-linux', extract_fn('../log/deen-logs/1963-train-time_first-linux.log.txt')),
+        ('1963-time_first-new', extract_fn('../log/deen-logs/1963-train-time_first-new.log.txt')),
+        ('1963-time_first-linux-new', extract_fn('../log/deen-logs/1963-train-time_first-linux-new.log.txt')),
+    ])
+
+    _plot(
+        e_ppl_dict, subset,
+        x_range=np.arange(0, 61, 5),
+        # extra_title='Default: batch_first, update_freq=32, dropout=0.3',
+        style=_simple_style_fn,
     )
 
 
 def main():
     init()
-    # plot_ppl({
+    # plot_deen_ppl({
     #     'subset': 'dev',
     # })
-    plot_ende_ppl({
+    # plot_ende_ppl({
+    #     'subset': 'dev',
+    # })
+    plot_deen_ppl2({
         'subset': 'train',
     })
 
