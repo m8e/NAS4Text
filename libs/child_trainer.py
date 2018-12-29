@@ -305,8 +305,17 @@ class ChildTrainer:
         sample = self._prepare_sample(sample, volatile=True)
 
         # forward pass
-        loss, sample_sizes, logging_outputs, ooms_fwd = self._forward(sample, eval_=True)
-        assert not ooms_fwd, 'Ran out of memory during validation'
+        loss, sample_size, logging_output, oom_fwd = self._forward(sample, eval_=True)
+        assert not oom_fwd, 'Ran out of memory during validation'
+
+        # gather logging outputs from all GPUs
+        if self.hparams.distributed_world_size > 1:
+            sample_sizes, logging_outputs = zip(*distributed_utils.all_gather_list(
+                (sample_size, logging_output)
+            ))
+        else:
+            sample_sizes = [sample_size]
+            logging_outputs = [logging_output]
 
         # aggregate stats and logging outputs
         ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
