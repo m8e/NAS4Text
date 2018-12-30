@@ -309,7 +309,7 @@ class ChildTrainer:
         assert not oom_fwd, 'Ran out of memory during validation'
 
         # gather logging outputs from all GPUs
-        if self.hparams.distributed_world_size > 1:
+        if UseFairseqParallel and self.hparams.distributed_world_size > 1:
             sample_sizes, logging_outputs = zip(*distributed_utils.all_gather_list(
                 (sample_size, logging_output)
             ))
