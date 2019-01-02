@@ -77,6 +77,12 @@ class NAOTrainer(ChildTrainer):
             'training': 0.00,
             'test': 0.00,
         }
+        self._bleu_cache = {
+            'imm_bleu': [],
+            'final_bleu': [],
+            'generator': None,
+            'whole_gen_itr': None,
+        }
 
     def _get_device_ids_for_gen(self):
         all_device_ids = set(range(self.hparams.distributed_world_size))
@@ -119,54 +125,45 @@ class NAOTrainer(ChildTrainer):
         else:
             index = th.multinomial(prob).item()
         # print('$select index is:', index)
-        return self.arch_pool[index]
+        return self.arch_pool[index], index
 
     def train_children(self, datasets):
         logging.info('Training children, arch pool size = {}'.format(len(self.arch_pool)))
         eval_freq = self.hparams.child_eval_freq
 
-        if self.single_gpu:
-            self._init_meters()
-            for epoch in range(1, eval_freq + 1):
-                mu.train(self.hparams, self, datasets, epoch, 0)
-
-            # Restore shared model after training.
-            self.model = self.controller.shared_weights
-
-            return
-
         if self.ArchDist:
             # TODO: How to distributed training on all GPU cards async?
             raise NotImplementedError('Arch dist multi-gpu training not supported yet')
-        else:
-            # raise NotImplementedError('Non-arch dist multi-gpu training not supported yet')
-            self._init_meters()
-            for epoch in range(1, eval_freq + 1):
-                mu.train(self.hparams, self, datasets, epoch, 0)
 
-            # Restore shared model after training.
-            self.model = self.controller.shared_weights
+        if self.hparams.imm_valid:
+            # Prepare generators.
+            self._bleu_cache['imm_bleu'] = [None for _ in range(len(self.arch_pool))]
+            self._bleu_cache['final_-bleu'] = [None for _ in range(len(self.arch_pool))]
+            self._bleu_cache['generator'], self._bleu_cache['whole_gen_itr'] = self._prepare_generator(datasets)
 
-            return
+        self._init_meters()
+        for epoch in range(1, eval_freq + 1):
+            mu.train(self.hparams, self, datasets, epoch, 0)
+
+        # Restore shared model after training.
+        self.model = self.controller.shared_weights
 
     def train_step(self, sample, update_params=True):
         # [NOTE]: At each train step, sample a new arch from pool.
-        arch = self._sample_arch_from_pool()
+        arch, index = self._sample_arch_from_pool()
         child = self.new_model(arch)
         self.model = child
         self._current_child_size = self.model.num_parameters()
-        return super().train_step(sample, update_params=update_params)
+        result = super().train_step(sample, update_params=update_params)
+        # TODO: Add imm-valid here.
+        return result
 
     def _get_flat_grads(self, out=None):
         # [NOTE]: Since model will be changed between updates, does not use out buffer.
         return super()._get_flat_grads(out=None)
 
-    def eval_children(self, datasets, compute_loss=False):
-        """Eval all arches in the pool."""
-
+    def _prepare_generator(self, datasets):
         self._get_ref_tokens(datasets)
-
-        # Prepare the generator.
         generator = ChildGenerator(
             self.hparams, datasets, [self.model], subset='dev', quiet=True, output_file=None,
             use_task_maxlen=False, maxlen_a=0, maxlen_b=self.GenMaxlenB, max_tokens=None,
@@ -174,6 +171,13 @@ class NAOTrainer(ChildTrainer):
         )
         itr = generator.get_input_iter(sort_by_length=self.GenSortByLength)
         whole_gen_itr = common.cycled_data_iter(itr)
+
+        return generator, whole_gen_itr
+
+    def eval_children(self, datasets, compute_loss=False):
+        """Eval all arches in the pool."""
+
+        generator, whole_gen_itr = self._prepare_generator(datasets)
 
         arch_itr = self.arch_pool
         if tqdm is not None:
@@ -185,31 +189,14 @@ class NAOTrainer(ChildTrainer):
 
         with th.cuda.device(self.hparams.gen_device):
             for arch in arch_itr:
-                while True:
-                    sample = next(whole_gen_itr)
+                # [NOTE]: Run data parallel on all GPUs except main device and epd device
+                child = self.new_model(arch, cuda=True, device_ids=self.device_ids_for_gen, output_device=None)
 
-                    # [NOTE]: Run data parallel on all GPUs except main device and epd device
-                    child = self.new_model(arch, cuda=True, device_ids=self.device_ids_for_gen, output_device=None)
-
-                    if compute_loss:
-                        with self.child_env(child, train=False):
-                            val_loss = mu.validate(self.hparams, self, datasets, 'dev', self.hparams.child_eval_freq)
-                        val_loss_list.append(val_loss)
-
-                    generator.models = [child]
-                    generator.cuda()
-
-                    # Skip OOM batches.
-                    try:
-                        # FIXME: Use beam 5 decoding here.
-                        translation = generator.decoding_one_batch(sample)
-                        val_bleu = batch_bleu(generator, sample['id'], translation, self._ref_tokens, self._ref_dict)
-                        val_acc_list.append(val_bleu)
-                    except RuntimeError as e:
-                        logging.warning('Error when decoding a batch, skip this batch: {}'.format(e))
-                        continue
-                    else:
-                        break
+                val_loss, val_bleu = self.eval_single_child(
+                    datasets, generator, child, whole_gen_itr, compute_loss=compute_loss)
+                if compute_loss:
+                    val_loss_list.append(val_loss)
+                val_acc_list.append(val_bleu)
 
         # [NOTE]: In generation step, some of the shared weights are moved to other GPUs, move them back.
         if not self.only_epd_cuda:
@@ -223,6 +210,32 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             np.mean(val_acc_list), valid_time.sum,
         ))
         return val_acc_list
+
+    def eval_single_child(self, datasets, generator, child, whole_gen_itr, compute_loss=False):
+        if compute_loss:
+            with self.child_env(child, train=False):
+                val_loss = mu.validate(self.hparams, self, datasets, 'dev', self.hparams.child_eval_freq)
+        else:
+            val_loss = None
+
+        while True:
+            sample = next(whole_gen_itr)
+
+            generator.models = [child]
+            generator.cuda()
+
+            # Skip OOM batches.
+            try:
+                # FIXME: Use beam 5 decoding here.
+                translation = generator.decoding_one_batch(sample)
+                val_bleu = batch_bleu(generator, sample['id'], translation, self._ref_tokens, self._ref_dict)
+            except RuntimeError as e:
+                logging.warning('Error when decoding a batch, skip this batch: {}'.format(e))
+                continue
+            else:
+                break
+
+        return val_loss, val_bleu
 
     @contextmanager
     def child_env(self, model, train=True):
@@ -267,52 +280,11 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
             for line in ref_f:
                 self._ref_tokens.append(tokenizer.Tokenizer.tokenize(line, dict_, tensor_type=th.IntTensor))
 
-    def _parse_arch_to_seq(self, arch):
-        return self.controller.parse_arch_to_seq(arch)
-
-    def _normalized_perf(self, perf_list):
-        max_val, min_val = np.max(perf_list), np.min(perf_list)
-        return [(v - min_val) / (max_val - min_val) for v in perf_list]
-
-    def _shuffle_and_split(self, a, p, test_size=0.1):
-        index = np.random.permutation(len(a))
-        a = [a[i] for i in index]
-        p = [p[i] for i in index]
-        split = int(np.floor(len(a) * test_size))
-        return (a[split:], p[split:]), (a[:split], p[:split])
-
     def controller_train_step(self, old_arches, old_arches_perf, split_test=True):
         logging.info('Training Encoder-Predictor-Decoder')
-        augment = self.hparams.augment
-        augment_rep = self.hparams.augment_rep
 
-        perf = self._normalized_perf(old_arches_perf)
-
-        if split_test:
-            train_ap, test_ap = self._shuffle_and_split(old_arches, perf, test_size=0.1)
-            if augment:
-                train_ap = nao_utils.arch_augmentation(
-                    *train_ap, augment_rep=self.hparams.augment_rep, focus_top=self.hparams.focus_top)
-            train_arches, train_bleus = train_ap
-            train_ap = [self._parse_arch_to_seq(arch) for arch in train_arches], train_bleus
-            test_arches, test_bleus = test_ap
-            test_ap = [self._parse_arch_to_seq(arch) for arch in test_arches], test_bleus
-
-            ctrl_dataloader = nao_utils.make_ctrl_dataloader(
-                *train_ap, batch_size=self.hparams.ctrl_batch_size,
-                shuffle=True, sos_id=self.controller.epd.sos_id)
-            test_ctrl_dataloader = nao_utils.make_ctrl_dataloader(
-                *test_ap, batch_size=self.hparams.ctrl_batch_size,
-                shuffle=False, sos_id=self.controller.epd.sos_id)
-        else:
-            if augment:
-                old_arches, perf = nao_utils.arch_augmentation(
-                    old_arches, perf, augment_rep=augment_rep, focus_top=self.hparams.focus_top)
-            arch_seqs = [self._parse_arch_to_seq(arch) for arch in old_arches]
-            ctrl_dataloader = nao_utils.make_ctrl_dataloader(
-                arch_seqs, perf, batch_size=self.hparams.ctrl_batch_size,
-                shuffle=True, sos_id=self.controller.epd.sos_id)
-            test_ctrl_dataloader = ctrl_dataloader
+        ctrl_dataloader, test_ctrl_dataloader = nao_utils.preprocess_ap(
+            self.hparams, old_arches, old_arches_perf, self.controller, split_test=split_test, test_size=0.1)
 
         epochs = range(1, self.hparams.ctrl_train_epochs + 1)
         if tqdm is not None:
@@ -424,7 +396,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
         final_old_perf_list, final_new_perf_list = [], []
 
         predict_lambda = 0
-        topk_arches = [self._parse_arch_to_seq(arch) for arch in old_arches[:self.hparams.num_pred_top]]
+        topk_arches = [self.controller.parse_arch_to_seq(arch) for arch in old_arches[:self.hparams.num_pred_top]]
         topk_arches_loader = nao_utils.make_tensor_dataloader(
             [th.LongTensor(topk_arches)], self.hparams.ctrl_batch_size, shuffle=False)
 

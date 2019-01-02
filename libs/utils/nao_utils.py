@@ -207,6 +207,52 @@ def arch_augmentation(arch_list, bleu_list, augment_rep=4, focus_top=False):
     return arch_list, bleu_list
 
 
+def normalized_perf(perf_list):
+    max_val, min_val = np.max(perf_list), np.min(perf_list)
+    return [(v - min_val) / (max_val - min_val) for v in perf_list]
+
+
+def shuffle_and_split_ap(a, p, test_size):
+    index = np.random.permutation(len(a))
+    a = [a[i] for i in index]
+    p = [p[i] for i in index]
+    split = int(np.floor(len(a) * test_size))
+    return (a[split:], p[split:]), (a[:split], p[:split])
+
+
+def preprocess_ap(hparams, old_arches, old_arches_perf, controller, split_test=True, test_size=0.1):
+    augment = hparams.augment
+    augment_rep = hparams.augment_rep
+
+    perf = normalized_perf(old_arches_perf)
+
+    if split_test:
+        train_ap, test_ap = shuffle_and_split_ap(old_arches, perf, test_size=test_size)
+        if augment:
+            train_ap = arch_augmentation(*train_ap, augment_rep=hparams.augment_rep, focus_top=hparams.focus_top)
+        train_arches, train_bleus = train_ap
+        train_ap = [controller.parse_arch_to_seq(arch) for arch in train_arches], train_bleus
+        test_arches, test_bleus = test_ap
+        test_ap = [controller.parse_arch_to_seq(arch) for arch in test_arches], test_bleus
+
+        ctrl_dataloader = make_ctrl_dataloader(
+            *train_ap, batch_size=hparams.ctrl_batch_size,
+            shuffle=True, sos_id=controller.epd.sos_id)
+        test_ctrl_dataloader = make_ctrl_dataloader(
+            *test_ap, batch_size=hparams.ctrl_batch_size,
+            shuffle=False, sos_id=controller.epd.sos_id)
+    else:
+        if augment:
+            old_arches, perf = arch_augmentation(
+                old_arches, perf, augment_rep=augment_rep, focus_top=hparams.focus_top)
+        arch_seqs = [controller.parse_arch_to_seq(arch) for arch in old_arches]
+        ctrl_dataloader = make_ctrl_dataloader(
+            arch_seqs, perf, batch_size=hparams.ctrl_batch_size,
+            shuffle=True, sos_id=controller.epd.sos_id)
+        test_ctrl_dataloader = ctrl_dataloader
+    return ctrl_dataloader, test_ctrl_dataloader
+
+
 def add_nao_search_args(parser):
     group = parser.add_argument_group('NAO search options')
 
@@ -308,6 +354,10 @@ def add_nao_search_args(parser):
                        help='Focus on top architectures')
     group.add_argument('--reload', action='store_true', default=False,
                        help='Reload old model, only run generation.')
+
+    # Debug options.
+    group.add_argument('--imm-valid', action='store_true', default=False,
+                       help='Validate child arch immediately after training, default is %(default)r')
 
     # TODO
 
