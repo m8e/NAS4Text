@@ -86,6 +86,7 @@ class NAOTrainer(ChildTrainer):
 
     def new_model(self, net_code, device=None, cuda=True,
                   device_ids=None, output_device=_sentinel, force_single=False):
+        """Create a new child model (instance of ``BlockChildNet``) from given net code and shared weights."""
         result = BlockChildNet(net_code, self.hparams, self.controller)
         if not force_single and self.hparams.distributed_world_size > 1:
             if cuda:
@@ -434,7 +435,7 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 if predict_lambda < 50:
                     predict_lambda += self.hparams.lambda_step
                 elif predict_lambda >= 10000000:
-                    # FIXME: A temp solution: stop the generation when the lambda is too large.
+                    # FIXME: A temporary solution: stop the generation when the lambda is too large.
                     break
                 else:
                     predict_lambda += predict_lambda / 50

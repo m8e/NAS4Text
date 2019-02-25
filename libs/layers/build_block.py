@@ -256,6 +256,7 @@ class BlockLayer(ChildLayer):
         return self.combine_node(to_be_combined)
 
     def _get_topological_order(self, layer_code):
+        """Get the topological order of the nodes."""
         self.topological_order = []
         remain_nodes = list(range(len(layer_code)))
 
@@ -276,23 +277,26 @@ class BlockLayer(ChildLayer):
             remain_nodes = new_remain_nodes
 
     def contains_lstm(self):
+        """Test if this layer contains an LSTM node."""
         return any(n.contains_lstm() for n in self.nodes)
 
 
 def build_block(layer_code, input_shape, hparams, in_encoder=True, controller=None, layer_id=None):
-    """
+    """Build ONE LAYER from given layer code.
 
     Args:
         layer_code:
         input_shape: torch.Size object
             Shape of input tensor, expect (batch_size, seq_len, input_size)
         hparams:
-        in_encoder:
+        in_encoder (bool): Indicate if the layer is in encoder or not.
         controller:
         layer_id:
 
     Returns:
         tuple
+            0: The BlockLayer built from the code.
+            1: The output shape of the block.
     """
     block = BlockLayer(hparams, in_encoder, controller=controller)
     output_shape = block.build(layer_code, input_shape, layer_id)

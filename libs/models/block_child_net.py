@@ -144,6 +144,14 @@ class BlockChildDecoder(ChildIncrementalDecoderBase):
 
 @ChildNetBase.register_child_net
 class BlockChildNet(EncDecChildNet):
+    """Child net composed by blocks.
+
+    See ``libs/layers/build_block.py`` for details of block.
+
+    This child net is used in NAO training.
+    Given a net code, this network can be built from scratch or from shared weights
+    (if the ``controller`` argument is not None).
+    """
     def __init__(self, net_code, hparams, controller=None):
         super().__init__(net_code, hparams)
 

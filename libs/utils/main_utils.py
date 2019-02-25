@@ -148,7 +148,7 @@ def logging_model_criterion(model, criterion, logging_params=True):
 
 def logging_training_stats(hparams):
     logging.info('Training on {} GPUs'.format(hparams.distributed_world_size))
-    logging.info('Max tokens per GPU = {}, max sentences per GPU = {}'.format(
+    logging.info('Max tokens total on all GPUs = {}, max sentences total on all GPUs = {}'.format(
         hparams.max_tokens,
         hparams.max_sentences,
     ))

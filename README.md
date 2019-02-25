@@ -17,6 +17,8 @@ See docstring of [`libs/layers/net_code.py`](libs/layers/net_code.py).
 
 User can put their net code files in `usr_net_code/`, which is ignored by git.
 
+In training and inference, use `-N` to specify the net code file.
+
 ## Search Space Definition
 
 See search spaces of [`libs/utils/search_space.py`](libs/utils/search_space.py).
@@ -43,11 +45,12 @@ More examples can be seen in [`scripts/train_examples.sh`](scripts/train_example
 models/
     <task-name>/
         <hparams-set-name>/
-            <net-code-filename-without-ext>/
-                checkpoint1.pt
-                checkpoint_best.pt
-                checkpoint_last.pt
-                ...
+            <experiment-name>/
+                <net-code-filename-without-ext>/
+                    checkpoint1.pt
+                    checkpoint_best.pt
+                    checkpoint_last.pt
+                    ...
 ```
 
 ## Inference Child Model
@@ -72,6 +75,11 @@ Then compute BLEU:
 perl scripts/multi-bleu.perl data/de_en_iwslt/test.iwslt.de-en.en < translated/[output file path above]
 ```
 
-## Train Teacher Model
+## NAO Training
 
-TODO
+```bash
+python nao_train.py [More options]
+
+# Example on de-en iwslt dataset
+# TODO
+```
