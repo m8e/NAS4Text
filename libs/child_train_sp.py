@@ -13,7 +13,7 @@ import torch as th
 
 from .utils import main_utils as mu
 from .utils.data_processing import LanguageDatasets
-from .models.child_net_base import ParalleledChildNet
+from .models import child_net_base as nbase
 from .criterions import build_criterion
 from .child_trainer import ChildTrainer
 from .utils.common import get_net_type
@@ -47,7 +47,15 @@ def single_process_main(hparams, datasets=None):
 
     # Build model and criterion
     model = get_net_type(net_code)(net_code, hparams)
-    model = ParalleledChildNet(model, output_device=hparams.device_id)
+    if hparams.dp_method == 'dp':
+        model = nbase.ParalleledChildNet(model, output_device=hparams.device_id)
+    elif hparams.dp_method == 'ddp':
+        model = nbase.DPChildNet(model, output_device=hparams.device_id)
+    elif hparams.dp_method == 'lddp':
+        raise NotImplementedError('Not implemented now')
+        model = nbase.LegacyDPChildNet(model, 1)
+    else:
+        raise RuntimeError('Unknown data parallel method {!r}'.format(hparams.dp_method))
     criterion = build_criterion(hparams, datasets.source_dict, datasets.target_dict)
     mu.logging_model_criterion(model, criterion, logging_params=False)
 
@@ -60,8 +68,8 @@ def single_process_main(hparams, datasets=None):
     epoch, batch_offset = mu.prepare_checkpoint(hparams, trainer)
 
     # Send a dummy batch to warm the caching allocator
-    dummy_batch = datasets.get_dataset('train').get_dummy_batch(hparams.max_tokens, trainer.get_model().max_positions())
-    # dummy_batch = datasets.get_dataset('test').get_dummy_batch(hparams.max_tokens, trainer.get_model().max_positions())     # [DEBUG]
+    dummy_batch = datasets.get_dataset(hparams.train_subset).get_dummy_batch(
+        hparams.max_tokens, trainer.get_model().max_positions())
     trainer.dummy_train_step(dummy_batch)
 
     # Train until the learning rate gets too small

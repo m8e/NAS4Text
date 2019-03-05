@@ -146,11 +146,23 @@ class AttentionSpaceBase:
 
 
 class AttentionSpaceLarge(AttentionSpaceBase):
-    pass
+    """The large space size.
+
+    [NOTE]: It seem that the searched architecture on IWSLT14 De-En are all set the ``dim`` to 2 on PFFN op.
+    So set FFNSize[2] to the default value (as a pivot).
+
+    Follow the vaswani_wmt_en_de_big setting, set ``FFNSize[2]`` to 4096.
+    """
+    FFNSize = [1024, 2048, 4096, 6144, 8192, 10240]
+
+
+class AttentionSpaceMedium(AttentionSpaceBase):
+    FFNSize = [512, 1024, 1536, 2048, 3072, 4096]
 
 
 AttentionSpaces = {
     'base': AttentionSpaceBase,
+    'medium': AttentionSpaceMedium,
     'large': AttentionSpaceLarge,
 }
 
@@ -180,31 +192,27 @@ class CellSpace:
 class SearchSpace:
     """Search spaces of DARTS and other NAS search algorithms and default op args."""
 
-    # TODO: Support same op with different args
-    AllCellOps = [
-        ('Zero', []),
-        ('Identity', []),
-        ('FFN', ['relu', True]),
-        ('PFFN', ['', 'd']),
-        ('SelfAttention', [1, '', 'd']),
-        ('EncoderAttention', [1, '', 'd']),
-        ('CNN', [None, 1, 0, 0, '', 'd']),
-        ('LSTM', [None, False, '', 'd']),
-    ]
-    DefaultCellOps = [
-        ('Zero', []),
-        ('Identity', []),
-        ('FFN', ['relu', True]),
-        ('PFFN', ['', 'd']),
-        ('SelfAttention', [1, '', 'd']),
-        ('EncoderAttention', [1, '', 'd']),
-        ('CNN', [None, 1, 0, 0, '', 'd']),
-        ('LSTM', [None, False, '', 'd']),
-    ]
-
     CellOpSpaces = {
-        'all': AllCellOps,
-        'default': DefaultCellOps,
+        'all': [
+            ('Zero', []),
+            ('Identity', []),
+            ('FFN', ['relu', True]),
+            ('PFFN', ['', 'd']),
+            ('SelfAttention', [1, '', 'd']),
+            ('EncoderAttention', [1, '', 'd']),
+            ('CNN', [None, 1, 0, 0, '', 'd']),
+            ('LSTM', [None, False, '', 'd']),
+        ],
+        'default': [
+            ('Zero', []),
+            ('Identity', []),
+            ('FFN', ['relu', True]),
+            ('PFFN', ['', 'd']),
+            ('SelfAttention', [1, '', 'd']),
+            ('EncoderAttention', [1, '', 'd']),
+            ('CNN', [None, 1, 0, 0, '', 'd']),
+            ('LSTM', [None, False, '', 'd']),
+        ],
         'only-attn': [
             ('Zero', []),
             ('Identity', []),

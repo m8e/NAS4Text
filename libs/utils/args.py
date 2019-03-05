@@ -175,6 +175,8 @@ def add_distributed_args(parser):
 
     group = parser.add_argument_group(
         'Distributed Options', description='Options that set distributed training.')
+    group.add_argument('--dp-method', default='dp', choices=['dp', 'ddp', 'lddp'],
+                       help='Use which method to run data parallel, default is %(default)r')
     group.add_argument('--distributed-world-size', type=int, metavar='N',
                        default=torch.cuda.device_count(),
                        help='total number of GPUs across all nodes (default: all visible GPUs)')

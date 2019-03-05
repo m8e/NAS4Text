@@ -13,6 +13,7 @@ from ..layers.common import *
 from ..layers.grad_multiply import GradMultiply
 from ..utils import common
 from ..utils.data_processing import LanguagePairDataset
+from ..utils.legacy_distributed_data_parallel import LegacyDistributedDataParallel
 
 __author__ = 'fyabc'
 
@@ -528,6 +529,34 @@ class ParalleledChildNet(nn.DataParallel):
     num_parameters = forward_call('num_parameters')
 
 
+class DPChildNet(nn.parallel.DistributedDataParallel):
+    encode = forward_call('encode')
+    decode = forward_call('decode')
+    encoder = forward_property('encoder')
+    decoder = forward_property('decoder')
+    get_normalized_probs = forward_call('get_normalized_probs')
+    get_targets = forward_call('get_targets')
+    max_encoder_positions = forward_call('max_encoder_positions')
+    max_decoder_positions = forward_call('max_decoder_positions')
+    max_positions = forward_call('max_positions')
+    upgrade_state_dict = forward_call('upgrade_state_dict')
+    num_parameters = forward_call('num_parameters')
+
+
+class LegacyDPChildNet(LegacyDistributedDataParallel):
+    encode = forward_call('encode')
+    decode = forward_call('decode')
+    encoder = forward_property('encoder')
+    decoder = forward_property('decoder')
+    get_normalized_probs = forward_call('get_normalized_probs')
+    get_targets = forward_call('get_targets')
+    max_encoder_positions = forward_call('max_encoder_positions')
+    max_decoder_positions = forward_call('max_decoder_positions')
+    max_positions = forward_call('max_positions')
+    upgrade_state_dict = forward_call('upgrade_state_dict')
+    num_parameters = forward_call('num_parameters')
+
+
 __all__ = [
     'ChildNetBase',
     'EncDecChildNet',
@@ -539,4 +568,6 @@ __all__ = [
     'forward_call',
 
     'ParalleledChildNet',
+    'DPChildNet',
+    'LegacyDPChildNet',
 ]

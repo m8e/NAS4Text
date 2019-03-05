@@ -398,9 +398,9 @@ Metrics: loss={}, valid_accuracy={:<8.6f}, secs={:<10.2f}'''.format(
                 sample = nao_utils.prepare_ctrl_sample(sample, evaluation=True)
                 predict_value, logits, arch = model(sample['encoder_input'])    # target_variable=None
                 _safe_extend(predict_value_list, predict_value)
-                _safe_extend(arch_seq_list, arch)
+                arch_seq_list.extend(arch)
                 _safe_extend(ground_truth_perf_list, sample['encoder_target'])
-                _safe_extend(ground_truth_arch_seq_list, sample['decoder_target'])
+                ground_truth_arch_seq_list.extend(sample['decoder_target'])
 
         pairwise_acc = nao_utils.pairwise_accuracy(ground_truth_perf_list, predict_value_list)
         hamming_dis = nao_utils.hamming_distance(ground_truth_arch_seq_list, arch_seq_list)

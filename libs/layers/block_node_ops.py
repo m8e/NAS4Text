@@ -276,7 +276,7 @@ class ConvolutionOp(BlockNodeOp):
 
 class SelfAttentionOp(BlockNodeOp):
     """
-    op_args: [num_heads: index = 8, ..., preprocessors = "", postprocessors = ""]
+    op_args: [num_heads: index = 8, preprocessors = "", postprocessors = ""]
     """
 
     def __init__(self, op_args, input_shape, **kwargs):
@@ -306,7 +306,7 @@ class SelfAttentionOp(BlockNodeOp):
 
 class EncoderAttentionOp(BlockNodeOp):
     """
-    op_args: [num_heads: index = 8, ..., preprocessors = "", postprocessors = ""]
+    op_args: [num_heads: index = 8, preprocessors = "", postprocessors = ""]
     """
 
     # FIXME: The decoder must contains at least one encoder attention op,
